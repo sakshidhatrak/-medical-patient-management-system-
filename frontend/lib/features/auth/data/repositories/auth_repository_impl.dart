@@ -1,29 +1,22 @@
 import 'package:dartz/dartz.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_datasource.dart';
-import '../models/user_model.dart';
-
-// Dummy credentials — replace with real API integration later
-const _kDummyEmail = 'admin@test.com';
-const _kDummyPassword = 'admin123';
-
-const _kDummyUser = UserModel(
-  id: 'admin-001',
-  email: _kDummyEmail,
-  firstName: 'Admin',
-  lastName: 'User',
-  role: 'admin',
-  createdAt: '2024-01-01T00:00:00.000Z',
-);
+import '../datasources/auth_remote_datasource.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
+  final AuthRemoteDataSource _remote;
   final AuthLocalDataSource _local;
 
-  AuthRepositoryImpl({required AuthLocalDataSource local}) : _local = local;
+  const AuthRepositoryImpl({
+    required AuthRemoteDataSource remote,
+    required AuthLocalDataSource local,
+  })  : _remote = remote,
+        _local = local;
 
   @override
   Future<Either<Failure, UserEntity>> login({
@@ -31,33 +24,20 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      // Simulate auth latency
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      if (email != _kDummyEmail || password != _kDummyPassword) {
-        return const Left(
-          AuthFailure('Invalid email or password.', code: 'INVALID_CREDENTIALS'),
-        );
-      }
-
-      await Future.wait([
-        _local.saveToken(
-          token: 'dummy-access-token-admin-001',
-          refreshToken: 'dummy-refresh-token-admin-001',
-        ),
-        _local.saveUser(_kDummyUser),
-      ]);
-
-      return Right(_kDummyUser.toEntity());
-    } on AppException catch (e) {
+      final user = await _remote.login(email: email, password: password);
+      await _local.saveUser(user);
+      return Right(user.toEntity());
+    } on UnauthorizedException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
+    } on AppException catch (e) {
+      return Left(ServerFailure(e.message, code: e.code));
     }
   }
 
   @override
   Future<Either<Failure, void>> logout() async {
     try {
-      await _local.clearAll();
+      await Future.wait([_remote.logout(), _local.clearAll()]);
       return const Right(null);
     } on AppException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
@@ -67,8 +47,16 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, UserEntity?>> getCurrentUser() async {
     try {
-      final userModel = await _local.getUser();
-      return Right(userModel?.toEntity());
+      final supabaseUser = sb.Supabase.instance.client.auth.currentUser;
+      if (supabaseUser == null) {
+        await _local.clearAll();
+        return const Right(null);
+      }
+      final cached = await _local.getUser();
+      if (cached != null) return Right(cached.toEntity());
+      final profile = await _remote.fetchUserProfile(supabaseUser.id);
+      await _local.saveUser(profile);
+      return Right(profile.toEntity());
     } on AppException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
     }
@@ -77,11 +65,17 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, UserEntity>> refreshSession() async {
     try {
-      final userModel = await _local.getUser();
-      if (userModel == null) {
-        return const Left(AuthFailure('No cached session.', code: 'NO_SESSION'));
+      final supabaseUser = sb.Supabase.instance.client.auth.currentUser;
+      if (supabaseUser == null) {
+        return const Left(
+          AuthFailure('No active session.', code: 'NO_SESSION'),
+        );
       }
-      return Right(userModel.toEntity());
+      final cached = await _local.getUser();
+      if (cached != null) return Right(cached.toEntity());
+      final profile = await _remote.fetchUserProfile(supabaseUser.id);
+      await _local.saveUser(profile);
+      return Right(profile.toEntity());
     } on AppException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
     }
