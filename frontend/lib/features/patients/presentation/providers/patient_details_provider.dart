@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/database_helper.dart';
@@ -61,8 +62,9 @@ class PatientDetailsNotifier extends Notifier<Map<String, PatientDetails>> {
   PatientDetails _getOrCreate(String patientId) =>
       state[patientId] ?? const PatientDetails();
 
-  /// Load all details for a patient from SQLite (call on detail screen init).
+  /// Load all details for a patient from SQLite (mobile only).
   Future<void> loadDetailsForPatient(String patientId) async {
+    if (kIsWeb) return;
     try {
       final visits = await _local.getVisits(patientId);
       final vitals = await _local.getVitals(patientId);
@@ -83,7 +85,7 @@ class PatientDetailsNotifier extends Notifier<Map<String, PatientDetails>> {
   }
 
   void saveTreatment(TreatmentEntity treatment) {
-    _local.saveVisit(treatment).ignore();
+    if (!kIsWeb) _local.saveVisit(treatment).ignore();
     final existing = _getOrCreate(treatment.patientId);
     state = {
       ...state,
@@ -95,21 +97,21 @@ class PatientDetailsNotifier extends Notifier<Map<String, PatientDetails>> {
   void addVisit(TreatmentEntity visit) => saveTreatment(visit);
 
   void saveVitals(VitalsEntity vitals) {
-    _local.saveVitals(vitals).ignore();
+    if (!kIsWeb) _local.saveVitals(vitals).ignore();
     final updated = _getOrCreate(vitals.patientId).copyWith(vitals: vitals);
     state = {...state, vitals.patientId: updated};
   }
 
   void saveEmergencyContact(
       String patientId, EmergencyContactEntity contact) {
-    _local.saveEmergencyContact(patientId, contact).ignore();
+    if (!kIsWeb) _local.saveEmergencyContact(patientId, contact).ignore();
     final updated =
         _getOrCreate(patientId).copyWith(emergencyContact: contact);
     state = {...state, patientId: updated};
   }
 
   void saveReports(String patientId, List<MedicalReportEntity> reports) {
-    _local.saveReports(patientId, reports).ignore();
+    if (!kIsWeb) _local.saveReports(patientId, reports).ignore();
     final existing = _getOrCreate(patientId);
     final updated =
         existing.copyWith(reports: [...existing.reports, ...reports]);

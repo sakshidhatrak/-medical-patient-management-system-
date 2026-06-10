@@ -10,6 +10,15 @@ class EnvConfig {
   static const String _apiKey =
       String.fromEnvironment('API_KEY', defaultValue: '');
 
+  static const String supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'https://ddwaeeonsifzucajsovg.supabase.co',
+  );
+  static const String supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'sb_publishable__8ASEYO_TeZd29ORPkicmA_HWgibZUf',
+  );
+
   static Environment get environment => switch (_env) {
         'production' => Environment.production,
         'staging' => Environment.staging,

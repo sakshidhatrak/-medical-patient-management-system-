@@ -1,1112 +1,660 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// patient_detail_screen.dart  –  MediManage Patient Dashboard (Premium)
+// ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:uuid/uuid.dart';
-
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimensions.dart';
-import '../../../../core/widgets/app_error_widget.dart';
-import '../../../../core/widgets/app_loader.dart';
-import '../../domain/entities/medical_report_entity.dart';
 import '../../domain/entities/patient_entity.dart';
-import '../../domain/entities/treatment_entity.dart';
-import '../providers/patient_details_provider.dart';
+import '../../../surgeries/domain/entities/surgery_entity.dart';
+import '../../../surgeries/presentation/providers/surgery_provider.dart';
+import '../../../visits/domain/entities/visit_entity.dart';
+import '../../../visits/presentation/providers/visit_provider.dart';
 import '../providers/patient_provider.dart';
-import 'add_visit_screen.dart';
-import 'patient_create_screen.dart';
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const _kP1    = Color(0xFF7C3AED);
+const _kP2    = Color(0xFF3B82F6);
+const _kRed   = Color(0xFFEF4444);
+const _kRed2  = Color(0xFFFEE2E2);
+const _kGreen = Color(0xFF10B981);
+const _kAmber = Color(0xFFF59E0B);
+const _kBg    = Color(0xFFF8FAFC);
+const _kNavy  = Color(0xFF0F172A);
+const _kSlate = Color(0xFF475569);
+const _kMuted = Color(0xFF94A3B8);
+const _kBorder= Color(0xFFE2E8F0);
 
-class PatientDetailScreen extends ConsumerWidget {
+class PatientDashboardScreen extends ConsumerWidget {
   final String patientId;
-
-  const PatientDetailScreen({super.key, required this.patientId});
+  const PatientDashboardScreen({super.key, required this.patientId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (patientId == 'new') return const PatientCreateScreen();
+    final patientAsync = ref.watch(patientByIdProvider(patientId));
+    final visits       = ref.watch(visitsProvider(patientId));
+    final surgeries    = ref.watch(surgeriesProvider(patientId));
 
-    final async = ref.watch(patientDetailProvider(patientId));
-    return async.when(
-      loading: () =>
-          const Scaffold(backgroundColor: AppColors.background, body: AppLoader()),
-      error: (e, _) => Scaffold(
-        appBar: AppBar(backgroundColor: AppColors.background),
-        body: AppErrorWidget(
-          message: e.toString(),
-          onRetry: () => ref.invalidate(patientDetailProvider(patientId)),
-        ),
-      ),
-      data: (p) => _PatientDetailView(patient: p),
-    );
-  }
-}
+    return patientAsync.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: _kP1))),
+      error:   (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+      data:    (patient) {
+        if (patient == null) {
+          return Scaffold(appBar: AppBar(), body: const Center(child: Text('Patient not found')));
+        }
 
-// ── Main view ─────────────────────────────────────────────────────────────────
+        final timeline = <_Event>[
+          ...visits
+              .where((v) =>
+                  v.complaints?.isNotEmpty == true ||
+                  v.examination?.isNotEmpty == true ||
+                  v.clinicalImpression?.isNotEmpty == true ||
+                  v.plan?.isNotEmpty == true ||
+                  v.notes?.isNotEmpty == true)
+              .map((v) => _Event(
+                id: v.id,
+                date: v.visitDate,
+                type: 'visit',
+                title: 'OPD Visit',
+                summary: v.complaints?.isNotEmpty == true
+                    ? v.complaints! : v.clinicalImpression ?? '',
+                status: v.status,
+              )),
+          ...surgeries
+              .where((s) =>
+                  s.procedure?.isNotEmpty == true ||
+                  s.preOpDiagnosis?.isNotEmpty == true ||
+                  s.postOpPlan?.isNotEmpty == true)
+              .map((s) => _Event(
+                id: s.id,
+                date: s.surgeryDate,
+                type: 'surgery',
+                title: 'Surgery',
+                summary: s.procedure ?? s.preOpDiagnosis ?? '',
+                status: s.status,
+              )),
+        ]..sort((a, b) => b.date.compareTo(a.date));
 
-class _PatientDetailView extends ConsumerStatefulWidget {
-  final PatientEntity patient;
+        final lastEvent = timeline.isNotEmpty ? timeline.first : null;
 
-  const _PatientDetailView({required this.patient});
-
-  @override
-  ConsumerState<_PatientDetailView> createState() =>
-      _PatientDetailViewState();
-}
-
-class _PatientDetailViewState extends ConsumerState<_PatientDetailView>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 3, vsync: this);
-    // Load persisted visits, vitals, emergency contact and reports from SQLite.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(patientDetailsProvider.notifier)
-          .loadDetailsForPatient(widget.patient.id);
-    });
-  }
-
-  void _openAddVisit(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AddVisitScreen(
-          patientId: widget.patient.id,
-          patientName: widget.patient.fullName,
-          patientEntity: widget.patient,
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final details = ref.watch(patientDetailDataProvider(widget.patient.id));
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F5FA),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── App bar ───────────────────────────────────────────────
-            _AppBar(patient: widget.patient),
-
-            // ── Profile header card ───────────────────────────────────
-            _ProfileCard(patient: widget.patient),
-
-            // ── Tab bar ───────────────────────────────────────────────
-            _TabRow(controller: _tabs),
-
-            // ── Tab content ───────────────────────────────────────────
-            Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                children: [
-                  _ProfileTab(patient: widget.patient, details: details),
-                  _ReportsTab(
-                    patient: widget.patient,
-                    reports: details?.reports ?? [],
-                  ),
-                  _TimelineTab(
-                    patient: widget.patient,
-                    details: details,
-                    onAddVisit: () => _openAddVisit(context),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openAddVisit(context),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 3,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text(
-          'Add Visit',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
-}
-
-// ── App bar ───────────────────────────────────────────────────────────────────
-
-class _AppBar extends StatelessWidget {
-  final PatientEntity patient;
-
-  const _AppBar({required this.patient});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.md, vertical: 10),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Navigator.of(context).maybePop(),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 8,
-                  )
-                ],
-              ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: AppColors.textPrimary),
-            ),
-          ),
-          const Expanded(
-            child: Text(
-              'Patient Profile',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withOpacity(0.08), blurRadius: 8)
-              ],
-            ),
-            child: const Icon(Icons.edit_outlined,
-                size: 16, color: AppColors.textPrimary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Profile card (dark) ───────────────────────────────────────────────────────
-
-class _ProfileCard extends StatelessWidget {
-  final PatientEntity patient;
-
-  const _ProfileCard({required this.patient});
-
-  @override
-  Widget build(BuildContext context) {
-    const avatarColors = [
-      Color(0xFF6C63FF),
-      Color(0xFF00C48C),
-      Color(0xFF0095FF),
-      Color(0xFF9C27B0),
-    ];
-    final avatarColor =
-        avatarColors[patient.id.hashCode.abs() % avatarColors.length];
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: AppDimensions.md),
-      padding: const EdgeInsets.all(AppDimensions.md),
-      decoration: BoxDecoration(
-        color: AppColors.sidebarBg,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusXl),
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: avatarColor.withOpacity(0.25),
-            child: Text(
-              patient.initials,
-              style: TextStyle(
-                color: avatarColor,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
-              ),
-            ),
-          ),
-          const SizedBox(width: AppDimensions.md),
-
-          // Name + demographics
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  patient.fullName,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${patient.age} Y · ${_genderLabel(patient.gender)}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.sidebarText,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  patient.phone,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.sidebarText,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Patient ID badge
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white24),
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusMd),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Text(
-                  'Patient ID',
-                  style: TextStyle(fontSize: 9, color: AppColors.sidebarText),
-                ),
-                Text(
-                  patient.id.substring(0, 8).toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _genderLabel(Gender g) => switch (g) {
-        Gender.male => 'Male',
-        Gender.female => 'Female',
-        Gender.other => 'Other',
-        Gender.preferNotToSay => 'Prefer not to say',
-      };
-}
-
-// ── Tab row ───────────────────────────────────────────────────────────────────
-
-class _TabRow extends StatelessWidget {
-  final TabController controller;
-
-  const _TabRow({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF4F5FA),
-      child: TabBar(
-        controller: controller,
-        labelColor: AppColors.primary,
-        unselectedLabelColor: AppColors.textSecondary,
-        indicatorColor: AppColors.primary,
-        indicatorWeight: 2.5,
-        labelStyle: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-        ),
-        tabs: const [
-          Tab(text: 'Profile'),
-          Tab(text: 'Reports'),
-          Tab(text: 'Visit'),
-        ],
-      ),
-    );
-  }
-}
-
-// ── PROFILE TAB ───────────────────────────────────────────────────────────────
-
-class _ProfileTab extends StatelessWidget {
-  final PatientEntity patient;
-  final PatientDetails? details;
-
-  const _ProfileTab({required this.patient, required this.details});
-
-  static String _genderLabel(Gender g) => switch (g) {
-        Gender.male => 'Male',
-        Gender.female => 'Female',
-        Gender.other => 'Other',
-        Gender.preferNotToSay => 'Prefer not to say',
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final treatment = details?.treatment;
-
-    return ListView(
-      padding: const EdgeInsets.all(AppDimensions.md),
-      children: [
-        // ── Personal Information ──────────────────────────────────────
-        _SectionCard(
-          title: 'Personal Information',
-          rows: [
-            _Row('Full Name', patient.fullName),
-            _Row('Date of Birth',
-                DateFormat('d MMMM yyyy').format(patient.dateOfBirth)),
-            _Row('Age', '${patient.age} Years'),
-            _Row('Gender', _genderLabel(patient.gender)),
-            _Row('Mobile Number', patient.phone),
-            if (patient.email != null && patient.email!.isNotEmpty)
-              _Row('Email', patient.email!),
-            if (patient.address != null && patient.address!.isNotEmpty)
-              _Row('Address', patient.address!),
-            if (patient.bloodType != null)
-              _Row('Blood Group', patient.bloodType!),
-          ],
-        ),
-        const SizedBox(height: AppDimensions.md),
-
-        // ── Medical Information ───────────────────────────────────────
-        _SectionCard(
-          title: 'Medical Information',
-          rows: [
-            _Row(
-              'Allergies',
-              patient.allergies.isEmpty
-                  ? 'None'
-                  : patient.allergies.join(', '),
-            ),
-            _Row(
-              'Chronic Diseases',
-              treatment?.existingConditions.isEmpty ?? true
-                  ? 'None'
-                  : treatment!.existingConditions.join(', '),
-            ),
-            if (details?.emergencyContact != null) ...[
-              _Row(
-                'Emergency Contact',
-                '${details!.emergencyContact!.name ?? '—'}'
-                '${details!.emergencyContact!.relationship != null ? ' (${details!.emergencyContact!.relationship})' : ''}'
-                '\n${details!.emergencyContact!.phone ?? ''}',
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: AppDimensions.md),
-
-        // ── Vitals (if recorded) ──────────────────────────────────────
-        if (details?.vitals != null) ...[
-          _SectionCard(
-            title: 'Patient Vitals',
-            rows: [
-              if (details!.vitals!.weightKg != null)
-                _Row('Weight',
-                    '${details!.vitals!.weightKg!.toStringAsFixed(1)} kg'),
-              if (details!.vitals!.bloodPressure != null)
-                _Row('Blood Pressure', details!.vitals!.bloodPressure!),
-              if (details!.vitals!.temperature != null)
-                _Row('Temperature',
-                    '${details!.vitals!.temperature!.toStringAsFixed(1)} °C'),
-            ],
-          ),
-          const SizedBox(height: AppDimensions.md),
-        ],
-
-        // ── Treatment (if recorded) ───────────────────────────────────
-        if (details?.treatment != null) ...[
-          _SectionCard(
-            title: 'Treatment Information',
-            rows: [
-              _Row('Chief Complaint',
-                  details!.treatment!.chiefComplaint),
-              if (details!.treatment!.diagnosis != null)
-                _Row('Diagnosis', details!.treatment!.diagnosis!),
-              if (details!.treatment!.doctorAssigned != null)
-                _Row('Doctor', details!.treatment!.doctorAssigned!),
-              if (details!.treatment!.medications.isNotEmpty)
-                _Row('Medications',
-                    details!.treatment!.medications.join('\n')),
-              if (details!.treatment!.visitType != null)
-                _Row('Visit Type', details!.treatment!.visitType.label),
-            ],
-          ),
-          const SizedBox(height: AppDimensions.md),
-        ],
-
-        const SizedBox(height: 80), // FAB clearance
-      ],
-    );
-  }
-}
-
-
-// ── REPORTS TAB ───────────────────────────────────────────────────────────────
-
-class _ReportsTab extends ConsumerStatefulWidget {
-  final PatientEntity patient;
-  final List<MedicalReportEntity> reports;
-
-  const _ReportsTab({required this.patient, required this.reports});
-
-  @override
-  ConsumerState<_ReportsTab> createState() => _ReportsTabState();
-}
-
-class _ReportsTabState extends ConsumerState<_ReportsTab> {
-  int _filterIndex = 0;
-  static const _filters = ['All', 'Images', 'PDF', 'Lab Reports'];
-
-  List<MedicalReportEntity> get _filtered {
-    if (_filterIndex == 0) return widget.reports;
-    if (_filterIndex == 1) return widget.reports.where((r) => r.isImage).toList();
-    if (_filterIndex == 2) return widget.reports.where((r) => !r.isImage).toList();
-    return widget.reports.where((r) => r.reportType == ReportType.labReport).toList();
-  }
-
-  Future<void> _uploadReport(BuildContext context, WidgetRef ref) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-      allowMultiple: true,
-      withData: true,
-    );
-    if (result == null || !mounted) return;
-    final reports = <MedicalReportEntity>[];
-    for (final f in result.files) {
-      if (f.bytes == null) continue;
-      reports.add(MedicalReportEntity(
-        id: const Uuid().v4(),
-        patientId: widget.patient.id,
-        fileName: f.name,
-        extension: (f.extension ?? 'bin').toLowerCase(),
-        reportType: ReportType.medicalReport,
-        fileSizeBytes: f.size,
-        bytes: f.bytes!,
-        uploadedAt: DateTime.now(),
-      ));
-    }
-    if (reports.isNotEmpty) {
-      ref.read(patientDetailsProvider.notifier)
-          .saveReports(widget.patient.id, reports);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('${reports.length} file(s) uploaded.'),
-          backgroundColor: AppColors.success,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final displayReports = _filtered;
-
-    return Column(
-      children: [
-        // Filter chips
-        Container(
-          height: 44,
-          color: const Color(0xFFF4F5FA),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-                horizontal: AppDimensions.md, vertical: 6),
-            itemCount: _filters.length,
-            itemBuilder: (_, i) {
-              final selected = _filterIndex == i;
-              return Padding(
-                padding: const EdgeInsets.only(right: AppDimensions.sm),
-                child: GestureDetector(
-                  onTap: () => setState(() => _filterIndex = i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? AppColors.primary
-                          : Colors.white,
-                      borderRadius: BorderRadius.circular(
-                          AppDimensions.radiusRound),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.primary
-                            : AppColors.border,
-                      ),
-                    ),
-                    child: Text(
-                      _filters[i],
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: selected
-                            ? Colors.white
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-
-        // Report list
-        Expanded(
-          child: displayReports.isEmpty
-              ? _EmptyState(
-                  icon: Icons.folder_open_outlined,
-                  message: _filterIndex == 0
-                      ? 'No reports uploaded yet'
-                      : 'No ${_filters[_filterIndex].toLowerCase()} found',
-                  hint: 'Tap "Upload Report" to add a file',
-                )
-              : ListView(
-                  padding: const EdgeInsets.all(AppDimensions.md),
-                  children: [
-                    ...displayReports.map((r) => _ReportTile(report: r)),
-                    const SizedBox(height: 80),
-                  ],
-                ),
-        ),
-
-        // Upload button
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppDimensions.md, 0, AppDimensions.md, AppDimensions.md),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => _uploadReport(context, ref),
-              icon: const Icon(Icons.upload_rounded, size: 18),
-              label: const Text('Upload Report',
-                  style: TextStyle(fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+        return Scaffold(
+          backgroundColor: _kBg,
+          body: CustomScrollView(
+            slivers: [
+              // ── Hero sliver app bar ────────────────────────────
+              SliverAppBar(
+                expandedHeight: 260,
+                pinned: true,
+                backgroundColor: _kP1,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.radiusLg),
+                elevation: 0,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 17),
+                  onPressed: () => context.go('/patients'),
                 ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-
-class _ReportTile extends StatelessWidget {
-  final MedicalReportEntity report;
-
-  const _ReportTile({required this.report});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppDimensions.sm),
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.md, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: report.isImage
-                  ? AppColors.info.withOpacity(0.1)
-                  : AppColors.error.withOpacity(0.1),
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusMd),
-            ),
-            child: Icon(
-              report.isImage
-                  ? Icons.image_outlined
-                  : Icons.picture_as_pdf_rounded,
-              color: report.isImage ? AppColors.info : AppColors.error,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: AppDimensions.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  report.fileName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                actions: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    onPressed: () => context.push('/patients/$patientId/edit'),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${DateFormat('d MMM yyyy').format(report.uploadedAt)}  ·  '
-                  '${report.extension.toUpperCase()}  ·  ${report.sizeLabel}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
+                  IconButton(
+                    icon: const Icon(Icons.more_horiz_rounded, size: 22),
+                    onPressed: () {},
                   ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.more_vert_rounded,
-                size: 18, color: AppColors.textSecondary),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── VISIT TAB (formerly Timeline) ─────────────────────────────────────────────
-
-class _TimelineTab extends StatelessWidget {
-  final PatientDetails? details;
-  final PatientEntity patient;
-  final VoidCallback onAddVisit;
-
-  const _TimelineTab({
-    required this.patient,
-    required this.details,
-    required this.onAddVisit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final visits = (details?.visits ?? []).reversed.toList();
-
-    return Column(
-      children: [
-        Expanded(
-          child: visits.isEmpty
-              ? _EmptyState(
-                  icon: Icons.timeline_outlined,
-                  message: 'No visits recorded yet',
-                  hint: 'Tap "Add Visit" to record the first visit',
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(AppDimensions.md),
-                  itemCount: visits.length,
-                  itemBuilder: (_, i) => _TimelineItem(
-                    visit: visits[i],
+                ],
+                flexibleSpace: FlexibleSpaceBar(
+                  collapseMode: CollapseMode.parallax,
+                  background: _PatientHeroBg(
                     patient: patient,
-                    isLast: i == visits.length - 1,
+                    totalVisits: visits.length,
+                    totalSurgeries: surgeries.length,
+                    lastEvent: lastEvent,
                   ),
                 ),
-        ),
-        _AddVisitButton(onTap: onAddVisit),
-      ],
+              ),
+
+              // ── Quick actions ──────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                  child: _QuickActionRow(patientId: patientId, ref: ref, context: context),
+                ),
+              ),
+
+              // ── Timeline header ────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                  child: Row(children: [
+                    Container(
+                      width: 28, height: 28,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [_kP1, _kP2]),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.timeline_rounded, color: Colors.white, size: 15),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Clinical Timeline',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: _kNavy)),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _kP1.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${timeline.length} encounter${timeline.length == 1 ? '' : 's'}',
+                        style: const TextStyle(fontSize: 11, color: _kP1, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+
+              // ── Timeline entries ───────────────────────────────
+              if (timeline.isEmpty)
+                SliverToBoxAdapter(child: _EmptyTimeline())
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _TimelineCard(
+                        event: timeline[i],
+                        isFirst: i == 0,
+                        isLast: i == timeline.length - 1,
+                        onTap: () {
+                          if (timeline[i].type == 'visit') {
+                            context.push('/patients/$patientId/visits/${timeline[i].id}');
+                          } else {
+                            context.push('/patients/$patientId/surgeries/${timeline[i].id}');
+                          }
+                        },
+                      ),
+                      childCount: timeline.length,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
-class _TimelineItem extends StatelessWidget {
-  final TreatmentEntity visit;
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero background in SliverAppBar
+// ─────────────────────────────────────────────────────────────────────────────
+class _PatientHeroBg extends StatelessWidget {
   final PatientEntity patient;
-  final bool isLast;
+  final int totalVisits, totalSurgeries;
+  final _Event? lastEvent;
 
-  const _TimelineItem({
-    required this.visit,
+  const _PatientHeroBg({
     required this.patient,
-    required this.isLast,
+    required this.totalVisits,
+    required this.totalSurgeries,
+    this.lastEvent,
   });
 
-  Color _visitTypeColor(VisitType t) => switch (t) {
-        VisitType.newVisit => AppColors.primary,
-        VisitType.followUp => AppColors.success,
-        VisitType.emergency => AppColors.error,
-      };
-
   @override
-  Widget build(BuildContext context) {
-    final date = visit.appointmentDateTime ?? patient.createdAt;
-    final title = visit.chiefComplaint.isNotEmpty
-        ? visit.chiefComplaint
-        : visit.diagnosis ?? 'Visit';
-    final subtitle = visit.medications.isEmpty
-        ? (visit.diagnosis ?? (visit.notes ?? ''))
-        : visit.medications.join(', ');
-    final typeColor = _visitTypeColor(visit.visitType);
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Timeline column: dot + line
-          SizedBox(
-            width: 32,
-            child: Column(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: typeColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(
-                      width: 2,
-                      color: AppColors.primary.withOpacity(0.2),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppDimensions.sm),
-
-          // Event content
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(
-                  bottom: isLast ? 0 : AppDimensions.md),
-              child: Container(
-                padding: const EdgeInsets.all(AppDimensions.md),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.radiusLg),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Date + visit type badge
-                          Row(
-                            children: [
-                              Text(
-                                DateFormat('d MMM yyyy').format(date),
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: typeColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(
-                                      AppDimensions.radiusRound),
-                                ),
-                                child: Text(
-                                  visit.visitType.label,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: typeColor,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          if (subtitle.isNotEmpty) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              subtitle,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                          if (visit.doctorAssigned != null) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              visit.doctorAssigned!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: AppDimensions.sm),
-                    GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => AddVisitScreen(
-                            patientId: patient.id,
-                            patientName: patient.fullName,
-                            patientEntity: patient,
-                            existingVisit: visit,
-                            readOnly: true,
-                          ),
-                        ),
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primarySurface,
-                          borderRadius: BorderRadius.circular(
-                              AppDimensions.radiusMd),
-                        ),
-                        child: const Icon(
-                          Icons.description_outlined,
-                          size: 18,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => Container(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF6D28D9), Color(0xFF2563EB)],
       ),
-    );
-  }
-}
+    ),
+    child: Stack(children: [
+      // Decorative circles
+      Positioned(right: -30, top: 30, child: _GlassOrb(120, 0.08)),
+      Positioned(left: -20, bottom: 0, child: _GlassOrb(100, 0.05)),
 
-// ── Shared utility widgets ────────────────────────────────────────────────────
-
-class _EmptyState extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  final String hint;
-
-  const _EmptyState({
-    required this.icon,
-    required this.message,
-    required this.hint,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      // Content
+      Padding(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top + 56,
+          left: 20, right: 20, bottom: 20,
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // Avatar
             Container(
-              padding: const EdgeInsets.all(20),
+              width: 70, height: 70,
               decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 4)),
+                ],
               ),
-              child: Icon(icon, size: 36, color: AppColors.primary),
+              alignment: Alignment.center,
+              child: Text(patient.initials,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 24)),
             ),
-            const SizedBox(height: AppDimensions.md),
-            Text(
-              message,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-              textAlign: TextAlign.center,
+            const SizedBox(width: 14),
+
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(patient.fullName,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20,
+                        letterSpacing: -0.3)),
+                const SizedBox(height: 6),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  if (patient.ageSex.isNotEmpty) _HeroPill(patient.ageSex, Icons.person_outline),
+                  _HeroPill('UHID: ${patient.prn}', Icons.badge_outlined),
+                  if (patient.phone?.isNotEmpty == true) _HeroPill(patient.phone!, Icons.phone_outlined),
+                ]),
+              ]),
             ),
-            const SizedBox(height: 6),
-            Text(
-              hint,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
+          ]),
+
+          const SizedBox(height: 18),
+
+          // Stats row
+          Row(children: [
+            _HeroStat(icon: Icons.medical_services_outlined, label: 'Visits',
+                value: '$totalVisits', color: Colors.blue[200]!),
+            const SizedBox(width: 10),
+            _HeroStat(icon: Icons.local_hospital_outlined, label: 'Surgeries',
+                value: '$totalSurgeries', color: Colors.red[200]!),
+            if (lastEvent != null) ...[
+              const SizedBox(width: 10),
+              _HeroStat(icon: Icons.schedule_outlined, label: 'Last seen',
+                  value: _shortDate(lastEvent!.date), color: Colors.green[200]!),
+            ],
+          ]),
+        ]),
       ),
-    );
+    ]),
+  );
+
+  String _shortDate(DateTime d) {
+    final diff = DateTime.now().difference(d).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return '${diff}d ago';
+    return DateFormat('dd MMM').format(d);
   }
 }
 
-class _AddVisitButton extends StatelessWidget {
-  final VoidCallback onTap;
-  const _AddVisitButton({required this.onTap});
+class _GlassOrb extends StatelessWidget {
+  final double size;
+  final double opacity;
+  const _GlassOrb(this.size, this.opacity);
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-          AppDimensions.md, 0, AppDimensions.md, AppDimensions.md),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: onTap,
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Add New Visit',
-              style: TextStyle(fontWeight: FontWeight.w600)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusLg),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    width: size, height: size,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white.withValues(alpha: opacity),
+    ),
+  );
 }
 
-// ── Shared card widgets ───────────────────────────────────────────────────────
-
-class _SectionCard extends StatelessWidget {
-  final String title;
-  final List<Widget> rows;
-
-  const _SectionCard({required this.title, required this.rows});
+class _HeroPill extends StatelessWidget {
+  final String text;
+  final IconData icon;
+  const _HeroPill(this.text, this.icon);
 
   @override
-  Widget build(BuildContext context) {
-    if (rows.isEmpty) return const SizedBox.shrink();
-    return Container(
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.18),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+    ),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 11, color: Colors.white.withValues(alpha: 0.8)),
+      const SizedBox(width: 4),
+      Text(text, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500)),
+    ]),
+  );
+}
+
+class _HeroStat extends StatelessWidget {
+  final IconData icon;
+  final String label, value;
+  final Color color;
+  const _HeroStat({required this.icon, required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusLg),
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(value,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16)),
+        ]),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 10)),
+      ]),
+    ),
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick action row
+// ─────────────────────────────────────────────────────────────────────────────
+class _QuickActionRow extends StatelessWidget {
+  final String patientId;
+  final WidgetRef ref;
+  final BuildContext context;
+  const _QuickActionRow({required this.patientId, required this.ref, required this.context});
+
+  @override
+  Widget build(BuildContext ctx) => Row(children: [
+    Expanded(
+      child: _ActionBtn(
+        icon: Icons.add_circle_rounded,
+        label: 'New Visit',
+        sub: 'OPD consultation',
+        color1: _kP1,
+        color2: _kP2,
+        onTap: () async {
+          final visit = await ref.read(visitsProvider(patientId).notifier)
+              .createVisit(patientId: patientId);
+          if (visit != null && context.mounted) {
+            context.push('/patients/$patientId/visits/${visit.id}');
+          }
+        },
+      ),
+    ),
+    const SizedBox(width: 12),
+    Expanded(
+      child: _ActionBtn(
+        icon: Icons.local_hospital_rounded,
+        label: 'New Surgery',
+        sub: 'Operative note',
+        color1: const Color(0xFFDC2626),
+        color2: _kRed,
+        onTap: () async {
+          final surgery = await ref.read(surgeriesProvider(patientId).notifier)
+              .createSurgery(patientId: patientId);
+          if (surgery != null && context.mounted) {
+            context.push('/patients/$patientId/surgeries/${surgery.id}');
+          }
+        },
+      ),
+    ),
+  ]);
+}
+
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label, sub;
+  final Color color1, color2;
+  final VoidCallback onTap;
+
+  const _ActionBtn({
+    required this.icon, required this.label, required this.sub,
+    required this.color1, required this.color2, required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [color1, color2]),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: color1.withValues(alpha: 0.3),
+            blurRadius: 16, offset: const Offset(0, 6),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                AppDimensions.md, AppDimensions.md,
-                AppDimensions.md, AppDimensions.sm),
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
+      child: Row(children: [
+        Container(
+          width: 40, height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
           ),
-          const Divider(height: 1, color: AppColors.divider),
-          ...rows,
-        ],
-      ),
-    );
-  }
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+            Text(sub,
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11)),
+          ]),
+        ),
+        Icon(Icons.arrow_forward_ios, color: Colors.white.withValues(alpha: 0.6), size: 14),
+      ]),
+    ),
+  );
 }
 
-class _Row extends StatelessWidget {
-  final String label;
-  final String value;
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline card
+// ─────────────────────────────────────────────────────────────────────────────
+class _Event {
+  final String id, type, title, summary, status;
+  final DateTime date;
+  const _Event({
+    required this.id, required this.date, required this.type,
+    required this.title, required this.summary, required this.status,
+  });
+}
 
-  const _Row(this.label, this.value);
+class _TimelineCard extends StatelessWidget {
+  final _Event event;
+  final bool isFirst, isLast;
+  final VoidCallback onTap;
+  const _TimelineCard({
+    required this.event, required this.isFirst,
+    required this.isLast, required this.onTap,
+  });
+
+  Color get _color => event.type == 'visit' ? _kP1 : _kRed;
+  Color get _lightColor => event.type == 'visit'
+      ? const Color(0xFFEDE9FE) : const Color(0xFFFEE2E2);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.md, vertical: 11),
-      decoration: const BoxDecoration(
-        border: Border(
-            bottom: BorderSide(color: AppColors.divider, width: 0.5)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
+    final dateStr = _fmt(event.date);
+    final timeStr = DateFormat('h:mm a').format(event.date);
+    final isDraft = event.status == 'draft';
+
+    return IntrinsicHeight(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Spine
+        SizedBox(
+          width: 48,
+          child: Column(children: [
+            if (!isFirst)
+              Expanded(child: Center(child: Container(width: 2, color: _kBorder)))
+            else
+              const SizedBox(height: 6),
+
+            Container(
+              width: 38, height: 38,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [_color, event.type == 'visit' ? _kP2 : const Color(0xFFF87171)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(color: _color.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 2)),
+                ],
+              ),
+              child: Icon(
+                event.type == 'visit'
+                    ? Icons.medical_services_outlined
+                    : Icons.local_hospital_outlined,
+                color: Colors.white, size: 16,
+              ),
+            ),
+
+            if (!isLast)
+              Expanded(child: Center(child: Container(width: 2, color: _kBorder)))
+            else
+              const SizedBox(height: 6),
+          ]),
+        ),
+
+        const SizedBox(width: 12),
+
+        // Card
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: GestureDetector(
+              onTap: onTap,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isFirst ? _color.withValues(alpha: 0.3) : _kBorder,
+                    width: isFirst ? 1.5 : 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isFirst ? _color.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 12, offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Header
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                    decoration: BoxDecoration(
+                      color: _lightColor,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                    ),
+                    child: Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [_color, event.type == 'visit' ? _kP2 : const Color(0xFFF87171)],
+                          ),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(event.title.toUpperCase(),
+                            style: const TextStyle(color: Colors.white, fontSize: 9,
+                                fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+                      ),
+                      if (isDraft) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _kAmber.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(5),
+                            border: Border.all(color: _kAmber.withValues(alpha: 0.3)),
+                          ),
+                          child: const Text('DRAFT',
+                              style: TextStyle(fontSize: 9, color: _kAmber, fontWeight: FontWeight.w800)),
+                        ),
+                      ],
+                      const Spacer(),
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text(dateStr,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _kSlate)),
+                        Text(timeStr, style: const TextStyle(fontSize: 10, color: _kMuted)),
+                      ]),
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 24, height: 24,
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+                        child: Icon(Icons.chevron_right, color: _kMuted, size: 16),
+                      ),
+                    ]),
+                  ),
+
+                  // Body
+                  if (event.summary.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                      child: Text(
+                        event.summary,
+                        style: const TextStyle(fontSize: 13, color: _kSlate, height: 1.45),
+                        maxLines: 3, overflow: TextOverflow.ellipsis,
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                      child: Text('Tap to view details',
+                          style: const TextStyle(fontSize: 12, color: _kMuted, fontStyle: FontStyle.italic)),
+                    ),
+                ]),
               ),
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
+
+  String _fmt(DateTime d) {
+    final diff = DateTime.now().difference(d).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (diff < 7) return DateFormat('EEEE').format(d);
+    if (d.year == DateTime.now().year) return DateFormat('dd MMM').format(d);
+    return DateFormat('dd MMM yyyy').format(d);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Empty timeline
+// ─────────────────────────────────────────────────────────────────────────────
+class _EmptyTimeline extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+    child: Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _kBorder),
+      ),
+      child: Column(children: [
+        Container(
+          width: 72, height: 72,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_kP1.withValues(alpha: 0.1), _kP2.withValues(alpha: 0.1)],
+            ),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.timeline_outlined, size: 36, color: _kP1.withValues(alpha: 0.5)),
+        ),
+        const SizedBox(height: 18),
+        const Text('No encounters yet',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: _kNavy)),
+        const SizedBox(height: 8),
+        const Text('Start with a New Visit or New Surgery above',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _kMuted, fontSize: 13)),
+      ]),
+    ),
+  );
 }

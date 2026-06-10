@@ -2,49 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/providers/connectivity_provider.dart';
-import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimensions.dart';
-import '../../../../core/widgets/app_error_widget.dart';
-import '../../../../core/widgets/app_loader.dart';
 import '../../domain/entities/patient_entity.dart';
 import '../providers/patient_provider.dart';
-import '../widgets/patient_card.dart';
 
 class PatientListScreen extends ConsumerStatefulWidget {
   const PatientListScreen({super.key});
 
   @override
-  ConsumerState<PatientListScreen> createState() =>
-      _PatientListScreenState();
+  ConsumerState<PatientListScreen> createState() => _PatientListScreenState();
 }
 
 class _PatientListScreenState extends ConsumerState<PatientListScreen> {
-  final _searchController = TextEditingController();
-  final _scrollController = ScrollController();
+  final _searchCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-    // Always reload from SQLite when the screen is created so data is
-    // fresh after login, logout-and-relogin, or app restart.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(patientsProvider.notifier).loadPatients(refresh: true);
-    });
+    _scrollCtrl.addListener(_onScroll);
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
-    _scrollController.dispose();
+    _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 200) {
       ref.read(patientsProvider.notifier).loadMore();
     }
   }
@@ -54,222 +42,152 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
     final state = ref.watch(patientsProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: NestedScrollView(
-        controller: _scrollController,
-        headerSliverBuilder: (context, innerBoxIsScrolled) => [
-          _PatientAppBar(
-            searchController: _searchController,
-            onSearch: (q) =>
-                ref.read(patientsProvider.notifier).search(q),
-            onBack: () => context.go(RouteNames.dashboard),
-            onSync: () =>
-                ref.read(patientsProvider.notifier).syncNow(),
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Patients',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.read(patientsProvider.notifier).refresh(),
           ),
         ],
-        body: Builder(
-          builder: (context) {
-            if (state.isLoading) {
-              return const AppLoader(message: 'Loading patients...');
-            }
-            if (state.failure != null && state.patients.isEmpty) {
-              return AppErrorWidget(
-                failure: state.failure,
-                onRetry: () => ref
-                    .read(patientsProvider.notifier)
-                    .loadPatients(refresh: true),
-              );
-            }
-            if (state.patients.isEmpty) {
-              return _EmptyState(query: state.searchQuery);
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.all(AppDimensions.md),
-              itemCount: state.patients.length +
-                  (state.isLoadingMore ? 1 : 0),
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: AppDimensions.sm),
-              itemBuilder: (context, i) {
-                if (i == state.patients.length) {
-                  return const Padding(
-                    padding: EdgeInsets.all(AppDimensions.md),
-                    child: AppLoader(size: 32),
-                  );
-                }
-                return PatientCard(
-                  patient: state.patients[i],
-                  isPending: state.pendingSyncIds
-                      .contains(state.patients[i].id),
-                  onTap: () => context.go(
-                      '${RouteNames.patients}/${state.patients[i].id}'),
-                );
-              },
-            );
-          },
-        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go(RouteNames.patientCreate),
+        onPressed: () => context.push('/patients/register'),
+        icon: const Icon(Icons.person_add),
+        label: const Text('New Patient'),
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 2,
-        icon: const Icon(Icons.person_add_rounded),
-        label: const Text(
-          'Add Patient',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
+      ),
+      body: Column(
+        children: [
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Search by name, PRN or phone...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 18),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          ref.read(patientsProvider.notifier).search('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFFF2F3F5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onChanged: (v) => ref.read(patientsProvider.notifier).search(v),
+            ),
           ),
-        ),
+          Expanded(
+            child: state.isLoading && state.patients.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : state.patients.isEmpty
+                    ? _EmptyState(
+                        hasSearch: state.search?.isNotEmpty == true)
+                    : ListView.builder(
+                        controller: _scrollCtrl,
+                        padding: const EdgeInsets.only(bottom: 100),
+                        itemCount:
+                            state.patients.length + (state.hasMore ? 1 : 0),
+                        itemBuilder: (ctx, i) {
+                          if (i == state.patients.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child:
+                                  Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          return _PatientCard(
+                            patient: state.patients[i],
+                            onTap: () => context
+                                .push('/patients/${state.patients[i].id}'),
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _PatientAppBar extends ConsumerWidget {
-  final TextEditingController searchController;
-  final ValueChanged<String> onSearch;
-  final VoidCallback onBack;
-  final VoidCallback onSync;
-
-  const _PatientAppBar({
-    required this.searchController,
-    required this.onSearch,
-    required this.onBack,
-    required this.onSync,
-  });
+class _PatientCard extends StatelessWidget {
+  final PatientEntity patient;
+  final VoidCallback onTap;
+  const _PatientCard({required this.patient, required this.onTap});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isOnline = ref.watch(isOnlineProvider);
-    final pendingIds = ref.watch(
-      patientsProvider.select((s) => s.pendingSyncIds),
-    );
-    final hasPending = pendingIds.isNotEmpty;
-
-    final IconData syncIcon;
-    final Color syncColor;
-    final String syncTooltip;
-
-    if (!isOnline) {
-      syncIcon = Icons.sync_disabled;
-      syncColor = AppColors.textSecondary;
-      syncTooltip = 'Offline — changes will sync when online';
-    } else if (hasPending) {
-      syncIcon = Icons.sync;
-      syncColor = AppColors.primary;
-      syncTooltip = 'Sync ${pendingIds.length} pending changes';
-    } else {
-      syncIcon = Icons.cloud_done_outlined;
-      syncColor = AppColors.success;
-      syncTooltip = 'All changes synced';
-    }
-
-    return SliverAppBar(
-      backgroundColor: AppColors.background,
-      surfaceTintColor: Colors.transparent,
-      floating: true,
-      pinned: true,
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       elevation: 0,
-      scrolledUnderElevation: 0,
-      automaticallyImplyLeading: false,
-      title: Row(
-        children: [
-          GestureDetector(
-            onTap: onBack,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusMd),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded,
-                  size: 16, color: AppColors.textPrimary),
-            ),
-          ),
-          const SizedBox(width: AppDimensions.md),
-          const Expanded(
-            child: Text(
-              'Search Patient',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-          Tooltip(
-            message: syncTooltip,
-            child: IconButton(
-              onPressed: isOnline && hasPending ? onSync : null,
-              icon: Icon(syncIcon, size: 22, color: syncColor),
-              splashRadius: 20,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusMd),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: const Icon(Icons.tune_rounded,
-                size: 18, color: AppColors.textPrimary),
-          ),
-        ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: Color(0xFFE8E8E8)),
       ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppDimensions.md, 0, AppDimensions.md, AppDimensions.md),
-          child: TextField(
-            controller: searchController,
-            onChanged: onSearch,
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textPrimary,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Search by name, phone, blood type...',
-              prefixIcon: const Icon(Icons.search_rounded,
-                  color: AppColors.textSecondary),
-              suffixIcon: searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear_rounded,
-                          color: AppColors.textSecondary, size: 18),
-                      onPressed: () {
-                        searchController.clear();
-                        onSearch('');
-                      },
-                    )
-                  : null,
-              filled: true,
-              fillColor: AppColors.surface,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.md, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusLg),
-                borderSide:
-                    const BorderSide(color: AppColors.border),
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: AppColors.primary.withOpacity(0.1),
+                child: Text(
+                  patient.initials,
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusLg),
-                borderSide:
-                    const BorderSide(color: AppColors.border),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      patient.fullName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 15),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        if (patient.ageSex.isNotEmpty) patient.ageSex,
+                        'PRN: ${patient.prn}',
+                      ].join('  ·  '),
+                      style:
+                          TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    if (patient.phone?.isNotEmpty == true) ...[
+                      const SizedBox(height: 2),
+                      Text(patient.phone!,
+                          style: TextStyle(
+                              color: Colors.grey[500], fontSize: 12)),
+                    ],
+                  ],
+                ),
               ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.radiusLg),
-                borderSide: const BorderSide(
-                    color: AppColors.primary, width: 1.5),
-              ),
-            ),
+              Icon(Icons.chevron_right, color: Colors.grey[400]),
+            ],
           ),
         ),
       ),
@@ -278,43 +196,33 @@ class _PatientAppBar extends ConsumerWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final String? query;
-
-  const _EmptyState({this.query});
+  final bool hasSearch;
+  const _EmptyState({required this.hasSearch});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.person_search_rounded,
-                size: 48, color: AppColors.primary),
+          Icon(
+            hasSearch ? Icons.search_off : Icons.people_outline,
+            size: 64,
+            color: Colors.grey[300],
           ),
-          const SizedBox(height: AppDimensions.md),
+          const SizedBox(height: 16),
           Text(
-            query != null ? 'No results for "$query"' : 'No patients yet',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 16,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Try a different search term or add a new patient',
+            hasSearch ? 'No patients found' : 'No patients yet',
             style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600]),
           ),
+          if (!hasSearch) ...[
+            const SizedBox(height: 8),
+            Text('Tap + to register a new patient',
+                style: TextStyle(color: Colors.grey[400])),
+          ],
         ],
       ),
     );
