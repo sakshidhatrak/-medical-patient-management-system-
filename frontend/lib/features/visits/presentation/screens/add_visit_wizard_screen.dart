@@ -299,6 +299,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Save / Create visit ───────────────────────────────────────────────────
   Future<void> _save() async {
+    if (_saving) return;
     final isNew = widget.visitId == null;
 
     if (isNew && !_hasAnyTreatmentData()) {
