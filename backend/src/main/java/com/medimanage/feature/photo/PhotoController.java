@@ -2,12 +2,7 @@ package com.medimanage.feature.photo;
 
 import com.medimanage.common.ApiResponse;
 import com.medimanage.feature.photo.dto.PhotoDto;
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -16,9 +11,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
 
 @RestController
@@ -26,9 +18,6 @@ import java.util.List;
 public class PhotoController {
 
     private final PhotoService service;
-
-    @Value("${app.upload-dir:./uploads}")
-    private String uploadDir;
 
     // ── List ──────────────────────────────────────────────────────────
 
@@ -65,29 +54,6 @@ public class PhotoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(dto));
     }
 
-    // ── Serve file ────────────────────────────────────────────────────
-
-    @GetMapping("/photos/file/**")
-    public ResponseEntity<Resource> serveFile(HttpServletRequest request) {
-        String requestPath = request.getRequestURI();
-        String relativePath = requestPath.substring(requestPath.indexOf("/photos/file/") + "/photos/file/".length());
-
-        try {
-            Path filePath = Paths.get(uploadDir).resolve(relativePath).normalize();
-            Resource resource = new UrlResource(filePath.toUri());
-            if (!resource.exists() || !resource.isReadable()) {
-                return ResponseEntity.notFound().build();
-            }
-            String contentType = determineContentType(relativePath);
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline")
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .body(resource);
-        } catch (MalformedURLException e) {
-            return ResponseEntity.badRequest().build();
-        }
-    }
-
     // ── Delete ────────────────────────────────────────────────────────
 
     @DeleteMapping("/photos/{id}")
@@ -97,13 +63,4 @@ public class PhotoController {
         return ResponseEntity.ok(ApiResponse.ok("Photo deleted", null));
     }
 
-    private String determineContentType(String path) {
-        String lower = path.toLowerCase();
-        if (lower.endsWith(".png"))  return "image/png";
-        if (lower.endsWith(".pdf"))  return "application/pdf";
-        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        if (lower.endsWith(".doc"))  return "application/msword";
-        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        return "image/jpeg";
-    }
 }
