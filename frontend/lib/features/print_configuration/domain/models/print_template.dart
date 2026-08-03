@@ -42,33 +42,33 @@ class PrintTemplate {
 
 // ── Built-in Templates ────────────────────────────────────────────────────────
 
+// All fields that exist in the patient registration form
 const Set<String> _kAllFieldIds = {
-  'firstName', 'lastName', 'dob', 'gender', 'phone', 'email', 'address',
-  'bloodType',
+  // Basic Info
+  'firstName', 'lastName', 'age', 'gender',
+  'phone', 'altPhone', 'email', 'address',
+  'idProofType', 'idProofNumber',
+  'allergies', 'medicalHistory',
+  // Vitals
   'weight', 'bloodPressure', 'temperature',
-  'chiefComplaint', 'diagnosis', 'treatmentPlan', 'medications', 'notes',
-  'doctorAssigned', 'visitType',
-  'prescription', 'labReport', 'xray', 'mriCt',
+  // Treatment
+  'previousHistory', 'chiefComplaint',
+  'examGeneral', 'examNeurological',
+  'clinicalDiagnosis', 'imaging', 'otherInvestigation',
+  'diagnosis', 'treatmentPlan', 'medications', 'notes', 'advice',
 };
 
 const Set<String> _kEmergencyFields = {
-  'firstName', 'lastName', 'dob', 'gender', 'phone', 'bloodType',
+  'firstName', 'lastName', 'age', 'gender', 'phone',
   'weight', 'bloodPressure', 'temperature',
-  'chiefComplaint', 'diagnosis', 'doctorAssigned', 'visitType',
-};
-
-const Set<String> _kInsuranceFields = {
-  'firstName', 'lastName', 'dob', 'gender', 'phone', 'email', 'address',
-  'bloodType',
-  'diagnosis', 'treatmentPlan', 'medications',
-  'prescription', 'labReport',
+  'chiefComplaint', 'diagnosis',
 };
 
 const Set<String> _kDoctorFields = {
-  'firstName', 'lastName', 'dob', 'bloodType',
+  'firstName', 'lastName', 'age',
   'weight', 'bloodPressure', 'temperature',
-  'chiefComplaint', 'diagnosis', 'treatmentPlan', 'medications', 'notes',
-  'doctorAssigned', 'visitType',
+  'chiefComplaint', 'examGeneral', 'examNeurological',
+  'clinicalDiagnosis', 'diagnosis', 'treatmentPlan', 'medications', 'notes', 'advice',
 };
 
 const List<PrintTemplate> kBuiltInTemplates = [
@@ -83,9 +83,9 @@ const List<PrintTemplate> kBuiltInTemplates = [
     id: 'tpl_opd',
     name: 'OPD Summary',
     enabledFieldIds: {
-      'firstName', 'lastName', 'dob', 'gender', 'phone', 'bloodType',
+      'firstName', 'lastName', 'age', 'gender', 'phone',
       'weight', 'bloodPressure', 'temperature',
-      'chiefComplaint', 'diagnosis', 'medications', 'doctorAssigned', 'visitType',
+      'chiefComplaint', 'diagnosis', 'medications',
     },
     sectionOrder: kDefaultSectionOrder,
     isBuiltIn: true,
@@ -94,13 +94,6 @@ const List<PrintTemplate> kBuiltInTemplates = [
     id: 'tpl_emergency',
     name: 'Emergency Summary',
     enabledFieldIds: _kEmergencyFields,
-    sectionOrder: kDefaultSectionOrder,
-    isBuiltIn: true,
-  ),
-  PrintTemplate(
-    id: 'tpl_insurance',
-    name: 'Insurance Copy',
-    enabledFieldIds: _kInsuranceFields,
     sectionOrder: kDefaultSectionOrder,
     isBuiltIn: true,
   ),

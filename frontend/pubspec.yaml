@@ -50,6 +50,9 @@ dependencies:
   # File handling
   file_picker: ^8.1.2
 
+  # URL / link launching
+  url_launcher: ^6.2.6
+
   # PDF generation and printing
   pdf: ^3.11.0
   printing: ^5.13.0

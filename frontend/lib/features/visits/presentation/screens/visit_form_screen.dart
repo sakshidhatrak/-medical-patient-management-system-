@@ -1,524 +1,744 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// visit_form_screen.dart  –  Premium 6-step OPD Visit Wizard
-// Design: Linear × Stripe × Apple Health — production-ready healthcare SaaS
+// visit_form_screen.dart  –  Single-scroll visit form
+// Personal details auto-populated · Treatment Info · Vitals · Upload Reports
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
+import '../../../photos/domain/entities/photo_entity.dart';
+import '../../../photos/presentation/providers/photo_provider.dart';
 import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kP1     = Color(0xFF7C3AED);   // primary purple
-const _kP2     = Color(0xFF3B82F6);   // primary blue
-const _kP1L    = Color(0xFFF5F3FF);   // purple surface
-const _kGreen  = Color(0xFF10B981);
-const _kAmber  = Color(0xFFF59E0B);
-const _kBg     = Color(0xFFF8FAFC);
-const _kCard   = Colors.white;
-const _kNavy   = Color(0xFF0F172A);
-const _kSlate  = Color(0xFF475569);
-const _kMuted  = Color(0xFF94A3B8);
-const _kBorder = Color(0xFFE2E8F0);
+const _kP1    = Color(0xFF7C3AED);
+const _kP2    = Color(0xFF3B82F6);
+const _kRed   = Color(0xFFEF4444);
+const _kGreen = Color(0xFF10B981);
+const _kBg    = Color(0xFFF8FAFC);
+const _kNavy  = Color(0xFF0F172A);
+const _kSlate = Color(0xFF475569);
+const _kMuted = Color(0xFF94A3B8);
+const _kBorder= Color(0xFFE2E8F0);
 
-// ── Step metadata ──────────────────────────────────────────────────────────────
-const _kLabels = ['Patient', 'Details', 'Complaints', 'Vitals', 'Diagnosis', 'Review'];
-const _kTitles = [
-  'Select Patient', 'Visit Details', 'Chief Complaints',
-  'Vitals & Exam', 'Diagnosis & Plan', 'Review & Save',
-];
-const _kSubtitles = [
-  'Choose or search a patient',
-  'Date, time & visit type',
-  'What brought the patient in',
-  'Record measurements & findings',
-  'Clinical impression & treatment',
-  'Confirm and finalize',
-];
+const _kVisitTypeLabels = ['OPD', 'Emergency', 'Follow-up'];
 
-// ── Static data ───────────────────────────────────────────────────────────────
-const _kVisitTypes = ['OPD Consultation', 'Emergency', 'Follow-up'];
-const _kDoctors    = ['Dr. Harshal S. Chaudhari', 'Dr. Ananya Sharma', 'Dr. Rohit Verma'];
-const _kDepts      = ['Neurosurgery', 'General Medicine', 'Orthopedics', 'Cardiology', 'Radiology'];
-const _kQuickComplaints = [
-  'Headache', 'Fever', 'Weakness', 'Numbness',
-  'Tingling', 'Dizziness', 'Back Pain', 'Neck Pain',
-  'Seizures', 'Vomiting', 'Chest Pain', 'Shortness of Breath',
-];
+// ── Report slot ───────────────────────────────────────────────────────────────
+class _ReportSlot {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final PhotoCategory category;
+  ({String name, Uint8List bytes})? file;
+
+  _ReportSlot(this.label, this.icon, this.color, this.category);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Root screen widget
+// Screen
 // ─────────────────────────────────────────────────────────────────────────────
 class VisitFormScreen extends ConsumerStatefulWidget {
   final String patientId;
   final String visitId;
-  const VisitFormScreen({super.key, required this.patientId, required this.visitId});
+  const VisitFormScreen({
+    super.key,
+    required this.patientId,
+    required this.visitId,
+  });
 
   @override
-  ConsumerState<VisitFormScreen> createState() => _VFState();
+  ConsumerState<VisitFormScreen> createState() => _VisitFormState();
 }
 
-class _VFState extends ConsumerState<VisitFormScreen> {
-  int  _step   = 0;
-  bool _saving = false;
-  bool _loaded = false;
+class _VisitFormState extends ConsumerState<VisitFormScreen> {
+  bool _loaded          = false;
+  bool _patientApplied  = false;   // guard for patient-data fallback
+  bool _saving          = false;
+  bool _uploadingFiles  = false;
 
-  // Step 2
-  late DateTime  _date;
-  late TimeOfDay _time;
-  String  _visitTypeLabel = 'OPD Consultation';
-  String  _provider       = _kDoctors.first;
-  String? _department;
+  // Visit meta
+  DateTime  _visitDate = DateTime.now();
+  VisitType _visitType = VisitType.opd;
 
-  // Step 3
-  final List<String> _chips = [];
-  final _chipCtrl    = TextEditingController();
-  final _historyCtrl = TextEditingController();
+  // Treatment Information
+  final _complaintCtrl   = TextEditingController();
+  final _diagnosisCtrl   = TextEditingController();
+  final _treatmentCtrl   = TextEditingController();
+  final _medicationsCtrl = TextEditingController();
+  final _doctorCtrl      = TextEditingController();
+  final _notesCtrl       = TextEditingController();
 
-  // Step 4
-  final _bpCtrl   = TextEditingController();
-  final _pulCtrl  = TextEditingController();
-  final _tmpCtrl  = TextEditingController();
-  final _spo2Ctrl = TextEditingController();
-  final _wtCtrl   = TextEditingController();
-  final _htCtrl   = TextEditingController();
-  final _physCtrl = TextEditingController();
-  final _sysCtrl  = TextEditingController();
+  // Clinical Snapshot
+  final _bpCtrl     = TextEditingController();
+  final _weightCtrl = TextEditingController();
+  final _tempCtrl   = TextEditingController();
 
-  // Step 5
-  final _diagCtrl = TextEditingController();
-  final _planCtrl = TextEditingController();
-  final _medsCtrl = TextEditingController();
-  final _invCtrl  = TextEditingController();
-  final _advCtrl  = TextEditingController();
-  final _fuCtrl   = TextEditingController();
+  late final List<_ReportSlot> _slots;
 
   @override
   void initState() {
     super.initState();
-    _date = DateTime.now();
-    _time = TimeOfDay.fromDateTime(DateTime.now());
+    _slots = [
+      _ReportSlot('Prescription',  Icons.receipt_long_rounded,  const Color(0xFF7C3AED), PhotoCategory.patientReport),
+      _ReportSlot('Lab Report',    Icons.science_rounded,       const Color(0xFF0891B2), PhotoCategory.patientReport),
+      _ReportSlot('X-Ray',         Icons.image_search_rounded,  const Color(0xFF059669), PhotoCategory.radiology),
+      _ReportSlot('MRI / CT Scan', Icons.biotech_rounded,       const Color(0xFFDC2626), PhotoCategory.radiology),
+    ];
   }
 
   @override
   void dispose() {
     for (final c in [
-      _chipCtrl, _historyCtrl,
-      _bpCtrl, _pulCtrl, _tmpCtrl, _spo2Ctrl, _wtCtrl, _htCtrl, _physCtrl, _sysCtrl,
-      _diagCtrl, _planCtrl, _medsCtrl, _invCtrl, _advCtrl, _fuCtrl,
-    ]) {
-      c.dispose();
-    }
+      _complaintCtrl, _diagnosisCtrl, _treatmentCtrl,
+      _medicationsCtrl, _doctorCtrl, _notesCtrl,
+      _bpCtrl, _weightCtrl, _tempCtrl,
+    ]) c.dispose();
     super.dispose();
   }
 
   void _populateFrom(VisitEntity v) {
-    _date = v.visitDate;
-    _time = TimeOfDay.fromDateTime(v.visitDate);
-    _visitTypeLabel = switch (v.visitType) {
-      VisitType.emergency => 'Emergency',
-      VisitType.followUp  => 'Follow-up',
-      _                   => 'OPD Consultation',
-    };
-    if (v.complaints?.isNotEmpty == true) {
-      _chips..clear()..addAll(v.complaints!.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty));
+    if (_loaded) return;
+    _loaded = true;
+    _visitDate = v.visitDate;
+    _visitType = v.visitType;
+    // Only overwrite a controller if the visit actually has non-empty data
+    // so patient-registration fallbacks already applied are preserved.
+    void set(TextEditingController c, String? val) {
+      if (val?.isNotEmpty == true) c.text = val!;
     }
-    _historyCtrl.text = v.notes ?? '';
+    set(_complaintCtrl,   v.complaints);
+    set(_diagnosisCtrl,   v.clinicalImpression);
+    set(_treatmentCtrl,   v.plan);
+    set(_notesCtrl,       v.notes);
     if (v.examination?.isNotEmpty == true) {
       try {
-        final m = json.decode(v.examination!) as Map<String, dynamic>;
-        _bpCtrl.text   = (m['bp']       as String?) ?? '';
-        _pulCtrl.text  = (m['pulse']    as String?) ?? '';
-        _tmpCtrl.text  = (m['temp']     as String?) ?? '';
-        _spo2Ctrl.text = (m['spo2']     as String?) ?? '';
-        _wtCtrl.text   = (m['weight']   as String?) ?? '';
-        _htCtrl.text   = (m['height']   as String?) ?? '';
-        _physCtrl.text = (m['physical'] as String?) ?? '';
-        _sysCtrl.text  = (m['systemic'] as String?) ?? '';
-      } catch (_) {
-        _physCtrl.text = v.examination!;
-      }
+        final m = jsonDecode(v.examination!) as Map<String, dynamic>;
+        set(_bpCtrl,          m['bp']            as String?);
+        set(_weightCtrl,      m['weight']         as String?);
+        set(_tempCtrl,        m['temperature']    as String?);
+        set(_medicationsCtrl, m['medications']    as String?);
+        set(_doctorCtrl,      m['doctorAssigned'] as String?);
+      } catch (_) {}
     }
-    _diagCtrl.text = v.clinicalImpression ?? '';
-    _planCtrl.text = v.plan ?? '';
     setState(() {});
   }
 
-  String get _visitTypeName => switch (_visitTypeLabel) {
-    'Emergency' => 'emergency',
-    'Follow-up' => 'follow_up',
-    _           => 'opd',
-  };
+  /// Called once after patient loads: fills empty treatment fields from the
+  /// patient's registration data so the form is pre-populated for new visits.
+  void _applyPatientFallbacks(PatientEntity patient) {
+    if (_patientApplied) return;
+    _patientApplied = true;
 
-  VisitEntity? _asEntity(String status) {
-    final v = ref.read(visitEditProvider(widget.visitId));
-    if (v == null) return null;
-    final fullDate = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
-    final vitals = json.encode({
-      'bp': _bpCtrl.text, 'pulse': _pulCtrl.text, 'temp': _tmpCtrl.text,
-      'spo2': _spo2Ctrl.text, 'weight': _wtCtrl.text, 'height': _htCtrl.text,
-      'physical': _physCtrl.text, 'systemic': _sysCtrl.text,
-    });
-    final planParts = [
-      if (_planCtrl.text.isNotEmpty) 'Treatment Plan: ${_planCtrl.text}',
-      if (_medsCtrl.text.isNotEmpty) 'Medications: ${_medsCtrl.text}',
-      if (_invCtrl.text.isNotEmpty)  'Investigations: ${_invCtrl.text}',
-      if (_advCtrl.text.isNotEmpty)  'Advice: ${_advCtrl.text}',
-      if (_fuCtrl.text.isNotEmpty)   'Follow-up: ${_fuCtrl.text}',
-    ];
-    return v.copyWith(
-      visitDate:          fullDate,
-      visitType:          VisitTypeX.fromValue(_visitTypeName),
-      complaints:         _chips.join(', '),
-      examination:        vitals,
-      clinicalImpression: _diagCtrl.text.isEmpty ? null : _diagCtrl.text,
-      plan:               planParts.isEmpty ? null : planParts.join('\n'),
-      notes:              _historyCtrl.text.isEmpty ? null : _historyCtrl.text,
-      status:             status,
-    );
-  }
+    Map<String, String> notes = {};
+    if (patient.notes?.isNotEmpty == true) {
+      try {
+        notes = (jsonDecode(patient.notes!) as Map<String, dynamic>)
+            .map((k, v) => MapEntry(k, v.toString()));
+      } catch (_) {}
+    }
 
-  Future<void> _saveDraft() async {
-    final e = _asEntity('draft');
-    if (e == null) return;
-    ref.read(visitEditProvider(widget.visitId).notifier).update(e);
-    await ref.read(visitEditProvider(widget.visitId).notifier).save();
-  }
-
-  Future<void> _saveComplete() async {
-    setState(() => _saving = true);
-    try {
-      final e = _asEntity('completed');
-      if (e == null) return;
-      ref.read(visitEditProvider(widget.visitId).notifier).update(e);
-      final ok = await ref.read(visitEditProvider(widget.visitId).notifier).save();
-      if (mounted) {
-        if (ok) {
-          context.pop();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Failed to save. Check your connection.'),
-            backgroundColor: Colors.red,
-          ));
-        }
+    void fill(TextEditingController ctrl, String key) {
+      if (ctrl.text.isEmpty && notes[key]?.isNotEmpty == true) {
+        ctrl.text = notes[key]!;
       }
-    } finally {
+    }
+
+    fill(_complaintCtrl,   'chiefComplaint');
+    fill(_diagnosisCtrl,   'diagnosis');
+    fill(_treatmentCtrl,   'treatmentPlan');
+    fill(_medicationsCtrl, 'medications');
+    fill(_notesCtrl,       'treatmentNotes');
+    fill(_bpCtrl,          'bloodPressure');
+    fill(_weightCtrl,      'weight');
+    fill(_tempCtrl,        'temperature');
+
+    setState(() {});
+  }
+
+  String? _buildExamination() {
+    final m = <String, String>{};
+    void add(String k, TextEditingController c) {
+      if (c.text.trim().isNotEmpty) m[k] = c.text.trim();
+    }
+    add('bp',            _bpCtrl);
+    add('weight',        _weightCtrl);
+    add('temperature',   _tempCtrl);
+    add('medications',   _medicationsCtrl);
+    add('doctorAssigned', _doctorCtrl);
+    return m.isEmpty ? null : jsonEncode(m);
+  }
+
+  Future<void> _save({bool complete = true}) async {
+    setState(() => _saving = true);
+
+    final current = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}'));
+    if (current == null) {
+      setState(() => _saving = false);
+      return;
+    }
+
+    final updated = current.copyWith(
+      visitDate:          _visitDate,
+      visitType:          _visitType,
+      complaints:         _complaintCtrl.text.trim().isNotEmpty ? _complaintCtrl.text.trim() : null,
+      clinicalImpression: _diagnosisCtrl.text.trim().isNotEmpty ? _diagnosisCtrl.text.trim() : null,
+      plan:               _treatmentCtrl.text.trim().isNotEmpty ? _treatmentCtrl.text.trim() : null,
+      notes:              _notesCtrl.text.trim().isNotEmpty ? _notesCtrl.text.trim() : null,
+      examination:        _buildExamination(),
+      status:             complete ? 'completed' : 'draft',
+    );
+
+    ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}').notifier).update(updated);
+    final ok = await ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}').notifier).save();
+
+    final filledSlots = _slots.where((s) => s.file != null).toList();
+    if (ok && filledSlots.isNotEmpty) {
+      setState(() { _saving = false; _uploadingFiles = true; });
+      final notifier = ref.read(photoProvider(widget.patientId).notifier);
+      for (final slot in filledSlots) {
+        await notifier.upload(
+          bytes:    slot.file!.bytes,
+          filename: slot.file!.name,
+          category: slot.category,
+          visitId:  widget.visitId,
+          caption:  slot.label,
+        );
+      }
+      if (mounted) setState(() => _uploadingFiles = false);
+    } else {
       if (mounted) setState(() => _saving = false);
     }
+
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Row(children: [
+          Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+          SizedBox(width: 10),
+          Text('Visit saved successfully',
+              style: TextStyle(fontWeight: FontWeight.w600)),
+        ]),
+        backgroundColor: _kGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ));
+      context.pop();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Failed to save visit. Please try again.'),
+        backgroundColor: _kRed,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
-  void _next() { _saveDraft(); setState(() => _step++); }
-  void _back() { if (_step == 0) context.pop(); else setState(() => _step--); }
-
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final visit = ref.watch(visitEditProvider(widget.visitId));
+    final patientAsync  = ref.watch(patientByIdProvider(widget.patientId));
+    final visit         = ref.watch(visitEditProvider('${widget.patientId}/${widget.visitId}'));
+    final photoState    = ref.watch(photoProvider(widget.patientId));
+    final existingPhotos = photoState.photos
+        .where((p) => p.visitId == widget.visitId || p.visitId == null)
+        .toList();
+
     if (visit != null && !_loaded) {
-      _loaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _populateFrom(visit); });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _populateFrom(visit));
     }
+
+    // Once both patient & visit are ready, fill any still-empty fields from
+    // the patient's registration data (treatment info, vitals).
+    patientAsync.whenData((patient) {
+      if (patient != null && !_patientApplied) {
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _applyPatientFallbacks(patient));
+      }
+    });
+
+    final busy = _saving || _uploadingFiles;
 
     return Scaffold(
       backgroundColor: _kBg,
-      body: SafeArea(
-        child: Column(children: [
-          _PremiumHeader(step: _step, onBack: _back),
-          _PremiumStepBar(step: _step),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: SlideTransition(
-                  position: Tween(begin: const Offset(0.03, 0), end: Offset.zero).animate(anim),
-                  child: child,
+      body: Column(children: [
+        _GradientHeader(
+          title: 'New Visit',
+          subtitle: busy
+              ? (_uploadingFiles ? 'Uploading files…' : 'Saving…')
+              : null,
+          onBack: () => context.pop(),
+        ),
+
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+            children: [
+
+              // ── Patient card (auto-populated, read-only) ──────────
+              const SizedBox(height: 16),
+              patientAsync.when(
+                loading: () => const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator(color: _kP1)),
+                ),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (p) => p == null
+                    ? const SizedBox.shrink()
+                    : _PatientSummaryCard(patient: p),
+              ),
+
+              // ── Visit Details ─────────────────────────────────────
+              _SectionCard(
+                title: 'Visit Details',
+                icon: Icons.calendar_today_outlined,
+                color: _kP2,
+                child: Column(children: [
+                  _DateField(
+                    label: 'Visit Date',
+                    value: _visitDate,
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _visitDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now().add(const Duration(days: 1)),
+                        builder: (c, w) => Theme(
+                          data: Theme.of(c).copyWith(
+                            colorScheme: const ColorScheme.light(primary: _kP1),
+                          ),
+                          child: w!,
+                        ),
+                      );
+                      if (d != null) setState(() => _visitDate = d);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  _DropdownField(
+                    label: 'Visit Type',
+                    value: _visitType.label,
+                    options: _kVisitTypeLabels,
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _visitType = switch (v) {
+                        'Emergency' => VisitType.emergency,
+                        'Follow-up' => VisitType.followUp,
+                        _           => VisitType.opd,
+                      });
+                    },
+                  ),
+                ]),
+              ),
+
+              // ── Treatment Information ─────────────────────────────
+              _SectionCard(
+                title: 'Treatment Information',
+                icon: Icons.medical_services_outlined,
+                color: _kGreen,
+                child: Column(children: [
+                  _VField(
+                    label: 'Chief Complaint',
+                    controller: _complaintCtrl,
+                    maxLines: 2,
+                    prefixIcon: Icons.report_problem_outlined,
+                    hint: 'Primary reason for visit…',
+                  ),
+                  const SizedBox(height: 12),
+                  _VField(
+                    label: 'Diagnosis',
+                    controller: _diagnosisCtrl,
+                    maxLines: 2,
+                    prefixIcon: Icons.local_hospital_outlined,
+                    hint: 'Clinical diagnosis…',
+                  ),
+                  const SizedBox(height: 12),
+                  _VField(
+                    label: 'Treatment Plan',
+                    controller: _treatmentCtrl,
+                    maxLines: 2,
+                    prefixIcon: Icons.assignment_outlined,
+                    hint: 'Recommended treatment…',
+                  ),
+                  const SizedBox(height: 12),
+                  _VField(
+                    label: 'Medications',
+                    controller: _medicationsCtrl,
+                    maxLines: 2,
+                    prefixIcon: Icons.medication_outlined,
+                    hint: 'e.g. Paracetamol 650mg · Cetirizine 10mg…',
+                  ),
+                  const SizedBox(height: 12),
+                  _VField(
+                    label: 'Doctor Assigned',
+                    controller: _doctorCtrl,
+                    prefixIcon: Icons.person_outlined,
+                    hint: 'e.g. Dr. Harshal Chaudhari',
+                  ),
+                  const SizedBox(height: 12),
+                  _VField(
+                    label: 'Notes',
+                    controller: _notesCtrl,
+                    maxLines: 3,
+                    prefixIcon: Icons.notes_rounded,
+                    hint: 'Additional clinical notes…',
+                  ),
+                ]),
+              ),
+
+              // ── Clinical Snapshot (vitals) ────────────────────────
+              _SectionCard(
+                title: 'Clinical Snapshot',
+                icon: Icons.monitor_heart_outlined,
+                color: _kRed,
+                badge: 'Optional',
+                child: Row(children: [
+                  Expanded(child: _VField(
+                    label: 'Blood Pressure',
+                    controller: _bpCtrl,
+                    prefixIcon: Icons.favorite_border_rounded,
+                    hint: '120/80',
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VField(
+                    label: 'Weight',
+                    controller: _weightCtrl,
+                    prefixIcon: Icons.monitor_weight_outlined,
+                    hint: '65 kg',
+                  )),
+                  const SizedBox(width: 12),
+                  Expanded(child: _VField(
+                    label: 'Temperature',
+                    controller: _tempCtrl,
+                    prefixIcon: Icons.thermostat_outlined,
+                    hint: '37.1 °C',
+                  )),
+                ]),
+              ),
+
+              // ── Upload Reports ────────────────────────────────────
+              _SectionCard(
+                title: 'Upload Reports',
+                icon: Icons.folder_open_rounded,
+                color: const Color(0xFF0891B2),
+                badge: 'Optional',
+                child: _UploadSection(
+                  slots: _slots,
+                  uploading: _uploadingFiles,
+                  existingPhotos: existingPhotos,
+                  onFileSelected: (i, name, bytes) =>
+                      setState(() => _slots[i].file = (name: name, bytes: bytes)),
+                  onDeletePhoto: (photo) =>
+                      ref.read(photoProvider(widget.patientId).notifier).delete(photo),
                 ),
               ),
-              child: KeyedSubtree(key: ValueKey(_step), child: _stepContent()),
-            ),
+
+              // ── Save buttons ──────────────────────────────────────
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: busy ? null : () => _save(complete: false),
+                    icon: const Icon(Icons.save_outlined, size: 18),
+                    label: const Text('Save Draft'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kSlate,
+                      side: const BorderSide(color: _kBorder, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: busy ? null : () => _save(complete: true),
+                    icon: busy
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.check_circle_outline_rounded, size: 18),
+                    label: Text(busy ? 'Saving…' : 'Save Visit'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kP1,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      textStyle: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 15),
+                    ),
+                  ),
+                ),
+              ]),
+            ],
           ),
-          _PremiumBottomNav(step: _step, saving: _saving, onBack: _back, onNext: _next, onSave: _saveComplete),
-        ]),
-      ),
+        ),
+      ]),
     );
   }
-
-  Widget _stepContent() => switch (_step) {
-    0 => _VStep1Patient(patientId: widget.patientId),
-    1 => _VStep2Details(
-        date: _date, time: _time, visitType: _visitTypeLabel,
-        provider: _provider, department: _department,
-        onDate: (d) => setState(() => _date = d),
-        onTime: (t) => setState(() => _time = t),
-        onType: (t) => setState(() => _visitTypeLabel = t),
-        onProv: (p) => setState(() => _provider = p),
-        onDept: (d) => setState(() => _department = d),
-      ),
-    2 => _VStep3Complaints(
-        chips: _chips, chipCtrl: _chipCtrl, historyCtrl: _historyCtrl,
-        onToggle: (c) => setState(() { if (_chips.contains(c)) _chips.remove(c); else _chips.add(c); }),
-        onAdd:    (s) { if (s.trim().isNotEmpty) setState(() { _chips.add(s.trim()); _chipCtrl.clear(); }); },
-        onRemove: (i) => setState(() => _chips.removeAt(i)),
-      ),
-    3 => _VStep4Vitals(
-        bp: _bpCtrl, pulse: _pulCtrl, temp: _tmpCtrl, spo2: _spo2Ctrl,
-        wt: _wtCtrl, ht: _htCtrl, phys: _physCtrl, sys: _sysCtrl,
-      ),
-    4 => _VStep5Diagnosis(
-        diag: _diagCtrl, plan: _planCtrl, meds: _medsCtrl,
-        inv: _invCtrl, adv: _advCtrl, fu: _fuCtrl,
-      ),
-    _ => _VStep6Review(
-        patientId: widget.patientId,
-        date: _date, time: _time, visitType: _visitTypeLabel,
-        provider: _provider, department: _department,
-        chips: List.unmodifiable(_chips), history: _historyCtrl.text,
-        bp: _bpCtrl.text, pulse: _pulCtrl.text,
-        temp: _tmpCtrl.text, spo2: _spo2Ctrl.text,
-        wt: _wtCtrl.text, ht: _htCtrl.text,
-        diag: _diagCtrl.text, plan: _planCtrl.text,
-        meds: _medsCtrl.text, inv: _invCtrl.text,
-        adv: _advCtrl.text, fu: _fuCtrl.text,
-        onEdit: (s) => setState(() => _step = s),
-      ),
-  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Premium gradient header
+// Gradient header (same style as patient registration)
 // ─────────────────────────────────────────────────────────────────────────────
-class _PremiumHeader extends StatelessWidget {
-  final int step;
+class _GradientHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
   final VoidCallback onBack;
-  const _PremiumHeader({required this.step, required this.onBack});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
-      gradient: LinearGradient(
-        colors: [Color(0xFF6D28D9), Color(0xFF3B82F6)],
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
-      ),
-    ),
-    padding: const EdgeInsets.fromLTRB(4, 8, 16, 12),
-    child: Row(children: [
-      IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 17),
-        onPressed: onBack,
-        padding: const EdgeInsets.all(8),
-      ),
-      const SizedBox(width: 2),
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text('OPD Consultation',
-                  style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
-            ),
-            const SizedBox(width: 8),
-            Text('Step ${step + 1} of 6',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 10)),
-          ]),
-          const SizedBox(height: 3),
-          const Text('New Visit',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18, letterSpacing: -0.3)),
-          Text(_kTitles[step],
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 11)),
-        ]),
-      ),
-      Container(
-        width: 36, height: 36,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: const Icon(Icons.medical_services_outlined, color: Colors.white, size: 18),
-      ),
-    ]),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Premium step bar with gradient circles
-// ─────────────────────────────────────────────────────────────────────────────
-class _PremiumStepBar extends StatelessWidget {
-  final int step;
-  const _PremiumStepBar({required this.step});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    color: Colors.white,
-    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 2))],
-    ),
-    child: Row(
-      children: List.generate(6, (i) {
-        final done   = i < step;
-        final active = i == step;
-        return Expanded(
-          child: Row(children: [
-            if (i > 0) Expanded(child: Container(
-              height: 2,
-              decoration: BoxDecoration(
-                gradient: i <= step
-                    ? const LinearGradient(colors: [_kP1, _kP2])
-                    : null,
-                color: i <= step ? null : _kBorder,
-                borderRadius: BorderRadius.circular(1),
-              ),
-            )),
-            _StepCircle(index: i, done: done, active: active),
-            if (i < 5) Expanded(child: Container(
-              height: 2,
-              decoration: BoxDecoration(
-                gradient: i < step
-                    ? const LinearGradient(colors: [_kP1, _kP2])
-                    : null,
-                color: i < step ? null : _kBorder,
-                borderRadius: BorderRadius.circular(1),
-              ),
-            )),
-          ]),
-        );
-      }),
-    ),
-  );
-}
-
-class _StepCircle extends StatelessWidget {
-  final int index;
-  final bool done, active;
-  const _StepCircle({required this.index, required this.done, required this.active});
-
-  @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, children: [
-    Container(
-      width: 30, height: 30,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: done || active
-            ? const LinearGradient(colors: [_kP1, _kP2], begin: Alignment.topLeft, end: Alignment.bottomRight)
-            : null,
-        color: done || active ? null : Colors.white,
-        border: Border.all(color: done || active ? Colors.transparent : _kBorder, width: 1.5),
-        boxShadow: done || active
-            ? [BoxShadow(color: _kP1.withValues(alpha: 0.28), blurRadius: 8, offset: const Offset(0, 3))]
-            : [],
-      ),
-      alignment: Alignment.center,
-      child: done
-          ? const Icon(Icons.check_rounded, color: Colors.white, size: 15)
-          : Text('${index + 1}', style: TextStyle(
-              color: active ? Colors.white : _kMuted,
-              fontWeight: FontWeight.w800, fontSize: 11)),
-    ),
-    const SizedBox(height: 3),
-    Text(_kLabels[index], style: TextStyle(
-      fontSize: 8,
-      color: active ? _kP1 : done ? _kP2 : _kMuted,
-      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-    )),
-  ]);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Premium bottom navigation
-// ─────────────────────────────────────────────────────────────────────────────
-class _PremiumBottomNav extends StatelessWidget {
-  final int step;
-  final bool saving;
-  final VoidCallback onBack, onNext, onSave;
-  const _PremiumBottomNav({
-    required this.step, required this.saving,
-    required this.onBack, required this.onNext, required this.onSave,
+  const _GradientHeader({
+    required this.title,
+    this.subtitle,
+    required this.onBack,
   });
 
   @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.of(context).padding.top;
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, top + 12, 16, 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6D28D9), Color(0xFF2563EB)],
+        ),
+      ),
+      child: Row(children: [
+        GestureDetector(
+          onTap: onBack,
+          child: Container(
+            width: 38, height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(Icons.arrow_back_ios_new,
+                color: Colors.white, size: 16),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3)),
+            if (subtitle != null)
+              Text(subtitle!,
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.75),
+                      fontSize: 12)),
+          ]),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+          ),
+          child: const Text('Visit',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Patient summary card (auto-populated, read-only)
+// ─────────────────────────────────────────────────────────────────────────────
+class _PatientSummaryCard extends StatelessWidget {
+  final PatientEntity patient;
+  const _PatientSummaryCard({required this.patient});
+
+  @override
+  Widget build(BuildContext context) {
+    Map<String, String> meta = {};
+    if (patient.notes?.isNotEmpty == true) {
+      try {
+        meta = (jsonDecode(patient.notes!) as Map<String, dynamic>)
+            .map((k, v) => MapEntry(k, v.toString()));
+      } catch (_) {}
+    }
+    final blood    = meta['bloodGroup'];
+    final dob      = patient.dateOfBirth != null
+        ? DateFormat('dd MMM yyyy').format(patient.dateOfBirth!) : null;
+    final email    = meta['email'];
+    final occ      = meta['occupation'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _kBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(children: [
+        // Header bar
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_kP1.withValues(alpha: 0.06), _kP2.withValues(alpha: 0.06)],
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          ),
+          child: Row(children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [_kP1, _kP2]),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.person_pin_outlined,
+                  color: Colors.white, size: 16),
+            ),
+            const SizedBox(width: 10),
+            const Text('Patient Details',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _kNavy)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: _kGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _kGreen.withValues(alpha: 0.3)),
+              ),
+              child: const Text('Auto-filled',
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: _kGreen,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+
+        // Fields grid
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: _ReadField('Full Name',
+                  patient.fullName, Icons.badge_outlined)),
+              const SizedBox(width: 12),
+              Expanded(child: _ReadField('Age / Sex',
+                  patient.ageSex.isEmpty ? '—' : patient.ageSex,
+                  Icons.person_outline)),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: _ReadField('Phone',
+                  patient.phone ?? '—', Icons.phone_outlined)),
+              const SizedBox(width: 12),
+              Expanded(child: _ReadField('UHID',
+                  patient.prn, Icons.badge_outlined)),
+            ]),
+            if (dob != null || blood != null) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                if (dob != null)
+                  Expanded(child: _ReadField(
+                      'Date of Birth', dob, Icons.cake_outlined)),
+                if (dob != null && blood != null) const SizedBox(width: 12),
+                if (blood != null)
+                  Expanded(child: _ReadField(
+                      'Blood Group', blood, Icons.bloodtype_outlined)),
+              ]),
+            ],
+            if (email != null || occ != null) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                if (email != null)
+                  Expanded(child: _ReadField(
+                      'Email', email, Icons.mail_outline_rounded)),
+                if (email != null && occ != null) const SizedBox(width: 12),
+                if (occ != null)
+                  Expanded(child: _ReadField(
+                      'Occupation', occ, Icons.work_outline_rounded)),
+              ]),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _ReadField extends StatelessWidget {
+  final String label, value;
+  final IconData icon;
+  const _ReadField(this.label, this.value, this.icon);
+
+  @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border(top: BorderSide(color: _kBorder)),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, -2))],
+      color: _kBg,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: _kBorder),
     ),
     child: Row(children: [
-      if (step > 0) ...[
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: saving ? null : onBack,
-            icon: const Icon(Icons.arrow_back_ios_new, size: 13),
-            label: const Text('Back'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: _kSlate,
-              side: const BorderSide(color: _kBorder, width: 1.5),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-      ],
+      Icon(icon, size: 14, color: _kMuted),
+      const SizedBox(width: 8),
       Expanded(
-        flex: step > 0 ? 2 : 1,
-        child: GestureDetector(
-          onTap: saving ? null : (step == 5 ? onSave : onNext),
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: step == 5
-                  ? const LinearGradient(colors: [Color(0xFF059669), Color(0xFF10B981)])
-                  : const LinearGradient(colors: [_kP1, _kP2]),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: (step == 5 ? _kGreen : _kP1).withValues(alpha: 0.3),
-                  blurRadius: 14, offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: saving
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text(
-                      step == 5 ? 'Save Visit' : 'Continue',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(step == 5 ? Icons.check_circle_outline : Icons.arrow_forward_ios,
-                        color: Colors.white, size: step == 5 ? 18 : 13),
-                  ]),
-          ),
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 10, color: _kMuted, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis),
+        ]),
       ),
     ]),
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Shared card wrapper
+// Section card
 // ─────────────────────────────────────────────────────────────────────────────
-class _PCard extends StatelessWidget {
-  final String? title;
-  final IconData? icon;
+class _SectionCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final String? badge;
   final Widget child;
-  final Color? accent;
-  const _PCard({this.title, this.icon, required this.child, this.accent});
+
+  const _SectionCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    this.badge,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) => Container(
@@ -527,923 +747,538 @@ class _PCard extends StatelessWidget {
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
       border: Border.all(color: _kBorder),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 3))],
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (title != null)
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(children: [
-            if (icon != null) ...[
-              Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [accent ?? _kP1, _kP2]),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(icon, color: Colors.white, size: 14),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Text(title!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
-          ]),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 10,
+          offset: const Offset(0, 3),
         ),
-      if (title != null) const SizedBox(height: 10),
-      if (title != null) Divider(height: 1, color: _kBorder),
+      ],
+    ),
+    child: Column(children: [
+      // Header
+      Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.05),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+          border: Border(bottom: BorderSide(color: _kBorder)),
+        ),
+        child: Row(children: [
+          Container(
+            width: 30, height: 30,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 15, color: color),
+          ),
+          const SizedBox(width: 10),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
+          if (badge != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _kMuted.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(badge!,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      color: _kMuted,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ]),
+      ),
+      // Content
       Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(14),
         child: child,
       ),
     ]),
   );
 }
 
-// Input decoration factory
-InputDecoration _pDec(String hint, {IconData? prefix, Widget? suffix}) => InputDecoration(
-  hintText: hint,
-  hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-  prefixIcon: prefix != null ? Icon(prefix, color: _kMuted, size: 18) : null,
-  suffixIcon: suffix,
-  filled: true, fillColor: _kBg,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kP1, width: 1.5)),
-);
-
-class _FieldLabel extends StatelessWidget {
-  final String text;
-  final bool required;
-  const _FieldLabel(this.text, {this.required = false});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Row(children: [
-      Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
-      if (required) const Text(' *', style: TextStyle(color: Colors.red, fontSize: 12)),
-    ]),
-  );
-}
-
-class _PDropdown<T> extends StatelessWidget {
-  final T? value;
-  final List<T> items;
-  final String Function(T) label;
-  final ValueChanged<T?> onChanged;
-  final String? hint;
-  final bool nullable;
-  const _PDropdown({required this.value, required this.items, required this.label, required this.onChanged, this.hint, this.nullable = false});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    decoration: BoxDecoration(
-      color: _kBg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _kBorder),
-    ),
-    child: DropdownButton<T>(
-      value: value, isExpanded: true, underline: const SizedBox(),
-      hint: hint != null ? Text(hint!, style: const TextStyle(color: _kMuted, fontSize: 13)) : null,
-      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: _kMuted, size: 20),
-      style: const TextStyle(fontSize: 13, color: _kNavy, fontWeight: FontWeight.w500),
-      items: [
-        if (nullable) const DropdownMenuItem(value: null, child: Text('None')),
-        ...items.map((i) => DropdownMenuItem(value: i, child: Text(label(i)))),
-      ],
-      onChanged: onChanged,
-    ),
-  );
-}
-
-class _TapField extends StatelessWidget {
-  final IconData icon;
+// ─────────────────────────────────────────────────────────────────────────────
+// Text field
+// ─────────────────────────────────────────────────────────────────────────────
+class _VField extends StatelessWidget {
   final String label;
-  final VoidCallback onTap;
-  const _TapField({required this.icon, required this.label, required this.onTap});
+  final TextEditingController controller;
+  final IconData? prefixIcon;
+  final String? hint;
+  final int maxLines;
+  final TextInputType? keyboardType;
+
+  const _VField({
+    required this.label,
+    required this.controller,
+    this.prefixIcon,
+    this.hint,
+    this.maxLines = 1,
+    this.keyboardType,
+  });
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(10),
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(color: _kBg, borderRadius: BorderRadius.circular(10), border: Border.all(color: _kBorder)),
-      child: Row(children: [
-        Icon(icon, size: 16, color: _kP1),
-        const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 13, color: _kNavy, fontWeight: FontWeight.w500)),
-      ]),
-    ),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 1: Select Patient
-// ─────────────────────────────────────────────────────────────────────────────
-class _VStep1Patient extends ConsumerWidget {
-  final String patientId;
-  const _VStep1Patient({required this.patientId});
-
-  static const _avatarGrads = [
-    [Color(0xFF7C3AED), Color(0xFF6D28D9)],
-    [Color(0xFF2563EB), Color(0xFF3B82F6)],
-    [Color(0xFF059669), Color(0xFF10B981)],
-    [Color(0xFFDC2626), Color(0xFFEF4444)],
-    [Color(0xFFD97706), Color(0xFFF59E0B)],
-    [Color(0xFF0891B2), Color(0xFF06B6D4)],
-  ];
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final asyncSelected = ref.watch(patientByIdProvider(patientId));
-    final recent = ref.watch(patientsProvider).patients.take(6).toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Search bar
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _kBorder),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2))],
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label,
+          style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _kSlate)),
+      const SizedBox(height: 6),
+      TextFormField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+          prefixIcon: prefixIcon != null
+              ? Icon(prefixIcon, size: 17, color: _kMuted)
+              : null,
+          filled: true,
+          fillColor: _kBg,
+          contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: _kBorder),
           ),
-          child: TextField(
-            readOnly: true,
-            decoration: InputDecoration(
-              hintText: 'Search by name, phone or UHID…',
-              hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-              prefixIcon: const Icon(Icons.search_rounded, color: _kMuted, size: 20),
-              suffixIcon: Container(
-                margin: const EdgeInsets.all(6),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _kP1L, borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text('⌘K', style: TextStyle(fontSize: 10, color: _kP1, fontWeight: FontWeight.w700)),
-              ),
-              filled: false,
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: _kBorder),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: _kP1, width: 1.5),
           ),
         ),
-        const SizedBox(height: 16),
+        style: const TextStyle(fontSize: 14, color: _kNavy),
+      ),
+    ],
+  );
+}
 
-        // Selected patient
-        asyncSelected.when(
-          loading: () => const Center(heightFactor: 2, child: CircularProgressIndicator(color: _kP1, strokeWidth: 2)),
-          error: (_, __) => const SizedBox(),
-          data: (p) => p == null ? const SizedBox() : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            _SectionLabel('Selected Patient'),
-            const SizedBox(height: 8),
-            _PatientCard(patient: p, selected: true, grads: _avatarGrads),
-            const SizedBox(height: 14),
+// ─────────────────────────────────────────────────────────────────────────────
+// Date field
+// ─────────────────────────────────────────────────────────────────────────────
+class _DateField extends StatelessWidget {
+  final String label;
+  final DateTime? value;
+  final VoidCallback onTap;
+  const _DateField({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label,
+          style: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+      const SizedBox(height: 6),
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: _kBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Row(children: [
+            const Icon(Icons.calendar_today_outlined,
+                size: 17, color: _kMuted),
+            const SizedBox(width: 10),
+            Text(
+              value != null
+                  ? DateFormat('dd MMM yyyy').format(value!)
+                  : 'Select date',
+              style: TextStyle(
+                  fontSize: 14,
+                  color: value != null ? _kNavy : _kMuted,
+                  fontWeight: FontWeight.w500),
+            ),
+            const Spacer(),
+            const Icon(Icons.arrow_drop_down_rounded,
+                color: _kMuted, size: 20),
           ]),
         ),
-
-        _SectionLabel('Recent Patients'),
-        const SizedBox(height: 8),
-        ...recent.map((p) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _PatientCard(patient: p, selected: p.id == patientId, grads: _avatarGrads),
-        )),
-
-        const SizedBox(height: 4),
-        OutlinedButton.icon(
-          onPressed: () => context.push('/patients/register'),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('Register New Patient'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _kP1,
-            side: const BorderSide(color: _kP1, width: 1.5),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-        ),
-      ]),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) => Text(
-    text.toUpperCase(),
-    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kMuted, letterSpacing: 0.8),
+      ),
+    ],
   );
 }
 
-class _PatientCard extends StatelessWidget {
-  final PatientEntity patient;
-  final bool selected;
-  final List<List<Color>> grads;
-  const _PatientCard({required this.patient, required this.selected, required this.grads});
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropdown field
+// ─────────────────────────────────────────────────────────────────────────────
+class _DropdownField extends StatelessWidget {
+  final String label;
+  final String? value;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+  final String? hint;
+  const _DropdownField({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.hint,
+  });
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label,
+          style: const TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+      const SizedBox(height: 6),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        decoration: BoxDecoration(
+          color: _kBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _kBorder),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            hint: Text(hint ?? 'Select',
+                style: const TextStyle(color: _kMuted, fontSize: 13)),
+            icon: const Icon(Icons.arrow_drop_down_rounded,
+                color: _kMuted, size: 20),
+            style: const TextStyle(fontSize: 14, color: _kNavy),
+            items: options
+                .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                .toList(),
+            onChanged: onChanged,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Upload section — new uploads + existing saved photos
+// ─────────────────────────────────────────────────────────────────────────────
+class _UploadSection extends StatelessWidget {
+  final List<_ReportSlot> slots;
+  final bool uploading;
+  final List<PhotoEntity> existingPhotos;
+  final void Function(int index, String name, Uint8List bytes) onFileSelected;
+  final void Function(PhotoEntity photo) onDeletePhoto;
+
+  const _UploadSection({
+    required this.slots,
+    required this.uploading,
+    required this.existingPhotos,
+    required this.onFileSelected,
+    required this.onDeletePhoto,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final grad = grads[patient.id.hashCode.abs() % grads.length];
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: selected ? _kP1L : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: selected ? _kP1 : _kBorder, width: selected ? 1.5 : 1),
-        boxShadow: selected
-            ? [BoxShadow(color: _kP1.withValues(alpha: 0.12), blurRadius: 12, offset: const Offset(0, 3))]
-            : [BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 4, offset: const Offset(0, 1))],
-      ),
-      child: Row(children: [
-        Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: grad, begin: Alignment.topLeft, end: Alignment.bottomRight),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: Text(patient.initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(patient.fullName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: _kNavy)),
-            const SizedBox(height: 3),
-            Row(children: [
-              _MiniTag(patient.ageSex, grad[0]),
-              const SizedBox(width: 5),
-              _MiniTag('UHID: ${patient.prn}', _kMuted),
-            ]),
-          ]),
-        ),
-        if (selected)
-          Container(
-            width: 24, height: 24,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_kP1, _kP2]),
-              shape: BoxShape.circle,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── New upload tiles ──────────────────────────────────────
+        if (uploading)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Column(children: [
+                CircularProgressIndicator(color: _kP1),
+                SizedBox(height: 10),
+                Text('Uploading files…',
+                    style: TextStyle(color: _kMuted, fontSize: 13)),
+              ]),
             ),
-            child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
           )
         else
-          const Icon(Icons.chevron_right_rounded, color: _kMuted, size: 20),
-      ]),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: List.generate(
+              slots.length,
+              (i) => _UploadTile(
+                slot: slots[i],
+                onTap: () async {
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+                    withData: true,
+                  );
+                  if (result?.files.firstOrNull?.bytes != null) {
+                    final f = result!.files.first;
+                    onFileSelected(i, f.name, f.bytes!);
+                  }
+                },
+              ),
+            ),
+          ),
+
+        // ── Previously saved documents ────────────────────────────
+        if (existingPhotos.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const Text('Saved Documents',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: _kSlate,
+                  letterSpacing: 0.2)),
+          const SizedBox(height: 8),
+          ...existingPhotos.map((p) => _SavedDocTile(
+                photo: p,
+                onDelete: () => onDeletePhoto(p),
+              )),
+        ],
+      ],
     );
   }
 }
 
-class _MiniTag extends StatelessWidget {
-  final String text;
-  final Color color;
-  const _MiniTag(this.text, this.color);
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(5)),
-    child: Text(text, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 2: Visit Details
-// ─────────────────────────────────────────────────────────────────────────────
-class _VStep2Details extends StatelessWidget {
-  final DateTime date;
-  final TimeOfDay time;
-  final String visitType, provider;
-  final String? department;
-  final ValueChanged<DateTime>  onDate;
-  final ValueChanged<TimeOfDay> onTime;
-  final ValueChanged<String>    onType, onProv;
-  final ValueChanged<String?>   onDept;
-
-  const _VStep2Details({
-    required this.date, required this.time, required this.visitType,
-    required this.provider, required this.department,
-    required this.onDate, required this.onTime, required this.onType,
-    required this.onProv, required this.onDept,
-  });
+class _UploadTile extends StatelessWidget {
+  final _ReportSlot slot;
+  final VoidCallback onTap;
+  const _UploadTile({required this.slot, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat('EEE, d MMM yyyy');
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(children: [
-        _PCard(
-          title: 'Date & Time',
-          icon: Icons.event_outlined,
-          child: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const _FieldLabel('Visit Date', required: true),
-              _TapField(
-                icon: Icons.calendar_today_outlined,
-                label: fmt.format(date),
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: context, initialDate: date,
-                    firstDate: DateTime(2020), lastDate: DateTime(2030),
-                    builder: (c, w) => Theme(
-                      data: Theme.of(c).copyWith(colorScheme: const ColorScheme.light(primary: _kP1)),
-                      child: w!,
-                    ),
-                  );
-                  if (d != null) onDate(d);
-                },
-              ),
-            ])),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const _FieldLabel('Visit Time'),
-              _TapField(
-                icon: Icons.access_time_outlined,
-                label: time.format(context),
-                onTap: () async {
-                  final t = await showTimePicker(
-                    context: context, initialTime: time,
-                    builder: (c, w) => Theme(
-                      data: Theme.of(c).copyWith(colorScheme: const ColorScheme.light(primary: _kP1)),
-                      child: w!,
-                    ),
-                  );
-                  if (t != null) onTime(t);
-                },
-              ),
-            ])),
-          ]),
-        ),
-
-        _PCard(
-          title: 'Visit Type',
-          icon: Icons.category_outlined,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const _FieldLabel('Type', required: true),
-            Row(children: _kVisitTypes.map((t) {
-              final sel = visitType == t;
-              return Expanded(child: Padding(
-                padding: EdgeInsets.only(right: t != _kVisitTypes.last ? 8 : 0),
-                child: GestureDetector(
-                  onTap: () => onType(t),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: sel ? const LinearGradient(colors: [_kP1, _kP2]) : null,
-                      color: sel ? null : Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: sel ? Colors.transparent : _kBorder, width: sel ? 0 : 1),
-                      boxShadow: sel ? [BoxShadow(color: _kP1.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 3))] : [],
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(t, style: TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: sel ? Colors.white : _kSlate,
-                    ), textAlign: TextAlign.center),
-                  ),
-                ),
-              ));
-            }).toList()),
-          ]),
-        ),
-
-        _PCard(
-          title: 'Provider',
-          icon: Icons.person_pin_outlined,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const _FieldLabel('Doctor / Provider', required: true),
-            _PDropdown<String>(
-              value: provider, items: _kDoctors, label: (v) => v,
-              onChanged: (v) { if (v != null) onProv(v); },
-            ),
-            const SizedBox(height: 14),
-            const _FieldLabel('Department'),
-            _PDropdown<String>(
-              value: department, items: _kDepts, label: (v) => v,
-              hint: 'Select department (optional)', nullable: true,
-              onChanged: (v) => onDept(v),
-            ),
-          ]),
-        ),
-      ]),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 3: Chief Complaints
-// ─────────────────────────────────────────────────────────────────────────────
-class _VStep3Complaints extends StatelessWidget {
-  final List<String> chips;
-  final TextEditingController chipCtrl, historyCtrl;
-  final ValueChanged<String> onToggle;
-  final ValueChanged<String> onAdd;
-  final ValueChanged<int>    onRemove;
-
-  const _VStep3Complaints({
-    required this.chips, required this.chipCtrl, required this.historyCtrl,
-    required this.onToggle, required this.onAdd, required this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(children: [
-      _PCard(
-        title: 'Chief Complaints',
-        icon: Icons.sick_outlined,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Custom entry
-          Row(children: [
-            Expanded(
-              child: TextField(
-                controller: chipCtrl,
-                decoration: _pDec('Type a complaint and press +'),
-                onSubmitted: onAdd,
-                textInputAction: TextInputAction.done,
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => onAdd(chipCtrl.text),
-              child: Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [_kP1, _kP2]),
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [BoxShadow(color: _kP1.withValues(alpha: 0.25), blurRadius: 8, offset: const Offset(0, 3))],
-                ),
-                child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
-              ),
-            ),
-          ]),
-
-          // Added chips
-          if (chips.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(spacing: 7, runSpacing: 7, children: chips.asMap().entries.map((e) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_kP1, _kP2]),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: _kP1.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(e.value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () => onRemove(e.key),
-                  child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
-                ),
-              ]),
-            )).toList()),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text('${chips.length}/20', style: const TextStyle(fontSize: 10, color: _kMuted)),
-            ),
-          ],
-
-          // Quick-add grid
-          const SizedBox(height: 14),
-          Row(children: [
-            const Icon(Icons.flash_on_rounded, size: 13, color: _kAmber),
-            const SizedBox(width: 4),
-            const Text('QUICK ADD', style: TextStyle(fontSize: 10, color: _kMuted, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
-          ]),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 7, runSpacing: 7,
-            children: _kQuickComplaints.map((c) {
-              final sel = chips.contains(c);
-              return GestureDetector(
-                onTap: () => onToggle(c),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
-                  decoration: BoxDecoration(
-                    gradient: sel ? const LinearGradient(colors: [_kP1, _kP2]) : null,
-                    color: sel ? null : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: sel ? Colors.transparent : _kBorder),
-                    boxShadow: sel ? [BoxShadow(color: _kP1.withValues(alpha: 0.2), blurRadius: 8)] : [],
-                  ),
-                  child: Text(c, style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600,
-                    color: sel ? Colors.white : _kSlate,
-                  )),
-                ),
-              );
-            }).toList(),
+    final hasFile = slot.file != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: (MediaQuery.of(context).size.width - 60) / 2,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: hasFile
+              ? slot.color.withValues(alpha: 0.05)
+              : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasFile ? slot.color.withValues(alpha: 0.4) : _kBorder,
+            width: hasFile ? 1.5 : 1,
           ),
-        ]),
-      ),
-
-      _PCard(
-        title: 'History & Notes',
-        icon: Icons.notes_outlined,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const _FieldLabel('History, observations, notes…'),
-          TextField(
-            controller: historyCtrl,
-            decoration: _pDec('Add history, chief complaints history, notes…'),
-            maxLines: 5, maxLength: 1000,
-          ),
-        ]),
-      ),
-    ]),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 4: Vitals & Exam
-// ─────────────────────────────────────────────────────────────────────────────
-class _VStep4Vitals extends StatelessWidget {
-  final TextEditingController bp, pulse, temp, spo2, wt, ht, phys, sys;
-  const _VStep4Vitals({
-    required this.bp, required this.pulse, required this.temp, required this.spo2,
-    required this.wt, required this.ht, required this.phys, required this.sys,
-  });
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(children: [
-      _PCard(
-        title: 'Vitals',
-        icon: Icons.monitor_heart_outlined,
-        child: GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-          childAspectRatio: 1.75,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _VitalCard(label: 'Blood Pressure', unit: 'mmHg', hint: '120/80', ctrl: bp, icon: Icons.favorite_outline, color: _kP1, numOnly: false),
-            _VitalCard(label: 'Pulse Rate', unit: 'bpm', hint: '72', ctrl: pulse, icon: Icons.monitor_heart_outlined, color: const Color(0xFFEF4444)),
-            _VitalCard(label: 'Temperature', unit: '°F', hint: '98.6', ctrl: temp, icon: Icons.thermostat_outlined, color: _kAmber),
-            _VitalCard(label: 'SpO2', unit: '%', hint: '98', ctrl: spo2, icon: Icons.air_outlined, color: _kP2),
-            _VitalCard(label: 'Weight', unit: 'kg', hint: '70', ctrl: wt, icon: Icons.scale_outlined, color: _kGreen),
-            _VitalCard(label: 'Height', unit: 'cm', hint: '170', ctrl: ht, icon: Icons.height_outlined, color: const Color(0xFF8B5CF6)),
-          ],
-        ),
-      ),
-
-      _PCard(
-        title: 'Examination Findings',
-        icon: Icons.document_scanner_outlined,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const _FieldLabel('Physical Examination'),
-          TextField(controller: phys, decoration: _pDec('General appearance, chest, abdomen…'), maxLines: 4),
-          const SizedBox(height: 14),
-          const _FieldLabel('Systemic Examination'),
-          TextField(controller: sys, decoration: _pDec('CNS, CVS, respiratory, GIT…'), maxLines: 4),
-        ]),
-      ),
-    ]),
-  );
-}
-
-class _VitalCard extends StatelessWidget {
-  final String label, unit, hint;
-  final TextEditingController ctrl;
-  final IconData icon;
-  final Color color;
-  final bool numOnly;
-  const _VitalCard({
-    required this.label, required this.unit, required this.hint,
-    required this.ctrl, required this.icon, required this.color, this.numOnly = true,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: _kBorder),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6, offset: const Offset(0, 2))],
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Container(
-          width: 22, height: 22,
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-          child: Icon(icon, size: 12, color: color),
-        ),
-        const SizedBox(width: 5),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _kSlate), overflow: TextOverflow.ellipsis)),
-        Text(unit, style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700)),
-      ]),
-      Expanded(
-        child: TextField(
-          controller: ctrl,
-          keyboardType: numOnly ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(fontSize: 16, color: color.withValues(alpha: 0.2), fontWeight: FontWeight.w700),
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-      ),
-    ]),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// STEP 5: Diagnosis & Plan
-// ─────────────────────────────────────────────────────────────────────────────
-class _VStep5Diagnosis extends StatelessWidget {
-  final TextEditingController diag, plan, meds, inv, adv, fu;
-  const _VStep5Diagnosis({
-    required this.diag, required this.plan, required this.meds,
-    required this.inv, required this.adv, required this.fu,
-  });
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.all(16),
-    child: Column(children: [
-      _PCard(
-        title: 'Clinical Diagnosis',
-        icon: Icons.biotech_outlined,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const _FieldLabel('Diagnosis / ICD Code'),
-          TextField(
-            controller: diag,
-            decoration: _pDec('Search ICD-10, enter diagnosis…',
-                prefix: Icons.search_rounded,
-                suffix: Container(
-                  margin: const EdgeInsets.all(6),
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(color: _kP1L, borderRadius: BorderRadius.circular(6)),
-                  child: const Text('ICD', style: TextStyle(fontSize: 9, color: _kP1, fontWeight: FontWeight.w800)),
-                )),
-          ),
-        ]),
-      ),
-
-      _PCard(
-        title: 'Treatment Plan',
-        icon: Icons.receipt_long_outlined,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const _FieldLabel('Treatment Plan'),
-          TextField(controller: plan, decoration: _pDec('Enter treatment plan, management…'), maxLines: 4, maxLength: 1000),
-        ]),
-      ),
-
-      // Collapsible sections
-      _CollapsibleCard(label: 'Medications', icon: Icons.medication_outlined, color: const Color(0xFF7C3AED), ctrl: meds, hint: 'Tab 1mg × OD × 5 days, Inj X mg IV…'),
-      _CollapsibleCard(label: 'Investigations', icon: Icons.science_outlined, color: _kP2, ctrl: inv, hint: 'CBC, LFT, CT Brain, MRI Spine…'),
-      _CollapsibleCard(label: 'Patient Advice', icon: Icons.info_outline_rounded, color: _kGreen, ctrl: adv, hint: 'Bed rest, diet, activity restrictions…'),
-      _CollapsibleCard(label: 'Follow-up', icon: Icons.event_repeat_outlined, color: _kAmber, ctrl: fu, hint: 'Review after 1 week / PRN…'),
-    ]),
-  );
-}
-
-class _CollapsibleCard extends StatefulWidget {
-  final String label, hint;
-  final IconData icon;
-  final Color color;
-  final TextEditingController ctrl;
-  const _CollapsibleCard({required this.label, required this.hint, required this.icon, required this.color, required this.ctrl});
-
-  @override
-  State<_CollapsibleCard> createState() => _CollapsibleCardState();
-}
-
-class _CollapsibleCardState extends State<_CollapsibleCard> {
-  bool _open = false;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: _open ? widget.color.withValues(alpha: 0.3) : _kBorder),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6, offset: const Offset(0, 2))],
-    ),
-    child: Column(children: [
-      InkWell(
-        onTap: () => setState(() => _open = !_open),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          child: Row(children: [
-            Container(
-              width: 28, height: 28,
-              decoration: BoxDecoration(color: widget.color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-              child: Icon(widget.icon, size: 14, color: widget.color),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: Text(widget.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: _kNavy))),
-            if (widget.ctrl.text.isNotEmpty)
+            Row(children: [
               Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: slot.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(slot.icon, size: 16, color: slot.color),
               ),
-            const SizedBox(width: 8),
-            AnimatedRotation(
-              turns: _open ? 0.25 : 0,
-              duration: const Duration(milliseconds: 200),
-              child: Icon(_open ? Icons.remove_rounded : Icons.add_rounded, color: widget.color, size: 20),
+              const Spacer(),
+              if (hasFile)
+                Icon(Icons.check_circle_rounded,
+                    size: 16, color: _kGreen)
+              else
+                Icon(Icons.add_circle_outline,
+                    size: 16, color: _kMuted),
+            ]),
+            const SizedBox(height: 8),
+            Text(slot.label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: hasFile ? slot.color : _kSlate)),
+            const SizedBox(height: 2),
+            Text(
+              hasFile ? slot.file!.name : 'Tap to upload',
+              style: TextStyle(
+                  fontSize: 10,
+                  color: hasFile ? slot.color.withValues(alpha: 0.7) : _kMuted),
+              overflow: TextOverflow.ellipsis,
             ),
-          ]),
+          ],
         ),
       ),
-      AnimatedCrossFade(
-        firstChild: const SizedBox(width: double.infinity),
-        secondChild: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-          child: TextField(
-            controller: widget.ctrl,
-            decoration: _pDec(widget.hint),
-            maxLines: 3,
-          ),
-        ),
-        crossFadeState: _open ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-        duration: const Duration(milliseconds: 200),
-      ),
-    ]),
-  );
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STEP 6: Review & Save
+// Saved document tile — shows an uploaded photo with View & Download actions
 // ─────────────────────────────────────────────────────────────────────────────
-class _VStep6Review extends ConsumerWidget {
-  final String patientId, visitType, provider;
-  final String? department;
-  final DateTime date;
-  final TimeOfDay time;
-  final List<String> chips;
-  final String history, bp, pulse, temp, spo2, wt, ht;
-  final String diag, plan, meds, inv, adv, fu;
-  final ValueChanged<int> onEdit;
+class _SavedDocTile extends StatelessWidget {
+  final PhotoEntity photo;
+  final VoidCallback onDelete;
+  const _SavedDocTile({required this.photo, required this.onDelete});
 
-  const _VStep6Review({
-    required this.patientId, required this.date, required this.time,
-    required this.visitType, required this.provider, required this.department,
-    required this.chips, required this.history,
-    required this.bp, required this.pulse, required this.temp,
-    required this.spo2, required this.wt, required this.ht,
-    required this.diag, required this.plan,
-    required this.meds, required this.inv, required this.adv, required this.fu,
-    required this.onEdit,
-  });
+  static const _kDocBlue  = Color(0xFF3B82F6);
+  static const _kDocGreen = Color(0xFF10B981);
+
+  IconData get _icon => switch (photo.category) {
+    PhotoCategory.radiology    => Icons.image_search_rounded,
+    PhotoCategory.patientReport => Icons.receipt_long_rounded,
+    _                          => Icons.insert_drive_file_outlined,
+  };
+
+  Future<void> _open(BuildContext context) async {
+    final url = photo.url;
+    if (url == null || url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('URL not available')),
+      );
+      return;
+    }
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot open this file')),
+        );
+      }
+    }
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final asyncPt  = ref.watch(patientByIdProvider(patientId));
-    final fmt      = DateFormat('EEE, d MMM yyyy · h:mm a');
-    final fullDate = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    final vitals   = [
-      if (bp.isNotEmpty)    'BP: $bp mmHg',
-      if (pulse.isNotEmpty) 'Pulse: $pulse bpm',
-      if (temp.isNotEmpty)  'Temp: $temp°F',
-      if (spo2.isNotEmpty)  'SpO2: $spo2%',
-      if (wt.isNotEmpty)    'Wt: $wt kg',
-      if (ht.isNotEmpty)    'Ht: $ht cm',
-    ];
+  Widget build(BuildContext context) {
+    final name = photo.caption ?? photo.storagePath.split('/').last;
+    final dateStr = DateFormat('dd MMM yyyy').format(photo.createdAt);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(children: [
-        // Banner
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: _kBorder),
+      ),
+      child: Row(children: [
+        // Icon
         Container(
-          padding: const EdgeInsets.all(14),
-          margin: const EdgeInsets.only(bottom: 14),
+          width: 36, height: 36,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [Color(0xFF6D28D9), _kP2]),
-            borderRadius: BorderRadius.circular(14),
+            color: _kDocBlue.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(9),
           ),
-          child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.assignment_turned_in_outlined, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Review & Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-                Text('Check all details before saving', style: TextStyle(color: Colors.white70, fontSize: 11)),
-              ]),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
-              child: const Text('Step 6/6', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
-            ),
+          child: Icon(_icon, size: 18, color: _kDocBlue),
+        ),
+        const SizedBox(width: 10),
+
+        // Name + date
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name,
+                style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _kNavy),
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 2),
+            Text('${photo.category.label} · $dateStr',
+                style: const TextStyle(fontSize: 10, color: _kMuted)),
           ]),
         ),
 
-        _ReviewCard(
-          title: 'Patient & Visit',
-          onEdit: () => onEdit(1),
-          rows: [
-            _RRow('Patient', asyncPt.valueOrNull?.fullName ?? '—'),
-            _RRow('Visit Type', visitType),
-            _RRow('Provider', provider),
-            if (department != null) _RRow('Department', department!),
-            _RRow('Date & Time', fmt.format(fullDate)),
-          ],
+        // View button
+        _DocActionBtn(
+          label: 'View',
+          icon: Icons.open_in_new_rounded,
+          color: _kDocBlue,
+          onTap: () => _open(context),
         ),
+        const SizedBox(width: 6),
 
-        if (chips.isNotEmpty || history.isNotEmpty)
-          _ReviewCard(
-            title: 'Chief Complaints',
-            onEdit: () => onEdit(2),
-            rows: [
-              if (chips.isNotEmpty) _RRow('Complaints', chips.join(', ')),
-              if (history.isNotEmpty) _RRow('History', history),
-            ],
-          ),
+        // Download button (opens in browser which triggers download for PDFs)
+        _DocActionBtn(
+          label: 'Download',
+          icon: Icons.download_rounded,
+          color: _kDocGreen,
+          onTap: () => _open(context),
+        ),
+        const SizedBox(width: 6),
 
-        if (vitals.isNotEmpty)
-          _ReviewCard(
-            title: 'Vitals',
-            onEdit: () => onEdit(3),
-            rows: vitals.map((v) {
-              final parts = v.split(': ');
-              return _RRow(parts[0], parts.length > 1 ? parts[1] : v);
-            }).toList(),
+        // Delete
+        GestureDetector(
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Delete document?'),
+              content: Text('Remove "$name" from this visit?'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    onDelete();
+                  },
+                  child: const Text('Delete',
+                      style: TextStyle(color: _kRed)),
+                ),
+              ],
+            ),
           ),
-
-        if (diag.isNotEmpty || plan.isNotEmpty || meds.isNotEmpty)
-          _ReviewCard(
-            title: 'Diagnosis & Plan',
-            onEdit: () => onEdit(4),
-            rows: [
-              if (diag.isNotEmpty) _RRow('Diagnosis', diag),
-              if (plan.isNotEmpty) _RRow('Treatment Plan', plan),
-              if (meds.isNotEmpty) _RRow('Medications', meds),
-              if (inv.isNotEmpty)  _RRow('Investigations', inv),
-              if (adv.isNotEmpty)  _RRow('Advice', adv),
-              if (fu.isNotEmpty)   _RRow('Follow-up', fu),
-            ],
+          child: Container(
+            width: 30, height: 30,
+            decoration: BoxDecoration(
+              color: _kRed.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.delete_outline_rounded,
+                size: 15, color: _kRed),
           ),
+        ),
       ]),
     );
   }
 }
 
-class _RRow {
-  final String k, v;
-  const _RRow(this.k, this.v);
-}
-
-class _ReviewCard extends StatelessWidget {
-  final String title;
-  final VoidCallback onEdit;
-  final List<_RRow> rows;
-  const _ReviewCard({required this.title, required this.onEdit, required this.rows});
+class _DocActionBtn extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  const _DocActionBtn({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: _kBorder),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 6, 0),
-        child: Row(children: [
-          Text(title.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _kMuted, letterSpacing: 0.8)),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 13),
-            label: const Text('Edit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            style: TextButton.styleFrom(foregroundColor: _kP1, padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4)),
-          ),
-        ]),
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
-      const Divider(height: 8, color: _kBorder),
-      ...rows.map((r) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: 110,
-            child: Text(r.k, style: const TextStyle(fontSize: 12, color: _kMuted, fontWeight: FontWeight.w500)),
-          ),
-          const SizedBox(width: 8),
-          Expanded(child: Text(r.v, style: const TextStyle(fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600))),
-        ]),
-      )),
-      const SizedBox(height: 6),
-    ]),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color)),
+      ]),
+    ),
   );
 }

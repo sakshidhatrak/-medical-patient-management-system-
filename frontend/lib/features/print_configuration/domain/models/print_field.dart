@@ -5,13 +5,11 @@ import 'package:flutter/material.dart';
 const String kSectionBasicInfo = 'basicInfo';
 const String kSectionVitals = 'vitals';
 const String kSectionTreatment = 'treatment';
-const String kSectionReports = 'reports';
 
 const List<String> kDefaultSectionOrder = [
   kSectionBasicInfo,
   kSectionVitals,
   kSectionTreatment,
-  kSectionReports,
 ];
 
 // ── Model ─────────────────────────────────────────────────────────────────────
@@ -37,10 +35,10 @@ class PrintField {
   int get hashCode => id.hashCode;
 }
 
-// ── All Fields ────────────────────────────────────────────────────────────────
+// ── All Fields (exactly mirrors the Patient Registration form) ─────────────────
 
 const List<PrintField> kAllPrintFields = [
-  // Basic Information
+  // ── Basic Information ──────────────────────────────────────────────────────
   PrintField(
     id: 'firstName',
     label: 'First Name',
@@ -54,10 +52,10 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.person_outline,
   ),
   PrintField(
-    id: 'dob',
-    label: 'Date of Birth',
+    id: 'age',
+    label: 'Age',
     sectionId: kSectionBasicInfo,
-    icon: Icons.cake_outlined,
+    icon: Icons.calendar_today_outlined,
   ),
   PrintField(
     id: 'gender',
@@ -72,6 +70,12 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.phone_outlined,
   ),
   PrintField(
+    id: 'altPhone',
+    label: 'Alt. Phone',
+    sectionId: kSectionBasicInfo,
+    icon: Icons.phone_callback_outlined,
+  ),
+  PrintField(
     id: 'email',
     label: 'Email',
     sectionId: kSectionBasicInfo,
@@ -84,13 +88,31 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.location_on_outlined,
   ),
   PrintField(
-    id: 'bloodType',
-    label: 'Blood Type',
+    id: 'idProofType',
+    label: 'ID Proof Type',
     sectionId: kSectionBasicInfo,
-    icon: Icons.bloodtype_outlined,
+    icon: Icons.badge_outlined,
+  ),
+  PrintField(
+    id: 'idProofNumber',
+    label: 'ID Proof Number',
+    sectionId: kSectionBasicInfo,
+    icon: Icons.fingerprint_outlined,
+  ),
+  PrintField(
+    id: 'allergies',
+    label: 'Known Allergies',
+    sectionId: kSectionBasicInfo,
+    icon: Icons.warning_amber_outlined,
+  ),
+  PrintField(
+    id: 'medicalHistory',
+    label: 'Medical History',
+    sectionId: kSectionBasicInfo,
+    icon: Icons.history_outlined,
   ),
 
-  // Patient Vitals
+  // ── Patient Vitals ─────────────────────────────────────────────────────────
   PrintField(
     id: 'weight',
     label: 'Weight',
@@ -110,7 +132,13 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.thermostat_outlined,
   ),
 
-  // Treatment Information
+  // ── Treatment Information ──────────────────────────────────────────────────
+  PrintField(
+    id: 'previousHistory',
+    label: 'Previous History',
+    sectionId: kSectionTreatment,
+    icon: Icons.history_edu_outlined,
+  ),
   PrintField(
     id: 'chiefComplaint',
     label: 'Chief Complaint',
@@ -118,20 +146,50 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.assignment_outlined,
   ),
   PrintField(
+    id: 'examGeneral',
+    label: 'Examination (General)',
+    sectionId: kSectionTreatment,
+    icon: Icons.search_outlined,
+  ),
+  PrintField(
+    id: 'examNeurological',
+    label: 'Examination (Neurological)',
+    sectionId: kSectionTreatment,
+    icon: Icons.psychology_outlined,
+  ),
+  PrintField(
+    id: 'clinicalDiagnosis',
+    label: 'Clinical Diagnosis',
+    sectionId: kSectionTreatment,
+    icon: Icons.biotech_outlined,
+  ),
+  PrintField(
+    id: 'imaging',
+    label: 'Imaging',
+    sectionId: kSectionTreatment,
+    icon: Icons.image_search_outlined,
+  ),
+  PrintField(
+    id: 'otherInvestigation',
+    label: 'Other Investigation',
+    sectionId: kSectionTreatment,
+    icon: Icons.science_outlined,
+  ),
+  PrintField(
     id: 'diagnosis',
-    label: 'Diagnosis',
+    label: 'Impression',
     sectionId: kSectionTreatment,
     icon: Icons.local_hospital_outlined,
   ),
   PrintField(
     id: 'treatmentPlan',
-    label: 'Treatment Plan',
+    label: 'Plan',
     sectionId: kSectionTreatment,
     icon: Icons.playlist_add_check_rounded,
   ),
   PrintField(
     id: 'medications',
-    label: 'Medications',
+    label: 'Treatment / Medications',
     sectionId: kSectionTreatment,
     icon: Icons.medication_outlined,
   ),
@@ -142,42 +200,10 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.notes_rounded,
   ),
   PrintField(
-    id: 'doctorAssigned',
-    label: 'Doctor Assigned',
+    id: 'advice',
+    label: 'Advice',
     sectionId: kSectionTreatment,
-    icon: Icons.person_pin_rounded,
-  ),
-  PrintField(
-    id: 'visitType',
-    label: 'Visit Type',
-    sectionId: kSectionTreatment,
-    icon: Icons.calendar_today_outlined,
-  ),
-
-  // Uploaded Reports
-  PrintField(
-    id: 'prescription',
-    label: 'Prescription',
-    sectionId: kSectionReports,
-    icon: Icons.receipt_long_outlined,
-  ),
-  PrintField(
-    id: 'labReport',
-    label: 'Lab Report',
-    sectionId: kSectionReports,
-    icon: Icons.science_outlined,
-  ),
-  PrintField(
-    id: 'xray',
-    label: 'X-Ray',
-    sectionId: kSectionReports,
-    icon: Icons.image_outlined,
-  ),
-  PrintField(
-    id: 'mriCt',
-    label: 'MRI / CT Scan',
-    sectionId: kSectionReports,
-    icon: Icons.biotech_outlined,
+    icon: Icons.tips_and_updates_outlined,
   ),
 ];
 

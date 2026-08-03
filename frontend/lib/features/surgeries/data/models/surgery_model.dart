@@ -46,27 +46,52 @@ class SurgeryModel {
   });
 
   factory SurgeryModel.fromJson(Map<String, dynamic> j) => SurgeryModel(
-        id: j['id'] as String,
-        patientId: j['patient_id'] as String,
-        surgeryDate: j['surgery_date'] as String,
-        yourRole: j['your_role'] as String?,
-        preOpDiagnosis: j['pre_op_diagnosis'] as String?,
+        id: (j['id'] as Object).toString(),
+        patientId: (j['patientId'] ?? j['patient_id'])!.toString(),
+        surgeryDate: (j['surgeryDate'] ?? j['surgery_date']) as String,
+        yourRole: (j['yourRole'] ?? j['your_role']) as String?,
+        preOpDiagnosis: (j['preOpDiagnosis'] ?? j['pre_op_diagnosis']) as String?,
         procedure: j['procedure'] as String?,
-        primarySurgeon: j['primary_surgeon'] as String?,
-        assistantSurgeons: j['assistant_surgeons'] as String?,
-        anesthesiaType: j['anesthesia_type'] as String?,
+        primarySurgeon: (j['primarySurgeon'] ?? j['primary_surgeon']) as String?,
+        assistantSurgeons: (j['assistantSurgeons'] ?? j['assistant_surgeons']) as String?,
+        anesthesiaType: (j['anesthesiaType'] ?? j['anesthesia_type']) as String?,
         anesthesiologist: j['anesthesiologist'] as String?,
         implants: j['implants'] as String?,
-        intraopFindings: j['intraop_findings'] as String?,
-        otNotes: j['ot_notes'] as String?,
+        intraopFindings: (j['intraopFindings'] ?? j['intraop_findings']) as String?,
+        otNotes: (j['otNotes'] ?? j['ot_notes']) as String?,
         complications: j['complications'] as String?,
-        postOpPlan: j['post_op_plan'] as String?,
+        postOpPlan: (j['postOpPlan'] ?? j['post_op_plan']) as String?,
         status: j['status'] as String? ?? 'draft',
-        createdAt: j['created_at'] as String,
-        updatedAt: j['updated_at'] as String,
-        createdBy: j['created_by'] as String?,
-        updatedBy: j['updated_by'] as String?,
+        createdAt: (j['createdAt'] ?? j['created_at']) as String,
+        updatedAt: (j['updatedAt'] ?? j['updated_at']) as String,
+        createdBy: (j['createdBy'] ?? j['created_by']) as String?,
+        updatedBy: (j['updatedBy'] ?? j['updated_by']) as String?,
       );
+
+  Map<String, dynamic> toApiJson() => {
+        'id': id,
+        'surgeryDate': surgeryDate,
+        'yourRole': yourRole,
+        'preOpDiagnosis': preOpDiagnosis,
+        'procedure': procedure,
+        'primarySurgeon': primarySurgeon,
+        'assistantSurgeons': assistantSurgeons,
+        'anesthesiaType': anesthesiaType,
+        'anesthesiologist': anesthesiologist,
+        'implants': implants,
+        'intraopFindings': intraopFindings,
+        'otNotes': otNotes,
+        'complications': complications,
+        'postOpPlan': postOpPlan,
+        'status': status,
+      };
+
+  Map<String, dynamic> toFullJson() => {
+        ...toApiJson(),
+        'patientId': patientId,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+      };
 
   Map<String, dynamic> toSupabaseJson() => {
         'id': id,

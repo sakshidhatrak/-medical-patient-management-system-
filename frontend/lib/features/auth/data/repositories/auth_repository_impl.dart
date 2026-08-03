@@ -1,5 +1,4 @@
 import 'package:dartz/dartz.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 
 import '../../../../core/error/exceptions.dart';
 import '../../../../core/error/failures.dart';
@@ -24,8 +23,12 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     try {
-      final user = await _remote.login(email: email, password: password);
-      await _local.saveUser(user);
+      final (user, token) =
+          await _remote.login(email: email, password: password);
+      await Future.wait([
+        _local.saveUser(user),
+        _local.saveToken(token: token, refreshToken: token),
+      ]);
       return Right(user.toEntity());
     } on UnauthorizedException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
@@ -47,16 +50,8 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, UserEntity?>> getCurrentUser() async {
     try {
-      final supabaseUser = sb.Supabase.instance.client.auth.currentUser;
-      if (supabaseUser == null) {
-        await _local.clearAll();
-        return const Right(null);
-      }
       final cached = await _local.getUser();
-      if (cached != null) return Right(cached.toEntity());
-      final profile = await _remote.fetchUserProfile(supabaseUser.id);
-      await _local.saveUser(profile);
-      return Right(profile.toEntity());
+      return Right(cached?.toEntity());
     } on AppException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
     }
@@ -65,17 +60,9 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, UserEntity>> refreshSession() async {
     try {
-      final supabaseUser = sb.Supabase.instance.client.auth.currentUser;
-      if (supabaseUser == null) {
-        return const Left(
-          AuthFailure('No active session.', code: 'NO_SESSION'),
-        );
-      }
       final cached = await _local.getUser();
       if (cached != null) return Right(cached.toEntity());
-      final profile = await _remote.fetchUserProfile(supabaseUser.id);
-      await _local.saveUser(profile);
-      return Right(profile.toEntity());
+      return const Left(AuthFailure('No active session.', code: 'NO_SESSION'));
     } on AppException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
     }

@@ -22,15 +22,38 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 1,
+      version: 3,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
   Future<void> _onCreate(Database db, int _) async {
     final batch = db.batch();
+    _createSchema(batch);
+    await batch.commit(noResult: true);
+  }
 
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      final batch = db.batch();
+      batch.execute('ALTER TABLE patients ADD COLUMN data_json TEXT');
+      batch.execute('ALTER TABLE visits ADD COLUMN data_json TEXT');
+      batch.execute('ALTER TABLE surgeries ADD COLUMN data_json TEXT');
+      _createExaminationsTable(batch);
+      _createPrescriptionsTable(batch);
+      _createDrugsCacheTable(batch);
+      await batch.commit(noResult: true);
+    }
+    if (oldVersion < 3) {
+      final batch = db.batch();
+      _createPhotosTable(batch);
+      await batch.commit(noResult: true);
+    }
+  }
+
+  void _createSchema(Batch batch) {
     // ── Patients cache ───────────────────────────────────────────
     batch.execute('''
       CREATE TABLE IF NOT EXISTS patients (
@@ -44,6 +67,7 @@ class OfflineDatabase {
         phone        TEXT,
         address      TEXT,
         notes        TEXT,
+        data_json    TEXT,
         sync_status  TEXT NOT NULL DEFAULT 'synced',
         is_active    INTEGER NOT NULL DEFAULT 1,
         created_at   TEXT NOT NULL,
@@ -68,6 +92,7 @@ class OfflineDatabase {
         plan                TEXT,
         notes               TEXT,
         status              TEXT NOT NULL DEFAULT 'draft',
+        data_json           TEXT,
         sync_status         TEXT NOT NULL DEFAULT 'pending',
         created_at          TEXT NOT NULL,
         updated_at          TEXT NOT NULL
@@ -95,11 +120,24 @@ class OfflineDatabase {
         complications       TEXT,
         post_op_plan        TEXT,
         status              TEXT NOT NULL DEFAULT 'draft',
+        data_json           TEXT,
         sync_status         TEXT NOT NULL DEFAULT 'pending',
         created_at          TEXT NOT NULL,
         updated_at          TEXT NOT NULL
       )
     ''');
+
+    // ── Photos cache ─────────────────────────────────────────────
+    _createPhotosTable(batch);
+
+    // ── Examinations cache ──────────────────────────────────────
+    _createExaminationsTable(batch);
+
+    // ── Prescriptions cache ─────────────────────────────────────
+    _createPrescriptionsTable(batch);
+
+    // ── Drugs master cache ──────────────────────────────────────
+    _createDrugsCacheTable(batch);
 
     // ── Sync queue ──────────────────────────────────────────────
     batch.execute('''
@@ -116,8 +154,66 @@ class OfflineDatabase {
     ''');
     batch.execute(
         'CREATE INDEX IF NOT EXISTS idx_off_sync_entity ON sync_queue(entity_type,entity_id)');
+  }
 
-    await batch.commit(noResult: true);
+  void _createPhotosTable(Batch batch) {
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS photos (
+        id           TEXT PRIMARY KEY,
+        patient_id   TEXT NOT NULL,
+        visit_id     TEXT,
+        surgery_id   TEXT,
+        storage_path TEXT NOT NULL,
+        url          TEXT,
+        category     TEXT NOT NULL,
+        caption      TEXT,
+        local_path   TEXT,
+        file_size    INTEGER,
+        mime_type    TEXT,
+        is_uploaded  INTEGER NOT NULL DEFAULT 0,
+        created_at   TEXT NOT NULL
+      )
+    ''');
+    batch.execute(
+        'CREATE INDEX IF NOT EXISTS idx_off_photos_patient ON photos(patient_id)');
+    batch.execute(
+        'CREATE INDEX IF NOT EXISTS idx_off_photos_visit ON photos(visit_id)');
+    batch.execute(
+        'CREATE INDEX IF NOT EXISTS idx_off_photos_uploaded ON photos(is_uploaded)');
+  }
+
+  void _createExaminationsTable(Batch batch) {
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS examinations (
+        visit_id    TEXT PRIMARY KEY,
+        patient_id  TEXT NOT NULL,
+        data_json   TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        updated_at  TEXT NOT NULL
+      )
+    ''');
+  }
+
+  void _createPrescriptionsTable(Batch batch) {
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS prescriptions (
+        visit_id    TEXT PRIMARY KEY,
+        patient_id  TEXT NOT NULL,
+        data_json   TEXT NOT NULL,
+        sync_status TEXT NOT NULL DEFAULT 'synced',
+        updated_at  TEXT NOT NULL
+      )
+    ''');
+  }
+
+  void _createDrugsCacheTable(Batch batch) {
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS drugs_cache (
+        id        TEXT PRIMARY KEY,
+        data_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL
+      )
+    ''');
   }
 
   Future<void> close() async => _db?.close();

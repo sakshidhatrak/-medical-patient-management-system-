@@ -1,17 +1,14 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../error/error_handler.dart';
 import '../error/exceptions.dart';
+import '../storage/storage_provider.dart';
 import 'dio_factory.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  const secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-  );
-  final dio = DioFactory.create(secureStorage);
+  final storage = ref.watch(storageServiceProvider);
+  final dio = DioFactory.create(storage);
   return ApiClient(dio);
 });
 

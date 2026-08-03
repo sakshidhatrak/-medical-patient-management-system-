@@ -1,8 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../print_configuration/presentation/providers/print_config_provider.dart';
+import '../../../visits/presentation/providers/visit_provider.dart';
 import '../../domain/entities/patient_entity.dart';
 import '../providers/patient_provider.dart';
 
@@ -37,9 +43,19 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
     }
   }
 
+  Future<void> _addVisit(String patientId) async {
+    final visit = await ref
+        .read(visitsProvider(patientId).notifier)
+        .createVisit(patientId: patientId);
+    if (visit != null && mounted) {
+      context.push('/patients/$patientId/visits/${visit.id}');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(patientsProvider);
+    final canWrite = ref.watch(canWriteProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -55,12 +71,14 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/patients/register'),
-        icon: const Icon(Icons.person_add),
-        label: const Text('New Patient'),
-        backgroundColor: AppColors.primary,
-      ),
+      floatingActionButton: canWrite
+          ? FloatingActionButton.extended(
+              onPressed: () => context.push('/patients/register'),
+              icon: const Icon(Icons.person_add),
+              label: const Text('New Patient'),
+              backgroundColor: AppColors.primary,
+            )
+          : null,
       body: Column(
         children: [
           Container(
@@ -113,8 +131,17 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
                           }
                           return _PatientCard(
                             patient: state.patients[i],
+                            canWrite: canWrite,
                             onTap: () => context
                                 .push('/patients/${state.patients[i].id}'),
+                            onAddVisit: () {
+                              _addVisit(state.patients[i].id);
+                            },
+                            onPrint: () {
+                              ref.read(activePatientDataProvider.notifier).state =
+                                  _patientDataMap(state.patients[i]);
+                              context.go('/print-config');
+                            },
                           );
                         },
                       ),
@@ -125,10 +152,60 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
   }
 }
 
+Map<String, String> _patientDataMap(PatientEntity patient) {
+  Map<String, String> notes = {};
+  if (patient.notes != null && patient.notes!.isNotEmpty) {
+    try {
+      notes = (jsonDecode(patient.notes!) as Map<String, dynamic>)
+          .map((k, v) => MapEntry(k, v.toString()));
+    } catch (_) {}
+  }
+  String n(String key) => notes[key]?.isNotEmpty == true ? notes[key]! : '—';
+  final dob = patient.dateOfBirth != null
+      ? DateFormat('dd MMMM yyyy').format(patient.dateOfBirth!)
+      : '—';
+  final gender = patient.sex != null && patient.sex!.isNotEmpty
+      ? '${patient.sex![0].toUpperCase()}${patient.sex!.substring(1)}'
+      : '—';
+  return {
+    'firstName': patient.firstName,
+    'lastName': patient.lastName.isEmpty ? '—' : patient.lastName,
+    'dob': dob,
+    'gender': gender,
+    'phone': patient.phone ?? '—',
+    'email': n('email'),
+    'address': patient.address ?? '—',
+    'bloodType': n('bloodGroup'),
+    'weight': n('weight'),
+    'bloodPressure': n('bloodPressure'),
+    'temperature': n('temperature'),
+    'chiefComplaint': n('chiefComplaint'),
+    'diagnosis': n('diagnosis'),
+    'treatmentPlan': n('treatmentPlan'),
+    'medications': n('medications'),
+    'notes': n('treatmentNotes'),
+    'doctorAssigned': n('doctorAssigned'),
+    'visitType': n('visitType'),
+    'prescription': n('prescriptionFile'),
+    'labReport': n('labReportFile'),
+    'xray': n('xrayFile'),
+    'mriCt': n('mriFile'),
+  };
+}
+
 class _PatientCard extends StatelessWidget {
   final PatientEntity patient;
+  final bool canWrite;
   final VoidCallback onTap;
-  const _PatientCard({required this.patient, required this.onTap});
+  final VoidCallback onAddVisit;
+  final VoidCallback onPrint;
+  const _PatientCard({
+    required this.patient,
+    required this.canWrite,
+    required this.onTap,
+    required this.onAddVisit,
+    required this.onPrint,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +220,7 @@ class _PatientCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(14, 14, 4, 14),
           child: Row(
             children: [
               CircleAvatar(
@@ -174,8 +251,7 @@ class _PatientCard extends StatelessWidget {
                         if (patient.ageSex.isNotEmpty) patient.ageSex,
                         'PRN: ${patient.prn}',
                       ].join('  ·  '),
-                      style:
-                          TextStyle(color: Colors.grey[600], fontSize: 12),
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
                     ),
                     if (patient.phone?.isNotEmpty == true) ...[
                       const SizedBox(height: 2),
@@ -186,7 +262,34 @@ class _PatientCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
+              Tooltip(
+                message: 'View Patient',
+                child: IconButton(
+                  icon: Icon(Icons.visibility_outlined,
+                      color: AppColors.primary, size: 20),
+                  onPressed: onTap,
+                  splashRadius: 20,
+                ),
+              ),
+              if (canWrite)
+                Tooltip(
+                  message: 'Add Visit',
+                  child: IconButton(
+                    icon: Icon(Icons.note_add_outlined,
+                        color: AppColors.primary.withOpacity(0.6), size: 20),
+                    onPressed: onAddVisit,
+                    splashRadius: 20,
+                  ),
+                ),
+              Tooltip(
+                message: 'Print & Export',
+                child: IconButton(
+                  icon: Icon(Icons.print_outlined,
+                      color: Colors.grey[400], size: 20),
+                  onPressed: onPrint,
+                  splashRadius: 20,
+                ),
+              ),
             ],
           ),
         ),

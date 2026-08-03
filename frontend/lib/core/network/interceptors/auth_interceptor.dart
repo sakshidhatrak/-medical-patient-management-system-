@@ -1,16 +1,16 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../config/app_config.dart';
 import '../../config/env_config.dart';
+import '../../storage/storage_service.dart';
 
 class AuthInterceptor extends QueuedInterceptorsWrapper {
-  final FlutterSecureStorage _secureStorage;
+  final StorageService _storage;
 
   // Separate Dio instance used only for token refresh (avoids circular interceptor chain)
   late final Dio _refreshDio;
 
-  AuthInterceptor(this._secureStorage) {
+  AuthInterceptor(this._storage) {
     _refreshDio = Dio(
       BaseOptions(
         baseUrl: EnvConfig.baseUrl,
@@ -29,7 +29,7 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final token = await _secureStorage.read(key: AppConfig.tokenKey);
+    final token = await _storage.read(key: AppConfig.tokenKey);
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
     }
@@ -47,7 +47,7 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
 
     try {
       final refreshToken =
-          await _secureStorage.read(key: AppConfig.refreshTokenKey);
+          await _storage.read(key: AppConfig.refreshTokenKey);
       if (refreshToken == null) {
         await _clearTokens();
         return handler.next(err);
@@ -61,10 +61,9 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
       final newToken = response.data['access_token'] as String;
       final newRefresh = response.data['refresh_token'] as String?;
 
-      await _secureStorage.write(key: AppConfig.tokenKey, value: newToken);
+      await _storage.write(key: AppConfig.tokenKey, value: newToken);
       if (newRefresh != null) {
-        await _secureStorage.write(
-            key: AppConfig.refreshTokenKey, value: newRefresh);
+        await _storage.write(key: AppConfig.refreshTokenKey, value: newRefresh);
       }
 
       // Retry the original request with the new token
@@ -78,7 +77,7 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
   }
 
   Future<void> _clearTokens() async {
-    await _secureStorage.delete(key: AppConfig.tokenKey);
-    await _secureStorage.delete(key: AppConfig.refreshTokenKey);
+    await _storage.write(key: AppConfig.tokenKey, value: null);
+    await _storage.write(key: AppConfig.refreshTokenKey, value: null);
   }
 }

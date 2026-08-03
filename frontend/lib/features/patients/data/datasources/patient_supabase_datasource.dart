@@ -1,10 +1,5 @@
-import 'dart:async';
-
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
-import 'package:uuid/uuid.dart';
-
 import '../../../../core/error/exceptions.dart';
-import '../../domain/entities/patient_entity.dart';
+import '../../../../core/network/api_client.dart';
 import '../models/patient_model.dart';
 
 abstract interface class PatientSupabaseDataSource {
@@ -16,12 +11,10 @@ abstract interface class PatientSupabaseDataSource {
   Future<List<PatientModel>> searchDuplicates(String name, String? phone);
 }
 
-class PatientSupabaseDataSourceImpl implements PatientSupabaseDataSource {
-  final sb.SupabaseClient _client;
+class PatientApiDataSourceImpl implements PatientSupabaseDataSource {
+  final ApiClient _api;
 
-  const PatientSupabaseDataSourceImpl(this._client);
-
-  static const _table = 'patients';
+  const PatientApiDataSourceImpl(this._api);
 
   @override
   Future<List<PatientModel>> getPatients({
@@ -31,101 +24,106 @@ class PatientSupabaseDataSourceImpl implements PatientSupabaseDataSource {
     String? filter,
   }) async {
     try {
-      var query = _client
-          .from(_table)
-          .select()
-          .eq('is_active', true);
-
-      if (search != null && search.isNotEmpty) {
-        query = query.or(
-          'first_name.ilike.%$search%,last_name.ilike.%$search%,prn.eq.$search,phone.ilike.%$search%',
-        );
-      }
-
-      final data = await query
-          .order('created_at', ascending: false)
-          .range((page - 1) * pageSize, page * pageSize - 1);
-
-      return (data as List)
-          .map((e) => PatientModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      final data = await _api.get<List<PatientModel>>(
+        '/patients',
+        queryParameters: {
+          'page': page,
+          'size': pageSize,
+          if (search != null && search.isNotEmpty) 'search': search,
+        },
+        fromJson: (json) {
+          final envelope = (json as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+          final content = envelope['content'] as List<dynamic>;
+          return content
+              .map((e) => PatientModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        },
+      );
+      return data;
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<PatientModel> getPatientById(String id) async {
     try {
-      final data = await _client.from(_table).select().eq('id', id).single();
-      return PatientModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      if (e.code == 'PGRST116') {
-        throw NotFoundException('Patient not found.', code: 'NOT_FOUND');
-      }
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      return await _api.get<PatientModel>(
+        '/patients/$id',
+        fromJson: (json) => PatientModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<PatientModel> createPatient(PatientModel patient) async {
     try {
-      final payload = patient.toSupabaseJson();
-      final data = await _client.from(_table).insert(payload).select().single();
-      return PatientModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'CREATE_ERROR');
+      return await _api.post<PatientModel>(
+        '/patients',
+        data: patient.toApiJson(),
+        fromJson: (json) => PatientModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'CREATE_ERROR');
     }
   }
 
   @override
   Future<PatientModel> updatePatient(PatientModel patient) async {
     try {
-      final payload = patient.toSupabaseJson()..remove('created_at');
-      final data = await _client
-          .from(_table)
-          .update(payload)
-          .eq('id', patient.id)
-          .select()
-          .single();
-      return PatientModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'UPDATE_ERROR');
+      return await _api.put<PatientModel>(
+        '/patients/${patient.id}',
+        data: patient.toApiJson(),
+        fromJson: (json) => PatientModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'UPDATE_ERROR');
     }
   }
 
   @override
   Future<void> deletePatient(String id) async {
     try {
-      await _client
-          .from(_table)
-          .update({'is_active': false, 'deleted_at': DateTime.now().toIso8601String()})
-          .eq('id', id);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'DELETE_ERROR');
+      await _api.delete<void>('/patients/$id');
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'DELETE_ERROR');
     }
   }
 
   @override
-  Future<List<PatientModel>> searchDuplicates(
-      String name, String? phone) async {
+  Future<List<PatientModel>> searchDuplicates(String name, String? phone) async {
     try {
-      var query = _client
-          .from(_table)
-          .select()
-          .eq('is_active', true)
-          .ilike('first_name', '%$name%');
-
-      if (phone != null && phone.isNotEmpty) {
-        query = query.ilike('phone', '%$phone%');
-      }
-
-      final data = await query.limit(5);
-      return (data as List)
-          .map((e) => PatientModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'SEARCH_ERROR');
+      final data = await _api.get<List<PatientModel>>(
+        '/patients/duplicates',
+        queryParameters: {'name': name},
+        fromJson: (json) {
+          final list = (json as Map<String, dynamic>)['data'] as List<dynamic>;
+          return list
+              .map((e) => PatientModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        },
+      );
+      return data;
+    } catch (_) {
+      return [];
     }
   }
 }

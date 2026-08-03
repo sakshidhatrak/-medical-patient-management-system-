@@ -96,7 +96,10 @@ class ReportActionBar extends ConsumerWidget {
     final notifier = ref.read(printConfigProvider.notifier);
     notifier.setExporting(true);
     try {
-      await PdfExportService.exportPdf(ref.read(printConfigProvider));
+      await PdfExportService.exportPdf(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -115,7 +118,10 @@ class ReportActionBar extends ConsumerWidget {
     final notifier = ref.read(printConfigProvider.notifier);
     notifier.setExporting(true);
     try {
-      await PdfExportService.printReport(ref.read(printConfigProvider));
+      await PdfExportService.printReport(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+      );
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

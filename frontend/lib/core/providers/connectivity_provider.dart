@@ -12,8 +12,9 @@ final isOnlineProvider = Provider<bool>((ref) {
       (r) =>
           r == ConnectivityResult.wifi ||
           r == ConnectivityResult.mobile ||
-          r == ConnectivityResult.ethernet,
+          r == ConnectivityResult.ethernet ||
+          r == ConnectivityResult.other, // Flutter Web returns "other"
     ),
-    orElse: () => false,
+    orElse: () => true, // assume online until proven otherwise
   );
 });

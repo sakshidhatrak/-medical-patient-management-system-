@@ -1,0 +1,54 @@
+spring:
+  application:
+    name: medimanage-backend
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/medimanage}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false   # serialize Instant as ISO-8601 string
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 20MB
+      max-request-size: 25MB
+
+server:
+  port: ${PORT:8091}
+  servlet:
+    context-path: /api
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-chars-long-random-string-here!}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}   # 24 h
+
+  upload-dir: ${UPLOAD_DIR:./uploads}
+
+  cors:
+    allowed-origins: ${CORS_ORIGINS:*}
+
+logging:
+  level:
+    com.medimanage: DEBUG
+    org.springframework.security: WARN

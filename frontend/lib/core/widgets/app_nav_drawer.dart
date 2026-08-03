@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
-import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+
+// ── Sidebar design tokens ──────────────────────────────────────────────────
+const _kSidebarBg     = Colors.white;
+const _kActiveColor   = Color(0xFF4F46E5);
+const _kActiveBg      = Color(0xFFEEF2FF);
+const _kNavyText      = Color(0xFF0F172A);
+const _kMutedText     = Color(0xFF64748B);
+const _kBorder        = Color(0xFFE2E8F0);
 
 class NavItem {
   final IconData icon;
@@ -32,30 +39,6 @@ final appNavItems = <NavItem>[
     label: 'Patients',
     route: '/patients',
   ),
-  NavItem(
-    icon: Icons.insert_chart_outlined_rounded,
-    activeIcon: Icons.insert_chart_rounded,
-    label: 'Reports',
-    route: '/reports',
-  ),
-  NavItem(
-    icon: Icons.print_outlined,
-    activeIcon: Icons.print_rounded,
-    label: 'Print & Export',
-    route: '/print-config',
-  ),
-  NavItem(
-    icon: Icons.calendar_today_outlined,
-    activeIcon: Icons.calendar_today_rounded,
-    label: 'Appointments',
-    route: '/appointments',
-  ),
-  NavItem(
-    icon: Icons.chat_bubble_outline_rounded,
-    activeIcon: Icons.chat_bubble_rounded,
-    label: 'Messages',
-    route: '/messages',
-  ),
 ];
 
 /// Persistent rail used on tablets (width ≥ 768)
@@ -77,18 +60,19 @@ class AppNavRail extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 220,
-      color: AppColors.sidebarBg,
+      decoration: const BoxDecoration(
+        color: _kSidebarBg,
+        border: Border(right: BorderSide(color: _kBorder)),
+      ),
       child: Column(
         children: [
-          _SidebarHeader(
-            doctorName: doctorName,
-            doctorRole: doctorRole,
-          ),
-          const SizedBox(height: AppDimensions.md),
+          SizedBox(height: MediaQuery.of(context).padding.top),
+          const _SidebarLogo(),
+          const Divider(height: 1, color: _kBorder),
+          const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: AppDimensions.sm),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               itemCount: appNavItems.length,
               itemBuilder: (context, i) {
                 final item = appNavItems[i];
@@ -126,7 +110,7 @@ class AppNavDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: AppColors.sidebarBg,
+      backgroundColor: _kSidebarBg,
       width: 260,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(
@@ -137,16 +121,12 @@ class AppNavDrawer extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: AppDimensions.md),
-            _SidebarHeader(
-              doctorName: doctorName,
-              doctorRole: doctorRole,
-            ),
-            const SizedBox(height: AppDimensions.md),
+            const _SidebarLogo(),
+            const Divider(height: 1, color: _kBorder),
+            const SizedBox(height: 8),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 12, vertical: AppDimensions.sm),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 itemCount: appNavItems.length,
                 itemBuilder: (context, i) {
                   final item = appNavItems[i];
@@ -170,52 +150,36 @@ class AppNavDrawer extends StatelessWidget {
   }
 }
 
-class _SidebarHeader extends StatelessWidget {
-  final String doctorName;
-  final String doctorRole;
-
-  const _SidebarHeader({required this.doctorName, required this.doctorRole});
+// ── CarePlus logo header ───────────────────────────────────────────────────
+class _SidebarLogo extends StatelessWidget {
+  const _SidebarLogo();
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-          horizontal: 20, vertical: AppDimensions.md),
-      child: Row(
-        children: [
-          _DoctorAvatar(name: doctorName),
-          const SizedBox(width: AppDimensions.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  doctorName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  doctorRole,
-                  style: const TextStyle(
-                    color: AppColors.sidebarText,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+    child: Row(children: [
+      Container(
+        width: 36, height: 36,
+        decoration: BoxDecoration(
+          color: const Color(0xFF4F46E5),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
       ),
-    );
-  }
+      const SizedBox(width: 10),
+      const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('CarePlus',
+            style: TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w800, color: _kNavyText,
+                letterSpacing: -0.3)),
+        Text('Health System',
+            style: TextStyle(fontSize: 11, color: _kMutedText)),
+      ]),
+    ]),
+  );
 }
 
+// ── Nav item ───────────────────────────────────────────────────────────────
 class _NavRailItem extends StatelessWidget {
   final NavItem item;
   final bool isActive;
@@ -228,152 +192,55 @@ class _NavRailItem extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? AppColors.primary.withOpacity(0.15)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-              border: isActive
-                  ? Border(
-                      left: BorderSide(
-                          color: AppColors.primary, width: 3),
-                    )
-                  : null,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isActive ? item.activeIcon : item.icon,
-                  color: isActive
-                      ? AppColors.primary
-                      : AppColors.sidebarText,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  item.label,
-                  style: TextStyle(
-                    color: isActive
-                        ? Colors.white
-                        : AppColors.sidebarText,
-                    fontWeight: isActive
-                        ? FontWeight.w600
-                        : FontWeight.w400,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? _kActiveBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
           ),
+          child: Row(children: [
+            Icon(
+              isActive ? item.activeIcon : item.icon,
+              color: isActive ? _kActiveColor : _kMutedText,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              item.label,
+              style: TextStyle(
+                color: isActive ? _kActiveColor : _kNavyText,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                fontSize: 14,
+              ),
+            ),
+          ]),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
+// ── Footer ─────────────────────────────────────────────────────────────────
 class _SidebarFooter extends ConsumerWidget {
   final String doctorName;
-
   const _SidebarFooter({required this.doctorName});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.sidebarItemHover,
-              borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-            ),
-            child: Row(
-              children: [
-                _DoctorAvatar(name: doctorName, radius: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        doctorName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const Text(
-                        'Admin',
-                        style: TextStyle(
-                          color: AppColors.sidebarText,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.settings_outlined,
-                  color: AppColors.sidebarText,
-                  size: 18,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              onPressed: () async {
-                Navigator.of(context).pop(); // close drawer if open
-                await ref.read(authProvider.notifier).logout();
-              },
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.redAccent,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-                  side: const BorderSide(color: Colors.redAccent, width: 1),
-                ),
-              ),
-              icon: const Icon(Icons.logout_rounded, size: 18),
-              label: const Text(
-                'Logout',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DoctorAvatar extends StatelessWidget {
-  final String name;
-  final double radius;
-
-  const _DoctorAvatar({required this.name, this.radius = 20});
-
-  @override
-  Widget build(BuildContext context) {
-    final initials = name
+    final user = ref.watch(authProvider);
+    final currentUser = user is AuthAuthenticated ? user.user : null;
+    final roleLabel = currentUser?.roleDisplayName ?? 'Admin';
+    final isViewOnly = currentUser != null && !currentUser.canWrite;
+    final initials = doctorName
         .split(' ')
         .where((w) => w.isNotEmpty)
         .take(2)
@@ -381,23 +248,95 @@ class _DoctorAvatar extends StatelessWidget {
         .join()
         .toUpperCase();
 
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: AppColors.primary,
-      child: Text(
-        initials,
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: radius * 0.7,
-          fontWeight: FontWeight.w700,
-        ),
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: _kBorder)),
       ),
+      padding: const EdgeInsets.all(12),
+      child: Column(children: [
+        if (isViewOnly) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Colors.orange.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.visibility_outlined, color: Colors.orange, size: 13),
+                SizedBox(width: 5),
+                Text('View Only Access',
+                    style: TextStyle(
+                        color: Colors.orange, fontSize: 11, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
+
+        // User pill
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Row(children: [
+            CircleAvatar(
+              radius: 15,
+              backgroundColor: const Color(0xFF4F46E5),
+              child: Text(initials,
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(doctorName,
+                    style: const TextStyle(
+                        color: _kNavyText, fontSize: 12, fontWeight: FontWeight.w600),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(roleLabel,
+                    style: const TextStyle(color: _kMutedText, fontSize: 10)),
+              ]),
+            ),
+            const Icon(Icons.settings_outlined, color: _kMutedText, size: 16),
+          ]),
+        ),
+
+        const SizedBox(height: 8),
+
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: const BorderSide(color: Color(0xFFFFE4E6), width: 1),
+              ),
+              backgroundColor: const Color(0xFFFFF1F2),
+            ),
+            icon: const Icon(Icons.logout_rounded, size: 16),
+            label: const Text('Logout',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ),
+        ),
+      ]),
     );
   }
 }
 
 /// Shell widget — shows rail on tablet, drawer on phone
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerWidget {
   final Widget child;
   final String currentRoute;
   final ValueChanged<String> onNavigate;
@@ -410,34 +349,42 @@ class AppShell extends StatefulWidget {
   });
 
   @override
-  State<AppShell> createState() => _AppShellState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final currentUser = authState is AuthAuthenticated ? authState.user : null;
+    final doctorName = currentUser != null
+        ? (currentUser.isAdmin ? 'Dr. ${currentUser.fullName}' : currentUser.fullName)
+        : 'Dr. Harshal S. Chaudhari';
+    final doctorRole = currentUser?.roleDisplayName ?? 'Neurosurgery';
 
-class _AppShellState extends State<AppShell> {
-  @override
-  Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.width >= 768;
 
     if (isTablet) {
       return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
         body: Row(
           children: [
             AppNavRail(
-              currentRoute: widget.currentRoute,
-              onSelect: widget.onNavigate,
+              currentRoute: currentRoute,
+              onSelect: onNavigate,
+              doctorName: doctorName,
+              doctorRole: doctorRole,
             ),
-            Expanded(child: widget.child),
+            Expanded(child: child),
           ],
         ),
       );
     }
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       drawer: AppNavDrawer(
-        currentRoute: widget.currentRoute,
-        onSelect: widget.onNavigate,
+        currentRoute: currentRoute,
+        onSelect: onNavigate,
+        doctorName: doctorName,
+        doctorRole: doctorRole,
       ),
-      body: widget.child,
+      body: child,
     );
   }
 }

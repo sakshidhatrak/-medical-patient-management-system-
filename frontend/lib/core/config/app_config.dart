@@ -13,11 +13,12 @@ class AppConfig {
   static const String refreshTokenKey = 'auth_refresh_token';
   static const String userKey = 'current_user';
 
-  // API endpoints
+  // API endpoints (Spring Boot backend, paths relative to /api)
   static const String loginEndpoint = '/auth/login';
   static const String refreshEndpoint = '/auth/refresh';
   static const String logoutEndpoint = '/auth/logout';
   static const String patientsEndpoint = '/patients';
   static const String appointmentsEndpoint = '/appointments';
   static const String medicalRecordsEndpoint = '/medical-records';
+  static const String drugsEndpoint = '/drugs';
 }

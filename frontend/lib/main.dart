@@ -9,6 +9,7 @@ import 'app.dart';
 import 'core/config/env_config.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/auth/domain/entities/user_entity.dart';
+import 'core/storage/storage_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
 
 // Pass --dart-define=BYPASS_LOGIN=true to skip authentication for testing.
@@ -32,6 +33,7 @@ class _MockAuthNotifier extends AuthNotifier {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Supabase is still used for photo/file storage.
   await Supabase.initialize(
     url: EnvConfig.supabaseUrl,
     anonKey: EnvConfig.supabaseAnonKey,
