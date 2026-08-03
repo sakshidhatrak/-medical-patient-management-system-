@@ -25,7 +25,7 @@ public record PhotoDto(
                 p.getVisitId(),
                 p.getSurgeryId(),
                 p.getStoragePath(),
-                "/api/photos/file/" + p.getStoragePath(),  // derived at query time
+                p.getCloudinaryUrl(),
                 p.getCategory(),
                 p.getCaption(),
                 p.getFileSize(),

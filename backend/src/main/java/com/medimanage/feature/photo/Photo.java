@@ -35,9 +35,13 @@ public class Photo {
     @Column(name = "surgery_id")
     private Long surgeryId;
 
-    /** Relative path on disk: {patientId}/{category}/{photoId}.ext */
+    /** Cloudinary public_id — used to delete the asset */
     @Column(name = "storage_path", nullable = false, length = 500)
     private String storagePath;
+
+    /** Full Cloudinary HTTPS URL for displaying the photo */
+    @Column(name = "cloudinary_url", length = 1000)
+    private String cloudinaryUrl;
 
     @Column(nullable = false)
     private String category;
