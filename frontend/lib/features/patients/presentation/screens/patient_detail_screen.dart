@@ -105,12 +105,27 @@ const _kLine    = Color(0xFFDDE2EA);   // timeline connecting line
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
 // ─────────────────────────────────────────────────────────────────────────────
-class PatientDashboardScreen extends ConsumerWidget {
+class PatientDashboardScreen extends ConsumerStatefulWidget {
   final String patientId;
   const PatientDashboardScreen({super.key, required this.patientId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PatientDashboardScreen> createState() => _PatientDashboardScreenState();
+}
+
+class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(visitsProvider(widget.patientId).notifier).refresh();
+      ref.read(surgeriesProvider(widget.patientId).notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final patientId    = widget.patientId;
     final patientAsync = ref.watch(patientByIdProvider(patientId));
     final visits       = ref.watch(visitsProvider(patientId));
     final surgeries    = ref.watch(surgeriesProvider(patientId));
