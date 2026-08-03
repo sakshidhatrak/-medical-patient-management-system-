@@ -47,12 +47,6 @@ const List<ReportSection> kAllReportSections = [
     icon: Icons.medical_services_outlined,
     color: Color(0xFF0095FF),
   ),
-  ReportSection(
-    id: kSectionReports,
-    title: 'Uploaded Reports',
-    icon: Icons.upload_file_rounded,
-    color: Color(0xFF00C48C),
-  ),
 ];
 
 ReportSection? sectionById(String id) {

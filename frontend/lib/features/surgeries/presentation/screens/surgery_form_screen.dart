@@ -10,6 +10,8 @@ import 'package:intl/intl.dart';
 
 import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
+import '../../../photos/domain/entities/photo_entity.dart';
+import '../../../photos/presentation/widgets/photo_upload_widget.dart';
 import '../../domain/entities/surgery_entity.dart';
 import '../providers/surgery_provider.dart';
 
@@ -57,6 +59,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   late DateTime  _date;
   late TimeOfDay _time;
   String  _surgeon    = _kSurgeons.first;
+  String  _yourRole   = 'Primary Surgeon';
   String  _procedure  = _kProcedures.first;
   String  _anesthesia = _kAnesthesia.first;
   final TextEditingController _assistantCtrl    = TextEditingController();
@@ -71,6 +74,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   final TextEditingController _procedureCtrl    = TextEditingController();
   final List<String> _investigations            = [];
   final TextEditingController _eblCtrl          = TextEditingController();
+  final TextEditingController _otNotesCtrl      = TextEditingController();
   String? _specimens;
 
   // ── Step 5: Postoperative ────────────────────────────────────────
@@ -93,7 +97,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
     for (final c in [
       _assistantCtrl, _anesthCtrl,
       _preopDiagCtrl, _preopNotesCtrl,
-      _opFindingsCtrl, _procedureCtrl, _eblCtrl,
+      _opFindingsCtrl, _procedureCtrl, _eblCtrl, _otNotesCtrl,
       _postDiagCtrl, _complicationsCtrl, _postNotesCtrl,
     ]) c.dispose();
     super.dispose();
@@ -102,6 +106,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   void _populateFrom(SurgeryEntity s) {
     _date = s.surgeryDate;
     _time = TimeOfDay.fromDateTime(s.surgeryDate);
+    if (s.yourRole?.isNotEmpty == true) _yourRole = s.yourRole!;
     if (s.primarySurgeon?.isNotEmpty == true) _surgeon = s.primarySurgeon!;
     if (s.procedure?.isNotEmpty == true) {
       _procedure = _kProcedures.contains(s.procedure) ? s.procedure! : 'Other';
@@ -121,6 +126,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
         final m = json.decode(s.implants!) as Map<String, dynamic>;
         _procedureCtrl.text = (m['procedureSteps'] as String?) ?? '';
         _eblCtrl.text       = (m['ebl']            as String?) ?? '';
+        _otNotesCtrl.text   = (m['otNotes']         as String?) ?? '';
         _specimens          = m['specimens'] as String?;
         final inv           = m['investigations'] as List<dynamic>?;
         if (inv != null) {
@@ -153,7 +159,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   }
 
   SurgeryEntity? _asEntity(String status) {
-    final s = ref.read(surgeryEditProvider(widget.surgeryId));
+    final s = ref.read(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}'));
     if (s == null) return null;
     final fullDate = DateTime(_date.year, _date.month, _date.day, _time.hour, _time.minute);
     final intraopExtras = json.encode({
@@ -161,6 +167,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
       'ebl':            _eblCtrl.text,
       'specimens':      _specimens,
       'investigations': _investigations,
+      'otNotes':        _otNotesCtrl.text,
     });
     final postopData = json.encode({
       'sameAsPreop': _sameAsPreop,
@@ -170,6 +177,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
     });
     return s.copyWith(
       surgeryDate:      fullDate,
+      yourRole:         _yourRole,
       primarySurgeon:   _surgeon,
       procedure:        _procedure,
       assistantSurgeons: _assistantCtrl.text.isEmpty ? null : _assistantCtrl.text,
@@ -188,8 +196,8 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   Future<void> _saveDraft() async {
     final e = _asEntity('draft');
     if (e == null) return;
-    ref.read(surgeryEditProvider(widget.surgeryId).notifier).update(e);
-    await ref.read(surgeryEditProvider(widget.surgeryId).notifier).save();
+    ref.read(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}').notifier).update(e);
+    await ref.read(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}').notifier).save();
   }
 
   Future<void> _saveComplete() async {
@@ -197,8 +205,8 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
     try {
       final e = _asEntity('completed');
       if (e == null) return;
-      ref.read(surgeryEditProvider(widget.surgeryId).notifier).update(e);
-      final ok = await ref.read(surgeryEditProvider(widget.surgeryId).notifier).save();
+      ref.read(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}').notifier).update(e);
+      final ok = await ref.read(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}').notifier).save();
       if (mounted) {
         if (ok) {
           context.pop();
@@ -219,7 +227,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   // ── Build ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final surgery = ref.watch(surgeryEditProvider(widget.surgeryId));
+    final surgery = ref.watch(surgeryEditProvider('${widget.patientId}/${widget.surgeryId}'));
     if (surgery != null && !_loaded) {
       _loaded = true;
       WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _populateFrom(surgery); });
@@ -301,18 +309,21 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
   Widget _stepContent() => switch (_step) {
     0 => _SStep1Patient(patientId: widget.patientId),
     1 => _SStep2Details(
-        date: _date, time: _time, surgeon: _surgeon, procedure: _procedure, anesthesia: _anesthesia,
+        date: _date, time: _time, surgeon: _surgeon, procedure: _procedure,
+        anesthesia: _anesthesia, yourRole: _yourRole,
         assistantCtrl: _assistantCtrl, anesthCtrl: _anesthCtrl,
         onDate:      (d) => setState(() => _date = d),
         onTime:      (t) => setState(() => _time = t),
         onSurgeon:   (v) => setState(() => _surgeon = v),
         onProcedure: (v) => setState(() => _procedure = v),
         onAnesthesia:(v) => setState(() => _anesthesia = v),
+        onRole:      (v) => setState(() => _yourRole = v),
       ),
     2 => _SStep3Preop(diagCtrl: _preopDiagCtrl, notesCtrl: _preopNotesCtrl),
     3 => _SStep4Intraop(
+        patientId: widget.patientId, surgeryId: widget.surgeryId,
         findingsCtrl: _opFindingsCtrl, procedureCtrl: _procedureCtrl,
-        eblCtrl: _eblCtrl,
+        eblCtrl: _eblCtrl, otNotesCtrl: _otNotesCtrl,
         investigations: _investigations,
         specimens: _specimens,
         onInvToggle: (inv) => setState(() {
@@ -661,21 +672,25 @@ class _SPatientCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 – Surgery Details
 // ─────────────────────────────────────────────────────────────────────────────
+const _kRoles = ['Primary Surgeon', 'Assistant', 'Observer'];
+
 class _SStep2Details extends StatelessWidget {
   final DateTime date;
   final TimeOfDay time;
-  final String surgeon, procedure, anesthesia;
+  final String surgeon, procedure, anesthesia, yourRole;
   final TextEditingController assistantCtrl, anesthCtrl;
   final ValueChanged<DateTime>  onDate;
   final ValueChanged<TimeOfDay> onTime;
-  final ValueChanged<String>    onSurgeon, onProcedure, onAnesthesia;
+  final ValueChanged<String>    onSurgeon, onProcedure, onAnesthesia, onRole;
 
   const _SStep2Details({
     required this.date, required this.time,
     required this.surgeon, required this.procedure, required this.anesthesia,
+    required this.yourRole,
     required this.assistantCtrl, required this.anesthCtrl,
     required this.onDate, required this.onTime,
     required this.onSurgeon, required this.onProcedure, required this.onAnesthesia,
+    required this.onRole,
   });
 
   @override
@@ -738,6 +753,31 @@ class _SStep2Details extends StatelessWidget {
                   value: surgeon, items: _kSurgeons, label: (v) => v,
                   onChanged: (v) { if (v != null) onSurgeon(v); },
                 ),
+                const SizedBox(height: 14),
+                const _SWizLabel('Your Role', req: true),
+                Row(children: _kRoles.map((r) {
+                  final sel = yourRole == r;
+                  return Expanded(child: Padding(
+                    padding: EdgeInsets.only(right: r != _kRoles.last ? 8 : 0),
+                    child: GestureDetector(
+                      onTap: () => onRole(r),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: sel ? _kRed : Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: sel ? _kRed : _kLine),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(r, style: TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w700,
+                          color: sel ? Colors.white : _kText2,
+                        ), textAlign: TextAlign.center),
+                      ),
+                    ),
+                  ));
+                }).toList()),
                 const SizedBox(height: 14),
                 const _SWizLabel('Procedure / Surgery', req: true),
                 _SWizDropdown<String>(
@@ -829,14 +869,17 @@ class _SStep3Preop extends StatelessWidget {
 // STEP 4 – Intraoperative
 // ─────────────────────────────────────────────────────────────────────────────
 class _SStep4Intraop extends StatelessWidget {
-  final TextEditingController findingsCtrl, procedureCtrl, eblCtrl;
+  final String patientId, surgeryId;
+  final TextEditingController findingsCtrl, procedureCtrl, eblCtrl, otNotesCtrl;
   final List<String> investigations;
   final String? specimens;
   final ValueChanged<String>  onInvToggle;
   final ValueChanged<String?> onSpecimens;
 
   const _SStep4Intraop({
-    required this.findingsCtrl, required this.procedureCtrl, required this.eblCtrl,
+    required this.patientId, required this.surgeryId,
+    required this.findingsCtrl, required this.procedureCtrl,
+    required this.eblCtrl, required this.otNotesCtrl,
     required this.investigations, required this.specimens,
     required this.onInvToggle, required this.onSpecimens,
   });
@@ -941,6 +984,36 @@ class _SStep4Intraop extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+
+        _SWizCard(
+          title: 'Intraop Findings Photos',
+          child: PhotoUploadWidget(
+            patientId: patientId,
+            category: PhotoCategory.surgeryFindings,
+            surgeryId: surgeryId,
+          ),
+        ),
+
+        _SWizCard(
+          title: 'OT Notes',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _SWizLabel('OT Notes'),
+              TextField(
+                controller: otNotesCtrl,
+                decoration: _sDec('Theatre notes, observations, implant details...'),
+                maxLines: 5,
+              ),
+              const SizedBox(height: 12),
+              PhotoUploadWidget(
+                patientId: patientId,
+                category: PhotoCategory.surgeryOtNotes,
+                surgeryId: surgeryId,
               ),
             ],
           ),

@@ -76,3 +76,13 @@ INSERT INTO public.users (id, email, first_name, last_name, role)
 SELECT id, email, 'Admin', 'User', 'admin'
 FROM auth.users
 WHERE email = 'admin@test.com';
+
+
+
+
+
+
+
+
+
+

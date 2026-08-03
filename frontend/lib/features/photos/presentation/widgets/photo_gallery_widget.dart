@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../domain/entities/photo_entity.dart';
@@ -54,37 +57,35 @@ class _PhotoThumb extends StatelessWidget {
               onTap: onTap,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: photo.url != null
-                    ? CachedNetworkImage(
-                        imageUrl: photo.url!,
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          width: 90,
-                          height: 90,
-                          color: Colors.grey[200],
-                          child: const Center(
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2)),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          width: 90,
-                          height: 90,
-                          color: Colors.grey[200],
-                          child: const Icon(Icons.broken_image,
-                              color: Colors.grey),
-                        ),
-                      )
-                    : Container(
-                        width: 90,
-                        height: 90,
-                        color: Colors.grey[200],
-                        child:
-                            const Icon(Icons.image, color: Colors.grey),
-                      ),
+                child: _buildImage(width: 90, height: 90),
               ),
             ),
+            // Pending-upload badge (clock icon)
+            if (!photo.isUploaded)
+              Positioned(
+                bottom: 4,
+                left: 4,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule, size: 10, color: Colors.white),
+                      SizedBox(width: 2),
+                      Text('Pending',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
             if (onDelete != null)
               Positioned(
                 top: 2,
@@ -106,12 +107,50 @@ class _PhotoThumb extends StatelessWidget {
         ),
       );
 
+  Widget _buildImage({required double width, required double height}) {
+    // Local file (pending upload)
+    if (!photo.isUploaded && photo.localPath != null && !kIsWeb) {
+      return Image.file(
+        File(photo.localPath!),
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _placeholder(width, height),
+      );
+    }
+    // Remote URL
+    if (photo.url != null) {
+      return CachedNetworkImage(
+        imageUrl: photo.url!,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _placeholder(width, height,
+            child: const CircularProgressIndicator(strokeWidth: 2)),
+        errorWidget: (_, __, ___) => _placeholder(width, height,
+            child: const Icon(Icons.broken_image, color: Colors.grey)),
+      );
+    }
+    return _placeholder(width, height,
+        child: const Icon(Icons.image, color: Colors.grey));
+  }
+
+  Widget _placeholder(double width, double height, {Widget? child}) =>
+      Container(
+        width: width,
+        height: height,
+        color: Colors.grey[200],
+        child: child != null ? Center(child: child) : null,
+      );
+
   void _confirmDelete(BuildContext context) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete photo?'),
-        content: const Text('This cannot be undone.'),
+        content: Text(photo.isUploaded
+            ? 'This cannot be undone.'
+            : 'This pending photo will be removed and will not upload.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -163,9 +202,29 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
         appBar: AppBar(
           backgroundColor: Colors.black,
           foregroundColor: Colors.white,
-          title: Text(
-            '${_current + 1} / ${widget.photos.length}',
-            style: const TextStyle(color: Colors.white),
+          title: Row(
+            children: [
+              Text(
+                '${_current + 1} / ${widget.photos.length}',
+                style: const TextStyle(color: Colors.white),
+              ),
+              if (!widget.photos[_current].isUploaded) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text('Pending upload',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ],
           ),
         ),
         body: PageView.builder(
@@ -179,16 +238,7 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
                 Expanded(
                   child: InteractiveViewer(
                     child: Center(
-                      child: photo.url != null
-                          ? CachedNetworkImage(
-                              imageUrl: photo.url!,
-                              fit: BoxFit.contain,
-                              placeholder: (_, __) =>
-                                  const CircularProgressIndicator(
-                                      color: Colors.white),
-                            )
-                          : const Icon(Icons.broken_image,
-                              color: Colors.white, size: 64),
+                      child: _buildFullImage(photo),
                     ),
                   ),
                 ),
@@ -207,4 +257,26 @@ class _FullScreenViewerState extends State<_FullScreenViewer> {
           },
         ),
       );
+
+  Widget _buildFullImage(PhotoEntity photo) {
+    if (!photo.isUploaded && photo.localPath != null && !kIsWeb) {
+      return Image.file(
+        File(photo.localPath!),
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.broken_image, color: Colors.white, size: 64),
+      );
+    }
+    if (photo.url != null) {
+      return CachedNetworkImage(
+        imageUrl: photo.url!,
+        fit: BoxFit.contain,
+        placeholder: (_, __) =>
+            const CircularProgressIndicator(color: Colors.white),
+        errorWidget: (_, __, ___) =>
+            const Icon(Icons.broken_image, color: Colors.white, size: 64),
+      );
+    }
+    return const Icon(Icons.broken_image, color: Colors.white, size: 64);
+  }
 }

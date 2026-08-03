@@ -21,7 +21,6 @@ class _ConfigLeftPanelState extends ConsumerState<ConfigLeftPanel> {
     kSectionBasicInfo,
     kSectionVitals,
     kSectionTreatment,
-    kSectionReports,
   };
 
   @override

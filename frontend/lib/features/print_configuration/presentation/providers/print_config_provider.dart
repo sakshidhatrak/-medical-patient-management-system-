@@ -9,28 +9,33 @@ import '../../domain/models/print_template.dart';
 const Map<String, String> kMockPatientData = {
   'firstName': 'Sarah',
   'lastName': 'Johnson',
-  'dob': 'March 14, 1985',
+  'age': '41 yrs',
   'gender': 'Female',
   'phone': '+1 555-0101',
+  'altPhone': '+1 555-0202',
   'email': 'sarah.johnson@email.com',
   'address': '123 Oak Street, Boston, MA 02101',
-  'bloodType': 'A+',
+  'idProofType': 'Aadhaar Card',
+  'idProofNumber': '1234-5678-9012',
+  'allergies': 'Penicillin, Sulfa drugs',
+  'medicalHistory': 'Hypertension (diagnosed 2018), No prior surgeries.',
   'weight': '65 kg',
   'bloodPressure': '118 / 76 mmHg',
   'temperature': '37.1 °C',
+  'previousHistory': 'Hospitalised for atrial fibrillation in 2023.',
   'chiefComplaint': 'Chest pain and shortness of breath for 2 days.',
+  'examGeneral': 'Conscious, alert, mild distress. Vitals stable.',
+  'examNeurological': 'No focal neurological deficits.',
+  'clinicalDiagnosis': 'Acute Coronary Syndrome — NSTEMI',
+  'imaging': 'Chest X-Ray: mild pulmonary congestion.',
+  'otherInvestigation': 'ECG: ST-segment depression in V4–V6. Troponin elevated.',
   'diagnosis': 'Acute Coronary Syndrome — NSTEMI',
   'treatmentPlan':
       'Admit for monitoring, initiate anticoagulation therapy, cardiology consult within 24 hours.',
   'medications': 'Aspirin 325 mg · Metoprolol 25 mg · Atorvastatin 80 mg',
   'notes':
-      'Patient is haemodynamically stable. ECG shows ST-segment depression in leads V4–V6. Follow-up echocardiogram scheduled for tomorrow.',
-  'doctorAssigned': 'Dr. Alice Morgan',
-  'visitType': 'Emergency',
-  'prescription': 'Prescription.pdf',
-  'labReport': 'BloodWork_May2026.pdf',
-  'xray': 'ChestXRay.jpg',
-  'mriCt': 'CardiacCT.pdf',
+      'Patient is haemodynamically stable. Follow-up echocardiogram scheduled for tomorrow.',
+  'advice': 'Low-sodium diet. Avoid strenuous activity. Follow up in 1 week.',
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -208,3 +213,13 @@ final printConfigProvider =
     NotifierProvider<PrintConfigNotifier, PrintConfigState>(
   PrintConfigNotifier.new,
 );
+
+/// Holds real patient data for the active print job.
+/// Null means no patient selected — preview falls back to [kMockPatientData].
+final activePatientDataProvider =
+    StateProvider<Map<String, String>?>((ref) => null);
+
+/// Returns the effective data map: real patient data or mock fallback.
+final effectivePatientDataProvider = Provider<Map<String, String>>((ref) {
+  return ref.watch(activePatientDataProvider) ?? kMockPatientData;
+});

@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum UserRole { doctor, nurse, admin, receptionist }
+enum UserRole { doctor, nurse, admin, receptionist, assistant }
 
 class UserEntity extends Equatable {
   final String id;
@@ -25,6 +25,18 @@ class UserEntity extends Equatable {
 
   bool get isDoctor => role == UserRole.doctor;
   bool get isAdmin => role == UserRole.admin;
+  bool get isAssistant => role == UserRole.assistant;
+
+  /// Admin has full write access; all other roles (including assistant) are read-only.
+  bool get canWrite => role == UserRole.admin;
+
+  String get roleDisplayName => switch (role) {
+        UserRole.admin => 'Admin',
+        UserRole.assistant => 'Assistant',
+        UserRole.doctor => 'Doctor',
+        UserRole.nurse => 'Nurse',
+        UserRole.receptionist => 'Receptionist',
+      };
 
   @override
   List<Object?> get props =>

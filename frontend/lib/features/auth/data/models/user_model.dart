@@ -20,23 +20,23 @@ class UserModel {
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-        id: json['id'] as String,
+        id: (json['id'] as Object).toString(),
         email: json['email'] as String,
-        firstName: json['first_name'] as String,
-        lastName: json['last_name'] as String,
-        role: json['role'] as String,
-        avatarUrl: json['avatar_url'] as String?,
-        createdAt: json['created_at'] as String,
+        firstName: (json['firstName'] ?? json['first_name']) as String,
+        lastName: (json['lastName'] ?? json['last_name']) as String,
+        role: (json['role'] as Object).toString(),
+        avatarUrl: (json['avatarUrl'] ?? json['avatar_url']) as String?,
+        createdAt: (json['createdAt'] ?? json['created_at']) as String,
       );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'email': email,
-        'first_name': firstName,
-        'last_name': lastName,
+        'firstName': firstName,
+        'lastName': lastName,
         'role': role,
-        'avatar_url': avatarUrl,
-        'created_at': createdAt,
+        'avatarUrl': avatarUrl,
+        'createdAt': createdAt,
       };
 
   UserEntity toEntity() => UserEntity(
@@ -54,6 +54,7 @@ class UserModel {
         'nurse' => UserRole.nurse,
         'admin' => UserRole.admin,
         'receptionist' => UserRole.receptionist,
-        _ => UserRole.receptionist,
+        'assistant' => UserRole.assistant,
+        _ => UserRole.assistant,
       };
 }

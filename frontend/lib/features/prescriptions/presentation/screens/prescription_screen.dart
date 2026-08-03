@@ -1,113 +1,241 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import 'package:uuid/uuid.dart';
 
+import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/connectivity_provider.dart';
+import '../../../../core/sync/sync_engine.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/prescription_entity.dart';
 
 // ── Providers ──────────────────────────────────────────────────────
 
 final drugsMasterProvider = FutureProvider<List<DrugMaster>>((ref) async {
-  final data = await sb.Supabase.instance.client
-      .from('drugs_master')
-      .select()
-      .eq('is_active', true)
-      .order('generic_name');
-  return (data as List)
-      .map((e) => DrugMaster.fromJson(e as Map<String, dynamic>))
-      .toList();
-});
+  final localCache = ref.read(localDrugCacheProvider);
+  final online = ref.read(isOnlineProvider);
 
-final prescriptionProvider =
-    StateNotifierProvider.family<PrescriptionNotifier, PrescriptionEntity?,
-        String>((ref, visitId) => PrescriptionNotifier(visitId));
-
-class PrescriptionNotifier
-    extends StateNotifier<PrescriptionEntity?> {
-  final String visitId;
-  PrescriptionNotifier(this.visitId) : super(null) {
-    _load();
-  }
-
-  Future<void> _load() async {
+  if (online) {
     try {
-      final data = await sb.Supabase.instance.client
-          .from('prescriptions')
-          .select()
-          .eq('visit_id', visitId)
-          .maybeSingle();
-      if (data != null) {
-        final drugs = (data['drugs'] as List<dynamic>?)
-                ?.map((e) => DrugEntry.fromJson(
-                    e is String ? {} : e as Map<String, dynamic>))
-                .toList() ??
-            [];
-        state = PrescriptionEntity(
-          id: data['id'] as String,
-          patientId: data['patient_id'] as String,
-          visitId: visitId,
-          text: data['text'] as String?,
-          drugs: drugs,
-          createdAt: DateTime.parse(data['created_at'] as String),
-          updatedAt: DateTime.parse(data['updated_at'] as String),
-        );
+      final drugs = await ref.read(apiClientProvider).get<List<DrugMaster>>(
+        '/drugs',
+        fromJson: (json) {
+          final list =
+              (json as Map<String, dynamic>)['data'] as List<dynamic>;
+          return list
+              .map((e) => DrugMaster.fromApiJson(e as Map<String, dynamic>))
+              .toList();
+        },
+      );
+      // Cache for offline use.
+      if (!kIsWeb) {
+        await localCache.upsertAll(
+            drugs.map((d) => _drugMasterToJson(d)).toList());
       }
+      return drugs;
     } catch (_) {}
   }
 
+  // Offline fallback.
+  if (!kIsWeb) {
+    final rows = await localCache.getAll();
+    if (rows.isNotEmpty) {
+      return rows
+          .map((r) => DrugMaster.fromApiJson(r))
+          .toList();
+    }
+  }
+  return [];
+});
+
+Map<String, dynamic> _drugMasterToJson(DrugMaster d) => {
+      'id': d.id,
+      'genericName': d.genericName,
+      'brandNames': d.brandNames.join(','),
+      'composition': d.composition,
+      'category': d.category,
+      'defaultDose': d.defaultDose,
+      'defaultFrequency': d.defaultFrequency,
+      'defaultDuration': d.defaultDuration,
+    };
+
+// arg: "patientId/visitId"
+final prescriptionProvider = StateNotifierProvider.family<
+    PrescriptionNotifier, PrescriptionEntity?, String>((ref, arg) =>
+    PrescriptionNotifier(
+      arg,
+      ref.read(apiClientProvider),
+      ref.read(localPrescriptionCacheProvider),
+      ref.read(offlineQueueProvider),
+      ref.read(isOnlineProvider),
+    ));
+
+class PrescriptionNotifier extends StateNotifier<PrescriptionEntity?> {
+  final String _arg;
+  final ApiClient _api;
+  final LocalPrescriptionCache _local;
+  final OfflineQueue _queue;
+  final bool _online;
+
+  PrescriptionNotifier(
+      this._arg, this._api, this._local, this._queue, this._online)
+      : super(null) {
+    _load();
+  }
+
+  String get _patientId => _arg.split('/')[0];
+  String get _visitId =>
+      _arg.split('/').length > 1 ? _arg.split('/')[1] : _arg;
+
+  PrescriptionEntity _fromDto(Map<String, dynamic> data) {
+    final drugsStr = data['drugs'] as String?;
+    final drugs = drugsStr != null && drugsStr.isNotEmpty
+        ? (jsonDecode(drugsStr) as List<dynamic>)
+            .map((e) => DrugEntry.fromJson(
+                e is String ? {} : e as Map<String, dynamic>))
+            .toList()
+        : <DrugEntry>[];
+    final now = DateTime.now().toIso8601String();
+    return PrescriptionEntity(
+      id: data['id'] != null ? (data['id'] as Object).toString() : '',
+      patientId: _patientId,
+      visitId: _visitId,
+      text: data['text'] as String?,
+      drugs: drugs,
+      createdAt:
+          DateTime.parse((data['createdAt'] ?? now) as String),
+      updatedAt:
+          DateTime.parse((data['updatedAt'] ?? now) as String),
+    );
+  }
+
+  Future<void> _load() async {
+    // 1. Load from local cache.
+    if (!kIsWeb) {
+      try {
+        final cached = await _local.getForVisit(_visitId);
+        if (cached != null) state = _fromDto(cached);
+      } catch (_) {}
+    }
+
+    // 2. Sync from API.
+    if (_online) {
+      try {
+        final list = await _api.get<List<dynamic>>(
+          '/patients/$_patientId/visits/$_visitId/prescriptions',
+          fromJson: (json) =>
+              (json as Map<String, dynamic>)['data'] as List<dynamic>,
+        );
+        if (list.isNotEmpty) {
+          final data = list.first as Map<String, dynamic>;
+          state = _fromDto(data);
+          if (!kIsWeb) await _local.upsert(_visitId, _patientId, data);
+        }
+      } catch (_) {}
+    }
+  }
+
+  void update(PrescriptionEntity entity) => state = entity;
+
   void updateText(String text) {
-    if (state == null) return;
+    if (state == null) {
+      state = PrescriptionEntity(
+        id: '',
+        patientId: _patientId,
+        visitId: _visitId,
+        text: text,
+        drugs: [],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      return;
+    }
     state = state!.copyWith(text: text);
   }
 
   void addDrug(DrugEntry drug) {
-    if (state == null) return;
+    if (state == null) {
+      state = PrescriptionEntity(
+        id: '',
+        patientId: _patientId,
+        visitId: _visitId,
+        text: null,
+        drugs: [drug],
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      return;
+    }
     state = state!.copyWith(drugs: [...state!.drugs, drug]);
   }
 
   void removeDrug(String id) {
     if (state == null) return;
-    state =
-        state!.copyWith(drugs: state!.drugs.where((d) => d.id != id).toList());
+    state = state!
+        .copyWith(drugs: state!.drugs.where((d) => d.id != id).toList());
   }
 
   Future<bool> save(String patientId) async {
-    try {
-      final drugs =
-          state?.drugs.map((d) => d.toJson()).toList() ?? [];
-      final payload = {
-        'patient_id': patientId,
-        'visit_id': visitId,
-        'text': state?.text,
-        'drugs': drugs,
+    final drugsJson = jsonEncode(
+        state?.drugs.map((d) => d.toJson()).toList() ?? []);
+    final payload = {'text': state?.text, 'drugs': drugsJson};
+    final isNew = state == null || state!.id.isEmpty;
+
+    // Save locally first.
+    if (!kIsWeb) {
+      final localData = {
+        ...payload,
+        'id': state?.id ?? '',
+        'patientId': _patientId,
+        'visitId': _visitId,
+        'createdAt': state?.createdAt.toIso8601String() ??
+            DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
       };
-      if (state == null) {
-        final id = const Uuid().v4();
-        final data = await sb.Supabase.instance.client
-            .from('prescriptions')
-            .insert({...payload, 'id': id})
-            .select()
-            .single();
-        state = PrescriptionEntity(
-          id: data['id'] as String,
-          patientId: patientId,
-          visitId: visitId,
-          text: state?.text,
-          drugs: state?.drugs ?? [],
-          createdAt: DateTime.parse(data['created_at'] as String),
-          updatedAt: DateTime.parse(data['updated_at'] as String),
-        );
-      } else {
-        await sb.Supabase.instance.client
-            .from('prescriptions')
-            .update(payload)
-            .eq('id', state!.id);
-      }
-      return true;
-    } catch (_) {
-      return false;
+      await _local.upsert(_visitId, _patientId, localData);
     }
+
+    if (_online) {
+      try {
+        final Map<String, dynamic> data;
+        if (isNew) {
+          data = await _api.post<Map<String, dynamic>>(
+            '/patients/$_patientId/visits/$_visitId/prescriptions',
+            data: payload,
+            fromJson: (json) => (json as Map<String, dynamic>)['data']
+                as Map<String, dynamic>,
+          );
+        } else {
+          data = await _api.put<Map<String, dynamic>>(
+            '/prescriptions/${state!.id}',
+            data: payload,
+            fromJson: (json) => (json as Map<String, dynamic>)['data']
+                as Map<String, dynamic>,
+          );
+        }
+        state = _fromDto(data);
+        if (!kIsWeb) await _local.upsert(_visitId, _patientId, data);
+        return true;
+      } catch (_) {}
+    }
+
+    // Offline: enqueue.
+    if (!kIsWeb) {
+      await _queue.enqueue(
+        entityType: 'prescriptions',
+        entityId: _visitId,
+        operation: isNew ? 'insert' : 'update',
+        payload: {
+          ...payload,
+          'id': state?.id ?? '',
+          'patientId': _patientId,
+          'visitId': _visitId,
+        },
+      );
+    }
+    return true;
   }
 }
 
@@ -131,7 +259,7 @@ class _PrescriptionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final prescription = ref.watch(prescriptionProvider(widget.visitId));
+    final prescription = ref.watch(prescriptionProvider('${widget.patientId}/${widget.visitId}'));
     final drugsAsync   = ref.watch(drugsMasterProvider);
 
     if (prescription != null &&
@@ -153,7 +281,7 @@ class _PrescriptionScreenState
               expands: true,
               textAlignVertical: TextAlignVertical.top,
               onChanged: (v) =>
-                  ref.read(prescriptionProvider(widget.visitId).notifier)
+                  ref.read(prescriptionProvider('${widget.patientId}/${widget.visitId}').notifier)
                       .updateText(v),
               decoration: InputDecoration(
                 hintText:
@@ -181,7 +309,7 @@ class _PrescriptionScreenState
               child: _DrugList(
                 drugs: prescription!.drugs,
                 onRemove: (id) => ref
-                    .read(prescriptionProvider(widget.visitId).notifier)
+                    .read(prescriptionProvider('${widget.patientId}/${widget.visitId}').notifier)
                     .removeDrug(id),
               ),
             ),
@@ -201,7 +329,7 @@ class _PrescriptionScreenState
                 child: ElevatedButton.icon(
                   onPressed: () async {
                     final ok = await ref
-                        .read(prescriptionProvider(widget.visitId).notifier)
+                        .read(prescriptionProvider('${widget.patientId}/${widget.visitId}').notifier)
                         .save(widget.patientId);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -228,7 +356,7 @@ class _PrescriptionScreenState
                 drugs: drugs,
                 onAdd: (drug) {
                   ref
-                      .read(prescriptionProvider(widget.visitId).notifier)
+                      .read(prescriptionProvider('${widget.patientId}/${widget.visitId}').notifier)
                       .addDrug(drug);
                   setState(() => _showDrugPanel = false);
                 },

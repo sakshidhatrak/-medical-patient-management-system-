@@ -5,7 +5,7 @@ class EnvConfig {
       String.fromEnvironment('ENV', defaultValue: 'development');
   static const String _baseUrl = String.fromEnvironment(
     'BASE_URL',
-    defaultValue: 'https://dev-api.medimanage.com/v1',
+    defaultValue: 'http://localhost:8091/api',
   );
   static const String _apiKey =
       String.fromEnvironment('API_KEY', defaultValue: '');

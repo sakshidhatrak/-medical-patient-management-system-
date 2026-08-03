@@ -160,6 +160,23 @@ class DrugMaster extends Equatable {
         defaultDuration: j['default_duration'] as String?,
       );
 
+  factory DrugMaster.fromApiJson(Map<String, dynamic> j) => DrugMaster(
+        id: (j['id'] as Object).toString(),
+        genericName: j['genericName'] as String,
+        brandNames: j['brandNames'] != null
+            ? (j['brandNames'] as String)
+                .split(',')
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : [],
+        composition: j['composition'] as String?,
+        category: j['category'] as String?,
+        defaultDose: j['defaultDose'] as String?,
+        defaultFrequency: j['defaultFrequency'] as String?,
+        defaultDuration: j['defaultDuration'] as String?,
+      );
+
   @override
   List<Object?> get props => [id, genericName];
 }

@@ -1,6 +1,5 @@
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
-
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/api_client.dart';
 import '../models/surgery_model.dart';
 
 abstract interface class SurgerySupabaseDataSource {
@@ -11,84 +10,95 @@ abstract interface class SurgerySupabaseDataSource {
   Future<void> deleteSurgery(String id);
 }
 
-class SurgerySupabaseDataSourceImpl implements SurgerySupabaseDataSource {
-  final sb.SupabaseClient _client;
-  const SurgerySupabaseDataSourceImpl(this._client);
-
-  static const _table = 'surgeries';
+class SurgeryApiDataSourceImpl implements SurgerySupabaseDataSource {
+  final ApiClient _api;
+  const SurgeryApiDataSourceImpl(this._api);
 
   @override
   Future<List<SurgeryModel>> getSurgeriesForPatient(String patientId) async {
     try {
-      final data = await _client
-          .from(_table)
-          .select()
-          .eq('patient_id', patientId)
-          .eq('is_active', true)
-          .order('surgery_date', ascending: false);
-      return (data as List)
-          .map((e) => SurgeryModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      return await _api.get<List<SurgeryModel>>(
+        '/patients/$patientId/surgeries',
+        fromJson: (json) {
+          final list = (json as Map<String, dynamic>)['data'] as List<dynamic>;
+          return list
+              .map((e) => SurgeryModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        },
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<SurgeryModel> getSurgeryById(String id) async {
+    // id is "patientId/surgeryId"
+    final parts = id.split('/');
+    final patientId = parts[0];
+    final surgeryId = parts.length > 1 ? parts[1] : parts[0];
     try {
-      final data =
-          await _client.from(_table).select().eq('id', id).single();
-      return SurgeryModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      if (e.code == 'PGRST116') {
-        throw NotFoundException('Surgery not found.', code: 'NOT_FOUND');
-      }
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      return await _api.get<SurgeryModel>(
+        '/patients/$patientId/surgeries/$surgeryId',
+        fromJson: (json) => SurgeryModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<SurgeryModel> createSurgery(SurgeryModel surgery) async {
     try {
-      final data = await _client
-          .from(_table)
-          .insert(surgery.toSupabaseJson())
-          .select()
-          .single();
-      return SurgeryModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'CREATE_ERROR');
+      return await _api.post<SurgeryModel>(
+        '/patients/${surgery.patientId}/surgeries',
+        data: surgery.toApiJson(),
+        fromJson: (json) => SurgeryModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'CREATE_ERROR');
     }
   }
 
   @override
   Future<SurgeryModel> updateSurgery(SurgeryModel surgery) async {
     try {
-      final payload = surgery.toSupabaseJson()
-        ..remove('id')
-        ..remove('patient_id');
-      final data = await _client
-          .from(_table)
-          .update(payload)
-          .eq('id', surgery.id)
-          .select()
-          .single();
-      return SurgeryModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'UPDATE_ERROR');
+      return await _api.put<SurgeryModel>(
+        '/patients/${surgery.patientId}/surgeries/${surgery.id}',
+        data: surgery.toApiJson(),
+        fromJson: (json) => SurgeryModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'UPDATE_ERROR');
     }
   }
 
   @override
   Future<void> deleteSurgery(String id) async {
+    // id is "patientId/surgeryId"
+    final parts = id.split('/');
+    final patientId = parts[0];
+    final surgeryId = parts.length > 1 ? parts[1] : parts[0];
     try {
-      await _client.from(_table).update({
-        'is_active': false,
-        'deleted_at': DateTime.now().toIso8601String(),
-      }).eq('id', id);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'DELETE_ERROR');
+      await _api.delete<void>('/patients/$patientId/surgeries/$surgeryId');
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'DELETE_ERROR');
     }
   }
 }

@@ -1,22 +1,17 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// dashboard_screen.dart  –  MediManage Premium Dashboard (Linear × Stripe)
-// ─────────────────────────────────────────────────────────────────────────────
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/theme/app_colors.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kP1    = Color(0xFF7C3AED);
+const _kP1    = Color(0xFF4F46E5);
 const _kP2    = Color(0xFF3B82F6);
 const _kRed   = Color(0xFFEF4444);
-const _kGreen = Color(0xFF10B981);
 const _kBg    = Color(0xFFF8FAFC);
-const _kCard  = Colors.white;
 const _kNavy  = Color(0xFF0F172A);
 const _kSlate = Color(0xFF475569);
 const _kMuted = Color(0xFF94A3B8);
@@ -54,13 +49,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(patientsProvider);
-    final now   = DateTime.now();
-    final greeting = now.hour < 12 ? 'Good Morning'
-        : now.hour < 17 ? 'Good Afternoon' : 'Good Evening';
-    final todayCount = state.patients.where((p) =>
-        p.createdAt.year  == now.year &&
-        p.createdAt.month == now.month &&
-        p.createdAt.day   == now.day).length;
 
     return Scaffold(
       backgroundColor: _kBg,
@@ -68,22 +56,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         onPressed: () => context.push('/patients/register'),
       ),
       body: Column(children: [
-        _PremiumHeader(greeting: greeting, now: now),
+        _DashboardTopBar(),
         Expanded(
           child: ListView(
             controller: _scrollCtrl,
             padding: EdgeInsets.zero,
             children: [
-              // ── Stats cards ──────────────────────────────────────
-              _StatsRow(
-                total:  state.isLoading && state.patients.isEmpty ? null : state.patients.length,
-                today:  todayCount,
-              ),
-
-              // ── Quick Actions ────────────────────────────────────
               _QuickActionsSection(onRegister: () => context.push('/patients/register')),
-
-              // ── Search + list header ─────────────────────────────
               _SearchSection(
                 controller: _searchCtrl,
                 onChanged: (v) {
@@ -98,15 +77,12 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                 state: state,
                 onRefresh: () => ref.read(patientsProvider.notifier).refresh(),
               ),
-
-              // ── Patient list ─────────────────────────────────────
               _PatientListSection(
                 state: state,
                 onTap: (p) => context.push('/patients/${p.id}'),
                 onRegister: () => context.push('/patients/register'),
                 onRetry: () => ref.read(patientsProvider.notifier).refresh(),
               ),
-
               const SizedBox(height: 100),
             ],
           ),
@@ -117,164 +93,93 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Premium gradient header
+// Top bar
 // ─────────────────────────────────────────────────────────────────────────────
-class _PremiumHeader extends StatelessWidget {
-  final String greeting;
-  final DateTime now;
-  const _PremiumHeader({required this.greeting, required this.now});
-
+class _DashboardTopBar extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authProvider);
+    final user = authState is AuthAuthenticated ? authState.user : null;
+    final firstName = user?.fullName.split(' ').first ?? 'Doctor';
+    final fullName  = user?.fullName ?? 'Doctor';
+    final roleLabel = user?.roleDisplayName ?? 'Administrator';
+    final initials  = fullName
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(2)
+        .map((w) => w[0])
+        .join()
+        .toUpperCase();
+
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF6D28D9), Color(0xFF3B82F6)],
-        ),
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: _kBorder)),
       ),
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 12,
-        left: 20, right: 16, bottom: 20,
+        top: MediaQuery.of(context).padding.top + 14,
+        left: 24, right: 20, bottom: 16,
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          // Logo badge
+      child: Row(children: [
+        // Welcome
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Welcome back, $firstName 👋',
+                style: const TextStyle(
+                    fontSize: 20, fontWeight: FontWeight.w800, color: _kNavy,
+                    letterSpacing: -0.4)),
+            const SizedBox(height: 2),
+            const Text('Manage your clinic activities efficiently.',
+                style: TextStyle(fontSize: 13, color: _kMuted)),
+          ]),
+        ),
+
+        // Bell badge
+        Stack(clipBehavior: Clip.none, children: [
           Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+              color: const Color(0xFFF8FAFC),
+              shape: BoxShape.circle,
+              border: Border.all(color: _kBorder),
             ),
-            child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+            child: const Icon(Icons.notifications_outlined, size: 20, color: _kSlate),
           ),
-          const SizedBox(width: 12),
-
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Text('$greeting!',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800,
-                        fontSize: 17, letterSpacing: -0.3)),
-              ]),
-              const SizedBox(height: 2),
-              Text(
-                'Dr. Harshal S. Chaudhari  ·  Neurosurgery',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
-              ),
-            ]),
-          ),
-
-          // Date badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          Positioned(
+            top: -2, right: -2,
+            child: Container(
+              width: 18, height: 18,
+              decoration: const BoxDecoration(color: _kP1, shape: BoxShape.circle),
+              alignment: Alignment.center,
+              child: const Text('3',
+                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const CircleAvatar(radius: 4, backgroundColor: Color(0xFF34D399)),
-              const SizedBox(width: 6),
-              Text(
-                DateFormat('d MMM, EEE').format(now),
-                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
-              ),
-            ]),
           ),
+        ]),
 
+        const SizedBox(width: 14),
+
+        // User info
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: _kP1,
+            child: Text(initials,
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 8),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(fullName,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+            Text(roleLabel,
+                style: const TextStyle(fontSize: 11, color: _kMuted)),
+          ]),
           const SizedBox(width: 4),
-          IconButton(
-            icon: const Icon(Icons.person_add_outlined, color: Colors.white, size: 20),
-            tooltip: 'Register Patient',
-            onPressed: () => context.push('/patients/register'),
-            padding: const EdgeInsets.all(8),
-          ),
+          const Icon(Icons.keyboard_arrow_down_rounded, color: _kMuted, size: 20),
         ]),
       ]),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Stats row
-// ─────────────────────────────────────────────────────────────────────────────
-class _StatsRow extends StatelessWidget {
-  final int? total;
-  final int today;
-  const _StatsRow({this.total, required this.today});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-    child: Row(children: [
-      Expanded(child: _StatCard(
-        label: 'Total Patients',
-        value: total == null ? '…' : '$total',
-        icon: Icons.people_rounded,
-        color1: _kP1,
-        color2: _kP2,
-      )),
-      const SizedBox(width: 12),
-      Expanded(child: _StatCard(
-        label: 'Registered Today',
-        value: '$today',
-        icon: Icons.today_rounded,
-        color1: const Color(0xFF059669),
-        color2: _kGreen,
-      )),
-      const SizedBox(width: 12),
-      Expanded(child: _StatCard(
-        label: 'Active Visits',
-        value: '—',
-        icon: Icons.medical_services_rounded,
-        color1: const Color(0xFFF59E0B),
-        color2: const Color(0xFFFBBF24),
-      )),
-    ]),
-  );
-}
-
-class _StatCard extends StatelessWidget {
-  final String label, value;
-  final IconData icon;
-  final Color color1, color2;
-  const _StatCard({
-    required this.label, required this.value,
-    required this.icon, required this.color1, required this.color2,
-  });
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: _kBorder),
-      boxShadow: [
-        BoxShadow(color: color1.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, 4)),
-      ],
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        width: 36, height: 36,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [color1, color2]),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: Colors.white, size: 18),
-      ),
-      const SizedBox(height: 10),
-      Text(value, style: TextStyle(
-          fontSize: 22, fontWeight: FontWeight.w800, color: _kNavy, letterSpacing: -0.5)),
-      const SizedBox(height: 2),
-      Text(label, style: const TextStyle(fontSize: 10, color: _kMuted, fontWeight: FontWeight.w500),
-          maxLines: 1, overflow: TextOverflow.ellipsis),
-    ]),
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -286,75 +191,83 @@ class _QuickActionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Quick Actions',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kSlate)),
-      const SizedBox(height: 10),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy)),
+      const SizedBox(height: 12),
       Row(children: [
-        _QAction(
-          icon: Icons.person_add_rounded,
-          label: 'Register Patient',
-          color: _kP1,
-          onTap: () => context.push('/patients/register'),
+        Expanded(
+          child: _QuickActionCard(
+            iconBg: const Color(0xFFEEF2FF),
+            iconColor: _kP1,
+            icon: Icons.person_add_outlined,
+            title: 'Register Patient',
+            subtitle: 'Add new patient',
+            onTap: onRegister,
+          ),
         ),
-        const SizedBox(width: 10),
-        _QAction(
-          icon: Icons.medical_services_rounded,
-          label: 'New Visit',
-          color: _kP2,
-          onTap: () => context.push('/patients'),
-        ),
-        const SizedBox(width: 10),
-        _QAction(
-          icon: Icons.local_hospital_rounded,
-          label: 'New Surgery',
-          color: _kRed,
-          onTap: () => context.push('/patients'),
-        ),
-        const SizedBox(width: 10),
-        _QAction(
-          icon: Icons.search_rounded,
-          label: 'Find Patient',
-          color: _kGreen,
-          onTap: () => context.push('/patients'),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _QuickActionCard(
+            iconBg: const Color(0xFFEFF6FF),
+            iconColor: _kP2,
+            icon: Icons.calendar_today_outlined,
+            title: 'New Visit',
+            subtitle: 'Record patient visit',
+            onTap: () => context.push('/patients'),
+          ),
         ),
       ]),
     ]),
   );
 }
 
-class _QAction extends StatelessWidget {
+class _QuickActionCard extends StatelessWidget {
+  final Color iconBg, iconColor;
   final IconData icon;
-  final String label;
-  final Color color;
+  final String title, subtitle;
   final VoidCallback onTap;
-  const _QAction({required this.icon, required this.label, required this.color, required this.onTap});
+
+  const _QuickActionCard({
+    required this.iconBg, required this.iconColor, required this.icon,
+    required this.title, required this.subtitle, required this.onTap,
+  });
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: GestureDetector(
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
+          border: Border.all(color: _kBorder),
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: Row(children: [
           Container(
-            width: 36, height: 36,
+            width: 48, height: 48,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(10),
+              color: iconBg,
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(icon, color: iconColor, size: 24),
           ),
-          const SizedBox(height: 6),
-          Text(label,
-              style: TextStyle(fontSize: 9, color: color, fontWeight: FontWeight.w700),
-              textAlign: TextAlign.center, maxLines: 2),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title,
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700, color: iconColor)),
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  style: const TextStyle(fontSize: 12, color: _kMuted)),
+            ]),
+          ),
+          Icon(Icons.chevron_right_rounded, color: _kMuted, size: 22),
         ]),
       ),
     ),
@@ -381,39 +294,91 @@ class _SearchSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // Search bar
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _kBorder),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
-        ),
-        child: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: 'Search by name, PRN or phone…',
-            hintStyle: const TextStyle(color: _kMuted, fontSize: 14),
-            prefixIcon: const Icon(Icons.search_rounded, color: _kMuted, size: 20),
-            suffixIcon: controller.text.isNotEmpty
-                ? IconButton(icon: const Icon(Icons.close, size: 17, color: _kMuted), onPressed: onClear)
-                : null,
-            filled: false,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: _kP1, width: 1.5),
+      // Search + filter row
+      Row(children: [
+        // Search field
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _kBorder),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 6, offset: const Offset(0, 2)),
+              ],
+            ),
+            child: TextField(
+              controller: controller,
+              style: const TextStyle(fontSize: 14, color: _kNavy),
+              decoration: InputDecoration(
+                hintText: 'Search by name, PRN or phone...',
+                hintStyle: const TextStyle(color: _kMuted, fontSize: 14),
+                prefixIcon: const Icon(Icons.search_rounded, color: _kMuted, size: 20),
+                suffixIcon: controller.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close, size: 17, color: _kMuted),
+                        onPressed: onClear)
+                    : null,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: _kP1, width: 1.5),
+                ),
+              ),
+              onChanged: onChanged,
             ),
           ),
-          onChanged: onChanged,
         ),
-      ),
+        const SizedBox(width: 8),
 
-      const SizedBox(height: 14),
+        // All Patients dropdown (decorative label)
+        _FilterButton(
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Text('All Patients',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kNavy)),
+            SizedBox(width: 4),
+            Icon(Icons.keyboard_arrow_down_rounded, color: _kMuted, size: 18),
+          ]),
+        ),
+        const SizedBox(width: 8),
+
+        // Filters button
+        _FilterButton(
+          child: Row(mainAxisSize: MainAxisSize.min, children: const [
+            Icon(Icons.tune_rounded, color: _kSlate, size: 16),
+            SizedBox(width: 5),
+            Text('Filters',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kNavy)),
+          ]),
+        ),
+        const SizedBox(width: 8),
+
+        // Refresh icon
+        GestureDetector(
+          onTap: onRefresh,
+          child: Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _kBorder),
+            ),
+            child: state.isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(11),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: _kP1))
+                : const Icon(Icons.refresh_rounded, color: _kSlate, size: 18),
+          ),
+        ),
+      ]),
+
+      const SizedBox(height: 16),
 
       // List header
       Row(children: [
@@ -421,23 +386,41 @@ class _SearchSection extends StatelessWidget {
           state.isLoading && state.patients.isEmpty
               ? 'Loading patients…'
               : state.search?.isNotEmpty == true
-                  ? '${state.patients.length} result${state.patients.length == 1 ? '' : 's'}'
-                  : 'All Patients  ·  ${state.patients.length}',
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kSlate),
+                  ? 'Results'
+                  : 'All Patients',
+          style: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w700, color: _kNavy),
         ),
-        const Spacer(),
-        if (state.isLoading)
-          const SizedBox(width: 14, height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: _kP1)),
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, size: 18, color: _kMuted),
-          tooltip: 'Refresh',
-          onPressed: onRefresh,
-          padding: const EdgeInsets.all(4),
-          constraints: const BoxConstraints(),
-        ),
+        const SizedBox(width: 8),
+        if (!state.isLoading || state.patients.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF2FF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text('${state.patients.length}',
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: _kP1)),
+          ),
       ]),
     ]),
+  );
+}
+
+class _FilterButton extends StatelessWidget {
+  final Widget child;
+  const _FilterButton({required this.child});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: _kBorder),
+    ),
+    child: child,
   );
 }
 
@@ -449,6 +432,7 @@ class _PatientListSection extends StatelessWidget {
   final void Function(PatientEntity) onTap;
   final VoidCallback onRegister;
   final VoidCallback onRetry;
+
   const _PatientListSection({
     required this.state, required this.onTap,
     required this.onRegister, required this.onRetry,
@@ -468,16 +452,31 @@ class _PatientListSection extends StatelessWidget {
     if (state.patients.isEmpty) {
       return _EmptyState(hasSearch: state.search?.isNotEmpty == true, onRegister: onRegister);
     }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Column(children: [
-        ...state.patients.map((p) => _PatientTile(patient: p, onTap: () => onTap(p))),
-        if (state.hasMore)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator(color: _kP1, strokeWidth: 2)),
-          ),
-      ]),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _kBorder),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 8, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          children: state.patients.asMap().entries.map((e) {
+            final isLast = e.key == state.patients.length - 1;
+            return _PatientTile(
+              patient: e.value,
+              onTap: () => onTap(e.value),
+              isLast: isLast,
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 }
@@ -488,15 +487,21 @@ class _PatientListSection extends StatelessWidget {
 class _PatientTile extends StatelessWidget {
   final PatientEntity patient;
   final VoidCallback onTap;
-  const _PatientTile({required this.patient, required this.onTap});
+  final bool isLast;
 
-  static const _gradients = [
-    [Color(0xFF7C3AED), Color(0xFF6D28D9)],
-    [Color(0xFF2563EB), Color(0xFF3B82F6)],
-    [Color(0xFF059669), Color(0xFF10B981)],
-    [Color(0xFFDC2626), Color(0xFFEF4444)],
-    [Color(0xFFD97706), Color(0xFFF59E0B)],
-    [Color(0xFF0891B2), Color(0xFF06B6D4)],
+  const _PatientTile({
+    required this.patient,
+    required this.onTap,
+    this.isLast = false,
+  });
+
+  static const _avatarColors = [
+    Color(0xFF14B8A6),
+    Color(0xFF3B82F6),
+    Color(0xFFF97316),
+    Color(0xFF8B5CF6),
+    Color(0xFFEC4899),
+    Color(0xFF10B981),
   ];
 
   String _timeAgo(DateTime t) {
@@ -510,71 +515,61 @@ class _PatientTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final grad = _gradients[patient.id.hashCode.abs() % _gradients.length];
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _kBorder),
-            ),
-            child: Row(children: [
-              // Gradient avatar
-              Container(
-                width: 46, height: 46,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: grad, begin: Alignment.topLeft, end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  patient.initials,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
-                ),
-              ),
-              const SizedBox(width: 13),
+    final color = _avatarColors[patient.id.hashCode.abs() % _avatarColors.length];
 
-              // Name + tags
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(patient.fullName,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: _kNavy)),
-                  const SizedBox(height: 5),
-                  Wrap(spacing: 5, children: [
-                    if (patient.ageSex.isNotEmpty)
-                      _Chip(patient.ageSex, grad[0]),
-                    _Chip('PRN: ${patient.prn}', _kMuted),
-                    if (patient.phone?.isNotEmpty == true)
-                      _Chip(patient.phone!, _kMuted, icon: Icons.phone_outlined),
-                  ]),
-                ]),
-              ),
-
-              // Time + chevron
-              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(_timeAgo(patient.createdAt),
-                    style: const TextStyle(fontSize: 11, color: _kMuted, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                Container(
-                  width: 24, height: 24,
-                  decoration: BoxDecoration(
-                    color: _kBorder,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(Icons.chevron_right_rounded, size: 16, color: _kMuted),
-                ),
-              ]),
-            ]),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.vertical(
+          top: isLast == false && patient.id == patient.id ? Radius.zero : Radius.zero,
+          bottom: isLast ? const Radius.circular(16) : Radius.zero,
+        ),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            border: isLast
+                ? null
+                : const Border(bottom: BorderSide(color: _kBorder)),
           ),
+          child: Row(children: [
+            // Circle avatar
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: color,
+              child: Text(
+                patient.initials,
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Name + chips
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(patient.fullName,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 14, color: _kNavy)),
+                const SizedBox(height: 5),
+                Wrap(spacing: 5, runSpacing: 4, children: [
+                  if (patient.ageSex.isNotEmpty)
+                    _Chip(patient.ageSex, color),
+                  _Chip('PRN: ${patient.prn}', _kMuted),
+                  if (patient.phone?.isNotEmpty == true)
+                    _Chip(patient.phone!, _kMuted, icon: Icons.phone_outlined),
+                ]),
+              ]),
+            ),
+
+            // Time + chevron
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_timeAgo(patient.createdAt),
+                  style: const TextStyle(fontSize: 11, color: _kMuted, fontWeight: FontWeight.w500)),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, size: 20, color: _kMuted),
+            ]),
+          ]),
         ),
       ),
     );
@@ -591,7 +586,7 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
     decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.08),
+      color: color.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -599,7 +594,8 @@ class _Chip extends StatelessWidget {
         Icon(icon, size: 9, color: color),
         const SizedBox(width: 3),
       ],
-      Text(text, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      Text(text,
+          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
     ]),
   );
 }
@@ -616,19 +612,22 @@ class _GradientFab extends StatelessWidget {
     onTap: onPressed,
     child: Container(
       height: 52,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [_kP1, _kP2]),
+        color: _kP1,
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
-          BoxShadow(color: _kP1.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6)),
+          BoxShadow(
+              color: _kP1.withValues(alpha: 0.35),
+              blurRadius: 16, offset: const Offset(0, 6)),
         ],
       ),
       child: const Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.person_add_rounded, color: Colors.white, size: 20),
+        Icon(Icons.add_rounded, color: Colors.white, size: 20),
         SizedBox(width: 8),
         Text('New Patient',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+            style: TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
       ]),
     ),
   );
@@ -649,9 +648,7 @@ class _EmptyState extends StatelessWidget {
       Container(
         width: 80, height: 80,
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [_kP1.withValues(alpha: 0.1), _kP2.withValues(alpha: 0.1)],
-          ),
+          color: _kP1.withValues(alpha: 0.08),
           shape: BoxShape.circle,
         ),
         child: Icon(
@@ -664,7 +661,9 @@ class _EmptyState extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: _kNavy)),
       const SizedBox(height: 8),
       Text(
-        hasSearch ? 'Try different search terms' : 'Register your first patient to get started',
+        hasSearch
+            ? 'Try different search terms'
+            : 'Register your first patient to get started',
         textAlign: TextAlign.center,
         style: const TextStyle(color: _kMuted, fontSize: 13),
       ),
@@ -675,15 +674,20 @@ class _EmptyState extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [_kP1, _kP2]),
+              color: _kP1,
               borderRadius: BorderRadius.circular(14),
-              boxShadow: [BoxShadow(color: _kP1.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+              boxShadow: [
+                BoxShadow(
+                    color: _kP1.withValues(alpha: 0.3),
+                    blurRadius: 12, offset: const Offset(0, 4)),
+              ],
             ),
             child: const Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
               SizedBox(width: 8),
               Text('Register Patient',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                  style: TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
             ]),
           ),
         ),
@@ -717,7 +721,8 @@ class _ErrorState extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: _kNavy)),
       const SizedBox(height: 8),
       Text(
-        message.contains('timed out') ? 'Connection timed out. Check your network.'
+        message.contains('timed out')
+            ? 'Connection timed out. Check your network.'
             : message.contains('JWT') || message.contains('auth')
                 ? 'Session expired. Please log in again.'
                 : 'An error occurred loading patient data.',
@@ -730,13 +735,14 @@ class _ErrorState extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [_kP1, _kP2]),
+            color: _kP1,
             borderRadius: BorderRadius.circular(14),
           ),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
             SizedBox(width: 8),
-            Text('Try Again', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+            Text('Try Again',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
           ]),
         ),
       ),

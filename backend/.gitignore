@@ -1,0 +1,6 @@
+target/
+uploads/
+*.jar
+*.war
+*.class
+.mvn/

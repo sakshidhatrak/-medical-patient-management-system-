@@ -71,6 +71,27 @@ class PhotoUploadWidget extends ConsumerWidget {
                 style:
                     const TextStyle(color: Colors.red, fontSize: 12)),
           ),
+        // Pending-upload notice
+        Builder(builder: (_) {
+          final pending =
+              relevant.where((p) => !p.isUploaded).length;
+          if (pending == 0) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                const Icon(Icons.schedule,
+                    size: 12, color: Colors.orange),
+                const SizedBox(width: 4),
+                Text(
+                  '$pending photo${pending > 1 ? 's' : ''} pending upload — will sync when online',
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.orange),
+                ),
+              ],
+            ),
+          );
+        }),
         if (relevant.isNotEmpty) ...[
           const SizedBox(height: 8),
           PhotoGalleryWidget(

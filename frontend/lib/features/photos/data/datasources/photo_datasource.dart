@@ -1,10 +1,9 @@
 import 'dart:typed_data';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
-import 'package:uuid/uuid.dart';
 
+import '../../../../core/config/env_config.dart';
 import '../../../../core/error/exceptions.dart';
 import '../../domain/entities/photo_entity.dart';
 
@@ -17,6 +16,7 @@ abstract interface class PhotoDataSource {
     String? visitId,
     String? surgeryId,
     String? caption,
+    String? clientId,
   });
 
   Future<List<PhotoEntity>> getPhotos({
@@ -28,11 +28,26 @@ abstract interface class PhotoDataSource {
   Future<void> deletePhoto(String photoId, String storagePath);
 }
 
-class PhotoSupabaseDataSource implements PhotoDataSource {
-  final sb.SupabaseClient _client;
-  static const _bucket = 'patient-photos';
+/// Stores photos on the local Spring Boot server.
+/// Files saved to ./uploads/{patientId}/{category}/{uuid}.ext on the server.
+/// Metadata saved to local PostgreSQL photos table.
+class PhotoSpringDataSource implements PhotoDataSource {
+  late final Dio _dio;
 
-  const PhotoSupabaseDataSource(this._client);
+  PhotoSpringDataSource(String? token) {
+    _dio = Dio(BaseOptions(
+      baseUrl: EnvConfig.baseUrl,
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 60),
+    ));
+    if (token != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $token';
+    }
+  }
+
+  void updateToken(String token) {
+    _dio.options.headers['Authorization'] = 'Bearer $token';
+  }
 
   @override
   Future<PhotoEntity> uploadPhoto({
@@ -43,52 +58,32 @@ class PhotoSupabaseDataSource implements PhotoDataSource {
     String? visitId,
     String? surgeryId,
     String? caption,
+    String? clientId,
   }) async {
     try {
-      // ── Compress (WhatsApp-style ~500 KB max) ─────────────────
-      final compressed = kIsWeb
-          ? bytes   // flutter_image_compress doesn't work on web
-          : await _compress(bytes);
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename.isEmpty ? 'photo.jpeg' : filename,
+          contentType: DioMediaType.parse(_mimeFromFilename(filename)),
+        ),
+        'category': category.value,
+        if (caption != null) 'caption': caption,
+        if (visitId != null) 'visitId': visitId,
+        if (surgeryId != null) 'surgeryId': surgeryId,
+      });
 
-      // ── Upload to Supabase Storage ────────────────────────────
-      final ext  = _ext(filename);
-      final id   = const Uuid().v4();
-      final path = '$patientId/${category.value}/$id.$ext';
-
-      await _client.storage.from(_bucket).uploadBinary(
-            path,
-            compressed,
-            fileOptions: sb.FileOptions(
-              contentType: 'image/$ext',
-              upsert: false,
-            ),
-          );
-
-      final url = _client.storage.from(_bucket).getPublicUrl(path);
-
-      // ── Save metadata ─────────────────────────────────────────
-      final now = DateTime.now().toIso8601String();
-      final data = await _client.from('photos').insert({
-        'id':           id,
-        'patient_id':   patientId,
-        'visit_id':     visitId,
-        'surgery_id':   surgeryId,
-        'storage_path': path,
-        'url':          url,
-        'category':     category.value,
-        'caption':      caption,
-        'file_size':    compressed.length,
-        'mime_type':    'image/$ext',
-        'is_uploaded':  true,
-        'created_at':   now,
-      }).select().single();
-
-      return _fromJson(data as Map<String, dynamic>);
-    } on sb.StorageException catch (e) {
-      throw ServerException('Photo upload failed: ${e.message}',
-          code: 'UPLOAD_ERROR');
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'DB_ERROR');
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/patients/$patientId/photos/upload',
+        data: formData,
+      );
+      final data = response.data?['data'] as Map<String, dynamic>;
+      return _fromJson(data);
+    } on DioException catch (e) {
+      throw ServerException(
+        'Photo upload failed: ${e.response?.data ?? e.message}',
+        code: 'UPLOAD_ERROR',
+      );
     }
   }
 
@@ -99,59 +94,72 @@ class PhotoSupabaseDataSource implements PhotoDataSource {
     String? surgeryId,
   }) async {
     try {
-      var query = _client
-          .from('photos')
-          .select()
-          .eq('patient_id', patientId);
-
-      if (visitId != null) query = query.eq('visit_id', visitId);
-      if (surgeryId != null) query = query.eq('surgery_id', surgeryId);
-
-      final data = await query.order('created_at', ascending: false);
-      return (data as List)
-          .map((e) => _fromJson(e as Map<String, dynamic>))
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/patients/$patientId/photos',
+      );
+      final list = response.data?['data'] as List<dynamic>? ?? [];
+      var photos = list
+          .cast<Map<String, dynamic>>()
+          .map(_fromJson)
           .toList();
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      if (visitId != null) {
+        photos = photos.where((p) => p.visitId == visitId).toList();
+      }
+      if (surgeryId != null) {
+        photos = photos.where((p) => p.surgeryId == surgeryId).toList();
+      }
+      return photos;
+    } on DioException catch (e) {
+      throw ServerException(
+        e.response?.data?.toString() ?? e.message ?? 'Fetch failed',
+        code: 'FETCH_ERROR',
+      );
     }
   }
 
   @override
   Future<void> deletePhoto(String photoId, String storagePath) async {
-    await _client.storage.from(_bucket).remove([storagePath]);
-    await _client.from('photos').delete().eq('id', photoId);
-  }
-
-  // ── Compression ──────────────────────────────────────────────
-
-  Future<Uint8List> _compress(Uint8List bytes) async {
-    final result = await FlutterImageCompress.compressWithList(
-      bytes,
-      quality: 75,
-      minWidth: 1080,
-      minHeight: 1080,
-    );
-    // Only use compressed if it's actually smaller
-    return result.length < bytes.length ? Uint8List.fromList(result) : bytes;
-  }
-
-  String _ext(String filename) {
-    final lower = filename.toLowerCase();
-    if (lower.endsWith('.png')) return 'png';
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'jpeg';
-    return 'jpeg';
-  }
-
-  PhotoEntity _fromJson(Map<String, dynamic> j) => PhotoEntity(
-        id:          j['id'] as String,
-        patientId:   j['patient_id'] as String,
-        visitId:     j['visit_id'] as String?,
-        surgeryId:   j['surgery_id'] as String?,
-        storagePath: j['storage_path'] as String,
-        url:         j['url'] as String?,
-        category:    PhotoCategoryX.fromValue(j['category'] as String),
-        caption:     j['caption'] as String?,
-        isUploaded:  j['is_uploaded'] as bool? ?? false,
-        createdAt:   DateTime.parse(j['created_at'] as String),
+    try {
+      await _dio.delete<void>('/photos/$photoId');
+    } on DioException catch (e) {
+      throw ServerException(
+        e.response?.data?.toString() ?? e.message ?? 'Delete failed',
+        code: 'DELETE_ERROR',
       );
+    }
+  }
+
+  PhotoEntity _fromJson(Map<String, dynamic> j) {
+    // viewUrl from backend: /api/photos/file/{storagePath}
+    // Prefix with server origin for full URL usable in Image.network()
+    final viewUrl = j['viewUrl'] as String?;
+    final displayUrl = viewUrl != null && viewUrl.startsWith('/api/')
+        ? '${EnvConfig.baseUrl.replaceAll('/api', '')}$viewUrl'
+        : viewUrl;
+
+    return PhotoEntity(
+      id: (j['id'] as Object).toString(),
+      patientId: (j['patientId'] as Object).toString(),
+      visitId: j['visitId'] != null ? j['visitId'].toString() : null,
+      surgeryId: j['surgeryId'] != null ? j['surgeryId'].toString() : null,
+      storagePath: j['storagePath'] as String,
+      url: displayUrl,
+      category: PhotoCategoryX.fromValue(j['category'] as String? ?? 'visit'),
+      caption: j['caption'] as String?,
+      isUploaded: j['isUploaded'] as bool? ?? true,
+      fileSize: j['fileSize'] as int?,
+      createdAt: DateTime.parse(j['createdAt'] as String),
+    );
+  }
+
+  String _mimeFromFilename(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.png'))  return 'image/png';
+    if (lower.endsWith('.pdf'))  return 'application/pdf';
+    if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (lower.endsWith('.doc'))  return 'application/msword';
+    if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (lower.endsWith('.xls'))  return 'application/vnd.ms-excel';
+    return 'image/jpeg';
+  }
 }

@@ -7,6 +7,7 @@ enum PhotoCategory {
   treatment,
   surgeryFindings,
   surgeryOtNotes,
+  patientReport,
 }
 
 extension PhotoCategoryX on PhotoCategory {
@@ -17,6 +18,7 @@ extension PhotoCategoryX on PhotoCategory {
         PhotoCategory.treatment       => 'treatment',
         PhotoCategory.surgeryFindings => 'surgery_findings',
         PhotoCategory.surgeryOtNotes  => 'surgery_ot_notes',
+        PhotoCategory.patientReport   => 'patient_report',
       };
 
   String get label => switch (this) {
@@ -26,15 +28,17 @@ extension PhotoCategoryX on PhotoCategory {
         PhotoCategory.treatment       => 'Treatment',
         PhotoCategory.surgeryFindings => 'Surgical Findings',
         PhotoCategory.surgeryOtNotes  => 'OT Notes',
+        PhotoCategory.patientReport   => 'Patient Report',
       };
 
   static PhotoCategory fromValue(String v) => switch (v) {
-        'examination'     => PhotoCategory.examination,
-        'radiology'       => PhotoCategory.radiology,
-        'treatment'       => PhotoCategory.treatment,
+        'examination'      => PhotoCategory.examination,
+        'radiology'        => PhotoCategory.radiology,
+        'treatment'        => PhotoCategory.treatment,
         'surgery_findings' => PhotoCategory.surgeryFindings,
         'surgery_ot_notes' => PhotoCategory.surgeryOtNotes,
-        _                 => PhotoCategory.visit,
+        'patient_report'   => PhotoCategory.patientReport,
+        _                  => PhotoCategory.visit,
       };
 }
 
@@ -49,6 +53,7 @@ class PhotoEntity extends Equatable {
   final String? caption;
   final bool isUploaded;
   final String? localPath;   // for offline
+  final int? fileSize;       // bytes — null when unknown
   final DateTime createdAt;
 
   const PhotoEntity({
@@ -62,6 +67,7 @@ class PhotoEntity extends Equatable {
     this.caption,
     this.isUploaded = false,
     this.localPath,
+    this.fileSize,
     required this.createdAt,
   });
 

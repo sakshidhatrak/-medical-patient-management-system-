@@ -1,13 +1,13 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config/env_config.dart';
+import '../storage/storage_service.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/error_interceptor.dart';
 import 'interceptors/logging_interceptor.dart';
 
 class DioFactory {
-  static Dio create(FlutterSecureStorage secureStorage) {
+  static Dio create(StorageService storage) {
     final dio = Dio(
       BaseOptions(
         baseUrl: EnvConfig.baseUrl,
@@ -26,7 +26,7 @@ class DioFactory {
     if (EnvConfig.isDevelopment) {
       dio.interceptors.add(LoggingInterceptor());
     }
-    dio.interceptors.add(AuthInterceptor(secureStorage));
+    dio.interceptors.add(AuthInterceptor(storage));
     dio.interceptors.add(ErrorInterceptor());
 
     return dio;

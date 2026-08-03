@@ -1,84 +1,156 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
-import 'package:uuid/uuid.dart';
 
+import '../../../../core/network/api_client.dart';
+import '../../../../core/providers/connectivity_provider.dart';
+import '../../../../core/sync/sync_engine.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/examination_entity.dart';
 
 // ── Provider ────────────────────────────────────────────────────────
+// arg: "patientId/visitId"
 
 final examinationProvider = StateNotifierProvider.family<
-    ExaminationNotifier, ExaminationEntity?, String>((ref, visitId) =>
-    ExaminationNotifier(visitId));
+    ExaminationNotifier, ExaminationEntity?, String>((ref, arg) =>
+    ExaminationNotifier(
+      arg,
+      ref.read(apiClientProvider),
+      ref.read(localExaminationCacheProvider),
+      ref.read(offlineQueueProvider),
+      ref.read(isOnlineProvider),
+    ));
 
-class ExaminationNotifier
-    extends StateNotifier<ExaminationEntity?> {
-  final String visitId;
-  ExaminationNotifier(this.visitId) : super(null) {
+class ExaminationNotifier extends StateNotifier<ExaminationEntity?> {
+  final String _arg; // "patientId/visitId"
+  final ApiClient _api;
+  final LocalExaminationCache _local;
+  final OfflineQueue _queue;
+  final bool _online;
+
+  ExaminationNotifier(
+      this._arg, this._api, this._local, this._queue, this._online)
+      : super(null) {
     _load();
   }
 
+  String get _patientId => _arg.split('/')[0];
+  String get _visitId =>
+      _arg.split('/').length > 1 ? _arg.split('/')[1] : _arg;
+
+  ExaminationEntity _parseDto(Map<String, dynamic> data) {
+    final motorDataStr = data['motorData'] as String?;
+    final motorList = motorDataStr != null && motorDataStr.isNotEmpty
+        ? (jsonDecode(motorDataStr) as List<dynamic>)
+            .map((e) => MotorEntry.fromJson(e as Map<String, dynamic>))
+            .toList()
+        : <MotorEntry>[];
+    final now = DateTime.now().toIso8601String();
+    return ExaminationEntity(
+      id: data['id'] != null ? (data['id'] as Object).toString() : '',
+      visitId: _visitId,
+      patientId: _patientId,
+      generalText: data['generalText'] as String?,
+      motorText: data['motorText'] as String?,
+      sensoryText: data['sensoryText'] as String?,
+      reflexesText: data['reflexesText'] as String?,
+      cerebellarText: data['cerebellarText'] as String?,
+      specialTestsText: data['specialTestsText'] as String?,
+      motorData: motorList,
+      createdAt:
+          DateTime.parse((data['createdAt'] ?? now) as String),
+      updatedAt:
+          DateTime.parse((data['updatedAt'] ?? now) as String),
+    );
+  }
+
   Future<void> _load() async {
-    try {
-      final data = await sb.Supabase.instance.client
-          .from('examinations')
-          .select()
-          .eq('visit_id', visitId)
-          .maybeSingle();
-      if (data != null) {
-        final motorList = (data['motor_data'] as List<dynamic>?)
-                ?.map((e) => MotorEntry.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            [];
-        state = ExaminationEntity(
-          id: data['id'] as String,
-          visitId: visitId,
-          patientId: data['patient_id'] as String,
-          generalText:       data['general_text']        as String?,
-          motorText:         data['motor_text']          as String?,
-          sensoryText:       data['sensory_text']        as String?,
-          reflexesText:      data['reflexes_text']       as String?,
-          cerebellarText:    data['cerebellar_text']     as String?,
-          specialTestsText:  data['special_tests_text']  as String?,
-          motorData:         motorList,
-          createdAt: DateTime.parse(data['created_at'] as String),
-          updatedAt: DateTime.parse(data['updated_at'] as String),
+    // 1. Load from local cache first.
+    if (!kIsWeb) {
+      try {
+        final cached = await _local.getForVisit(_visitId);
+        if (cached != null) state = _parseDto(cached);
+      } catch (_) {}
+    }
+
+    // 2. Sync from API if online.
+    if (_online) {
+      try {
+        final data = await _api.get<Map<String, dynamic>?>(
+          '/patients/$_patientId/visits/$_visitId/examination',
+          fromJson: (json) {
+            final d = (json as Map<String, dynamic>)['data'];
+            return d == null ? null : d as Map<String, dynamic>;
+          },
         );
-      }
-    } catch (_) {}
+        if (data != null) {
+          state = _parseDto(data);
+          if (!kIsWeb) {
+            await _local.upsert(_visitId, _patientId, data);
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   void update(ExaminationEntity exam) => state = exam;
 
   Future<bool> save(String patientId) async {
-    try {
-      final payload = {
-        'patient_id':        patientId,
-        'visit_id':          visitId,
-        'general_text':      state?.generalText,
-        'motor_text':        state?.motorText,
-        'sensory_text':      state?.sensoryText,
-        'reflexes_text':     state?.reflexesText,
-        'cerebellar_text':   state?.cerebellarText,
-        'special_tests_text': state?.specialTestsText,
-        'motor_data': state?.motorData.map((m) => m.toJson()).toList() ?? [],
+    final payload = {
+      'generalText': state?.generalText,
+      'motorText': state?.motorText,
+      'sensoryText': state?.sensoryText,
+      'reflexesText': state?.reflexesText,
+      'cerebellarText': state?.cerebellarText,
+      'specialTestsText': state?.specialTestsText,
+      'motorData': jsonEncode(
+          state?.motorData.map((m) => m.toJson()).toList() ?? []),
+    };
+
+    // Save locally first.
+    if (!kIsWeb) {
+      final localData = {
+        ...payload,
+        'id': state?.id ?? '',
+        'patientId': _patientId,
+        'visitId': _visitId,
+        'createdAt': state?.createdAt.toIso8601String() ??
+            DateTime.now().toIso8601String(),
+        'updatedAt': DateTime.now().toIso8601String(),
       };
-      if (state == null) {
-        final id = const Uuid().v4();
-        await sb.Supabase.instance.client
-            .from('examinations')
-            .insert({...payload, 'id': id});
-      } else {
-        await sb.Supabase.instance.client
-            .from('examinations')
-            .update(payload)
-            .eq('id', state!.id);
-      }
-      return true;
-    } catch (_) {
-      return false;
+      await _local.upsert(_visitId, _patientId, localData);
     }
+
+    if (_online) {
+      try {
+        final result = await _api.put<Map<String, dynamic>>(
+          '/patients/$_patientId/visits/$_visitId/examination',
+          data: payload,
+          fromJson: (json) =>
+              (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        );
+        state = _parseDto(result);
+        if (!kIsWeb) await _local.upsert(_visitId, _patientId, result);
+        return true;
+      } catch (_) {}
+    }
+
+    // Offline: enqueue.
+    if (!kIsWeb) {
+      await _queue.enqueue(
+        entityType: 'examinations',
+        entityId: _visitId,
+        operation: 'update',
+        payload: {
+          ...payload,
+          'patientId': _patientId,
+          'visitId': _visitId,
+        },
+      );
+    }
+    return true;
   }
 }
 
@@ -159,7 +231,7 @@ class _ExaminationScreenState extends ConsumerState<ExaminationScreen>
 
   @override
   Widget build(BuildContext context) {
-    final exam = ref.watch(examinationProvider(widget.visitId));
+    final exam = ref.watch(examinationProvider('${widget.patientId}/${widget.visitId}'));
     if (exam != null && !_loaded) _apply(exam);
 
     return Scaffold(
@@ -173,10 +245,10 @@ class _ExaminationScreenState extends ConsumerState<ExaminationScreen>
           TextButton(
             onPressed: () async {
               ref
-                  .read(examinationProvider(widget.visitId).notifier)
+                  .read(examinationProvider('${widget.patientId}/${widget.visitId}').notifier)
                   .update(_buildEntity(exam));
               final ok = await ref
-                  .read(examinationProvider(widget.visitId).notifier)
+                  .read(examinationProvider('${widget.patientId}/${widget.visitId}').notifier)
                   .save(widget.patientId);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -218,7 +290,7 @@ class _ExaminationScreenState extends ConsumerState<ExaminationScreen>
             onMotorDataChanged: (data) {
               final updated = _buildEntity(exam).copyWith(motorData: data);
               ref
-                  .read(examinationProvider(widget.visitId).notifier)
+                  .read(examinationProvider('${widget.patientId}/${widget.visitId}').notifier)
                   .update(updated);
               final generated = data
                   .where((e) => e.generatedText.isNotEmpty)

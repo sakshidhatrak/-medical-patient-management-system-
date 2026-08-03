@@ -1,6 +1,5 @@
-import 'package:supabase_flutter/supabase_flutter.dart' as sb;
-
 import '../../../../core/error/exceptions.dart';
+import '../../../../core/network/api_client.dart';
 import '../models/visit_model.dart';
 
 abstract interface class VisitSupabaseDataSource {
@@ -11,84 +10,96 @@ abstract interface class VisitSupabaseDataSource {
   Future<void> deleteVisit(String id);
 }
 
-class VisitSupabaseDataSourceImpl implements VisitSupabaseDataSource {
-  final sb.SupabaseClient _client;
-  const VisitSupabaseDataSourceImpl(this._client);
-
-  static const _table = 'visits';
+class VisitApiDataSourceImpl implements VisitSupabaseDataSource {
+  final ApiClient _api;
+  const VisitApiDataSourceImpl(this._api);
 
   @override
   Future<List<VisitModel>> getVisitsForPatient(String patientId) async {
     try {
-      final data = await _client
-          .from(_table)
-          .select()
-          .eq('patient_id', patientId)
-          .eq('is_active', true)
-          .order('visit_date', ascending: false);
-      return (data as List)
-          .map((e) => VisitModel.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      return await _api.get<List<VisitModel>>(
+        '/patients/$patientId/visits',
+        fromJson: (json) {
+          final list = (json as Map<String, dynamic>)['data'] as List<dynamic>;
+          return list
+              .map((e) => VisitModel.fromJson(e as Map<String, dynamic>))
+              .toList();
+        },
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<VisitModel> getVisitById(String id) async {
+    // visitId alone isn't enough — caller must pass patientId/visitId.
+    // The provider always calls with full context; we encode both in id as "patientId/visitId".
+    final parts = id.split('/');
+    final patientId = parts[0];
+    final visitId = parts.length > 1 ? parts[1] : parts[0];
     try {
-      final data =
-          await _client.from(_table).select().eq('id', id).single();
-      return VisitModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      if (e.code == 'PGRST116') {
-        throw NotFoundException('Visit not found.', code: 'NOT_FOUND');
-      }
-      throw ServerException(e.message, code: 'FETCH_ERROR');
+      return await _api.get<VisitModel>(
+        '/patients/$patientId/visits/$visitId',
+        fromJson: (json) => VisitModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'FETCH_ERROR');
     }
   }
 
   @override
   Future<VisitModel> createVisit(VisitModel visit) async {
     try {
-      final data = await _client
-          .from(_table)
-          .insert(visit.toSupabaseJson())
-          .select()
-          .single();
-      return VisitModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'CREATE_ERROR');
+      return await _api.post<VisitModel>(
+        '/patients/${visit.patientId}/visits',
+        data: visit.toApiJson(),
+        fromJson: (json) => VisitModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'CREATE_ERROR');
     }
   }
 
   @override
   Future<VisitModel> updateVisit(VisitModel visit) async {
     try {
-      final payload = visit.toSupabaseJson()
-        ..remove('id')
-        ..remove('patient_id');
-      final data = await _client
-          .from(_table)
-          .update(payload)
-          .eq('id', visit.id)
-          .select()
-          .single();
-      return VisitModel.fromJson(data as Map<String, dynamic>);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'UPDATE_ERROR');
+      return await _api.put<VisitModel>(
+        '/patients/${visit.patientId}/visits/${visit.id}',
+        data: visit.toApiJson(),
+        fromJson: (json) => VisitModel.fromJson(
+          (json as Map<String, dynamic>)['data'] as Map<String, dynamic>,
+        ),
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'UPDATE_ERROR');
     }
   }
 
   @override
   Future<void> deleteVisit(String id) async {
+    // id is "patientId/visitId"
+    final parts = id.split('/');
+    final patientId = parts[0];
+    final visitId = parts.length > 1 ? parts[1] : parts[0];
     try {
-      await _client.from(_table).update({
-        'is_active': false,
-        'deleted_at': DateTime.now().toIso8601String(),
-      }).eq('id', id);
-    } on sb.PostgrestException catch (e) {
-      throw ServerException(e.message, code: 'DELETE_ERROR');
+      await _api.delete<void>('/patients/$patientId/visits/$visitId');
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ServerException(e.toString(), code: 'DELETE_ERROR');
     }
   }
 }
