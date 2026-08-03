@@ -300,9 +300,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Save / Create visit ───────────────────────────────────────────────────
   Future<void> _save() async {
     if (_saving) return;
+    _saving = true; // set synchronously before any await so rapid taps are blocked
     final isNew = widget.visitId == null;
 
     if (isNew && !_hasAnyTreatmentData()) {
+      _saving = false;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: const Row(children: [
           Icon(Icons.info_outline, color: Colors.white, size: 18),
@@ -318,7 +320,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       return;
     }
 
-    setState(() => _saving = true);
+    setState(() {});
 
     String? nullIfEmpty(String s) => s.trim().isEmpty ? null : s.trim();
 
