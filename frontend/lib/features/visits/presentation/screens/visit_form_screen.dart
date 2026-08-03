@@ -179,7 +179,8 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
 
   Future<void> _save({bool complete = true}) async {
     if (_saving || _uploadingFiles) return;
-    setState(() => _saving = true);
+    _saving = true; // set synchronously before any await so rapid taps are blocked
+    setState(() {});
 
     final current = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}'));
     if (current == null) {
