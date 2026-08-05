@@ -59,16 +59,17 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Wizard state ───────────────────────────────────────────────────────────
   int _step = 0;
   late final PageController _pageCtrl;
-  bool _saving       = false;
-  bool _visitLoaded  = false;
-  bool _visitLoading = false; // true while async load is in progress
-  bool _justSaved    = false; // true right after save/update
+  bool _saving            = false;
+  bool _visitLoaded       = false;
+  bool _visitLoading      = false;
+  bool _justSaved         = false;
+  bool _visitTypeResolved = false; // true once we've set the type from existing visits
   PatientEntity? _patient;
   VisitEntity? _savedVisit;
 
   // ── Visit meta ─────────────────────────────────────────────────────────────
   DateTime  _visitDate = DateTime.now();
-  VisitType _visitType = VisitType.opd; // overridden in initState for follow-ups
+  VisitType _visitType = VisitType.opd;
 
   // ── Treatment: History & Complaint ────────────────────────────────────────
   final _prevHistoryCtrl     = TextEditingController();
@@ -125,15 +126,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     _pageCtrl = PageController(initialPage: _step);
     if (widget.visitId != null) {
       _visitLoading = true;
-    } else {
-      // Default to Follow-up if the patient already has at least one visit
-      Future.microtask(() {
-        if (!mounted) return;
-        final existing = ref.read(visitsProvider(widget.patientId));
-        if (existing.isNotEmpty) {
-          setState(() => _visitType = VisitType.followUp);
-        }
-      });
     }
   }
 
@@ -609,6 +601,17 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     final patientAsync = ref.watch(patientByIdProvider(widget.patientId));
     patientAsync.whenData((p) { if (p != null && _patient == null) _patient = p; });
 
+    // Reactively set Follow-up once visits load (for new visit only)
+    if (widget.visitId == null && !_visitTypeResolved) {
+      final existing = ref.watch(visitsProvider(widget.patientId));
+      if (existing.isNotEmpty) {
+        _visitTypeResolved = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _visitType = VisitType.followUp);
+        });
+      }
+    }
+
     if (widget.visitId != null) {
       final visit = ref.watch(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
       if (visit != null) {
@@ -616,9 +619,49 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       }
     }
 
+    final vp = MediaQuery.of(context).viewPadding;
+    final isLast    = _step == 1;
+    final isPreview = _step == 2;
     return Scaffold(
       backgroundColor: _kBg,
+      resizeToAvoidBottomInset: false,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: isPreview ? null : Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton.icon(
+            onPressed: _saving ? null : (isLast ? _save : _nextStep),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _kBlue,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            icon: _saving
+                ? const SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : Icon(isLast
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.arrow_forward_rounded,
+                    size: 18),
+            label: _saving
+                ? const SizedBox.shrink()
+                : Text(isLast
+                    ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
+                    : 'Continue'),
+          ),
+        ),
+      ),
       body: Column(children: [
+        SizedBox(height: vp.top),
         _buildWizardHeader(),
         _buildStepBar(),
         Expanded(
@@ -633,6 +676,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ),
         ),
         _buildBottomNav(),
+        SizedBox(height: vp.bottom),
       ]),
     );
   }
@@ -640,7 +684,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Wizard header ─────────────────────────────────────────────────────────
   Widget _buildWizardHeader() => Container(
     color: Colors.white,
-    padding: const EdgeInsets.fromLTRB(8, 44, 16, 10),
+    padding: const EdgeInsets.fromLTRB(8, 8, 16, 10),
     child: Row(children: [
       IconButton(
         icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy),
@@ -760,13 +804,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
-    final isLast    = _step == 1;
     final isPreview = _step == 2;
 
     return Container(
       color: Colors.white,
-      padding: EdgeInsets.fromLTRB(
-          16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (!isPreview) ...[
           ClipRRect(
@@ -778,11 +820,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               color: _kBlue,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
         if (isPreview) ...[
           Row(children: [
-            // Edit button — only for existing visits
             if (widget.visitId != null) ...[
               Expanded(
                 child: OutlinedButton.icon(
@@ -838,77 +879,30 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ),
             ),
           ]),
-        ] else
-          Row(children: [
-            if (_step > 0) ...[
-              OutlinedButton(
-                onPressed: _saving ? null : _prevStep,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _kSlate,
-                  side: const BorderSide(color: _kBorder, width: 1.5),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                child: const Icon(Icons.arrow_back_ios_new, size: 16),
+        ] else if (_step > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _saving ? null : _prevStep,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _kSlate,
+                side: const BorderSide(color: _kBorder, width: 1.5),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: GestureDetector(
-                onTap: _saving ? null : (isLast ? _save : _nextStep),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: _saving
-                          ? [_kBlue.withValues(alpha: 0.5),
-                             _kBlue.withValues(alpha: 0.5)]
-                          : [_kBlue, const Color(0xFF3B82F6)],
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: _saving ? [] : [
-                      BoxShadow(
-                        color: _kBlue.withValues(alpha: 0.3),
-                        blurRadius: 8, offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: _saving
-                      ? const SizedBox(
-                          width: 20, height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : Row(mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              isLast
-                                  ? (widget.visitId == null
-                                      ? 'Save Visit'
-                                      : 'Update Visit')
-                                  : 'Continue',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 16,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(width: 8),
-                            Icon(
-                              isLast
-                                  ? Icons.check_circle_outline_rounded
-                                  : Icons.arrow_forward_rounded,
-                              color: Colors.white, size: 18,
-                            ),
-                          ]),
-                ),
-              ),
+              icon: const Icon(Icons.arrow_back_ios_new, size: 16),
+              label: const Text('Back'),
             ),
-          ]),
+          ),
+        // placeholder — FAB removed from here, now as floatingActionButton
+        // We only need enough space for FAB not to overlap back button
+        if (!isPreview) const SizedBox(height: 60),
       ]),
     );
   }
+
 
   // ── Step 1 : Patient Info (read-only) ─────────────────────────────────────
   Widget _buildStep1(AsyncValue<PatientEntity?> patientAsync) {
@@ -1559,51 +1553,38 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     Widget eRow(String label, String value,
         List<({String name, Uint8List bytes})> files) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(
-          width: 124,
-          child: Text(label,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        if (value.isNotEmpty)
+          Text(value,
               style: const TextStyle(
-                  fontSize: 11, color: _kMuted, fontWeight: FontWeight.w600)),
-        ),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-            if (value.isNotEmpty)
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 12, color: _kNavy,
-                      fontWeight: FontWeight.w600))
-            else if (files.isEmpty)
-              const Text('—',
-                  style: TextStyle(
-                      fontSize: 12, color: _kMuted,
-                      fontWeight: FontWeight.w500)),
-            if (files.isNotEmpty) ...[
-              if (value.isNotEmpty) const SizedBox(height: 4),
-              Wrap(spacing: 6, runSpacing: 4,
-                  children: files.map((f) => _fileViewChip(f)).toList()),
-            ],
-          ]),
-        ),
+                  fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600))
+        else if (files.isEmpty)
+          const Text('—',
+              style: TextStyle(
+                  fontSize: 13, color: _kMuted, fontWeight: FontWeight.w500)),
+        if (files.isNotEmpty) ...[
+          if (value.isNotEmpty) const SizedBox(height: 4),
+          Wrap(spacing: 6, runSpacing: 4,
+              children: files.map((f) => _fileViewChip(f)).toList()),
+        ],
+        const SizedBox(height: 4),
       ]),
     );
 
     Widget pRow(String label, String value) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(
-          width: 124,
-          child: Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: _kMuted, fontWeight: FontWeight.w600)),
-        ),
-        Expanded(
-          child: Text(value,
-              style: const TextStyle(
-                  fontSize: 12, color: _kNavy,
-                  fontWeight: FontWeight.w600)),
-        ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600)),
       ]),
     );
 
@@ -1645,22 +1626,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ]),
         );
 
-    Widget twoCol(Widget left, Widget right) => Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: IntrinsicHeight(
-        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: left),
-          const SizedBox(width: 10),
-          Expanded(child: right),
-        ]),
-      ),
-    );
+    Widget twoCol(Widget left, Widget right) => Column(children: [
+      Padding(padding: const EdgeInsets.only(bottom: 10), child: left),
+      Padding(padding: const EdgeInsets.only(bottom: 10), child: right),
+    ]);
 
-    const vDiv = SizedBox(
-      width: 28,
-      child: Center(child: VerticalDivider(
-          thickness: 1, color: _kBorder, width: 1)),
-    );
+    const vDiv = SizedBox.shrink();
 
     // ── Visit vitals: prefer this-visit values, fall back to patient registration
     final wt   = _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : n('weight');
@@ -1750,28 +1721,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           padding: const EdgeInsets.only(bottom: 10),
           child: sCard('Patient Information', Icons.person_outline_rounded,
               _kBlue,
-            IntrinsicHeight(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  iField('Full Name', fullName.isEmpty ? '—' : fullName),
-                  iField('Age',
-                      p?.age != null ? '${p!.age} yrs' : '—'),
-                  iField('Phone', fv(p?.phone)),
-                  iField('Email', n('email')),
-                  iField('ID Proof Type', n('idProofType')),
-                ])),
-                vDiv,
-                Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  iField('UHID', p?.prn ?? '—'),
-                  iField('Gender', gender),
-                  iField('Alt Phone', n('altPhone')),
-                  iField('Address', fv(p?.address)),
-                  iField('ID Number', n('idProofNumber')),
-                ])),
-              ]),
+            Wrap(
+              spacing: 24,
+              runSpacing: 0,
+              children: [
+                SizedBox(width: double.infinity, child: iField('Full Name', fullName.isEmpty ? '—' : fullName)),
+                iField('UHID', p?.prn ?? '—'),
+                iField('Age', p?.age != null ? '${p!.age} yrs' : '—'),
+                iField('Gender', gender),
+                iField('Phone', fv(p?.phone)),
+                iField('Alt Phone', n('altPhone')),
+                iField('Email', n('email')),
+                iField('Address', fv(p?.address)),
+                iField('ID Proof Type', n('idProofType')),
+                iField('ID Number', n('idProofNumber')),
+              ],
             ),
           ),
         ),

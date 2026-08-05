@@ -62,7 +62,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             controller: _scrollCtrl,
             padding: EdgeInsets.zero,
             children: [
-              _QuickActionsSection(onRegister: () => context.push('/patients/register')),
               _SearchSection(
                 controller: _searchCtrl,
                 onChanged: (v) {
@@ -117,67 +116,14 @@ class _DashboardTopBar extends ConsumerWidget {
         border: Border(bottom: BorderSide(color: _kBorder)),
       ),
       padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 14,
-        left: 24, right: 20, bottom: 16,
+        top: MediaQuery.of(context).padding.top + 12,
+        left: 20, right: 20, bottom: 12,
       ),
-      child: Row(children: [
-        // Welcome
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Welcome back, $firstName 👋',
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.w800, color: _kNavy,
-                    letterSpacing: -0.4)),
-            const SizedBox(height: 2),
-            const Text('Manage your clinic activities efficiently.',
-                style: TextStyle(fontSize: 13, color: _kMuted)),
-          ]),
-        ),
-
-        // Bell badge
-        Stack(clipBehavior: Clip.none, children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              shape: BoxShape.circle,
-              border: Border.all(color: _kBorder),
-            ),
-            child: const Icon(Icons.notifications_outlined, size: 20, color: _kSlate),
-          ),
-          Positioned(
-            top: -2, right: -2,
-            child: Container(
-              width: 18, height: 18,
-              decoration: const BoxDecoration(color: _kP1, shape: BoxShape.circle),
-              alignment: Alignment.center,
-              child: const Text('3',
-                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ]),
-
-        const SizedBox(width: 14),
-
-        // User info
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: _kP1,
-            child: Text(initials,
-                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
-          ),
-          const SizedBox(width: 8),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(fullName,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
-            Text(roleLabel,
-                style: const TextStyle(fontSize: 11, color: _kMuted)),
-          ]),
-          const SizedBox(width: 4),
-          const Icon(Icons.keyboard_arrow_down_rounded, color: _kMuted, size: 20),
-        ]),
-      ]),
+      child: Text(
+        fullName,
+        style: const TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy),
+      ),
     );
   }
 }
