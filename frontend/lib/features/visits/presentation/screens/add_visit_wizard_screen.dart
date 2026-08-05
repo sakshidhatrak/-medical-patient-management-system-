@@ -22,19 +22,19 @@ import '../../../print_configuration/presentation/providers/print_config_provide
 import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 
-// ── Design tokens (match patient_register_screen) ─────────────────────────────
-const _kBlue   = Color(0xFF2563EB);
-const _kBlue2  = Color(0xFF0EA5E9);
-const _kGreen  = Color(0xFF10B981);
-const _kRed    = Color(0xFFEF4444);
-const _kAmber  = Color(0xFFF59E0B);
-const _kP1     = Color(0xFF6C63FF);
-const _kBg     = Color(0xFFF8FAFC);
-const _kWiz    = Color(0xFFF1F5F9);
-const _kNavy   = Color(0xFF0F172A);
-const _kSlate  = Color(0xFF475569);
-const _kMuted  = Color(0xFF94A3B8);
-const _kBorder = Color(0xFFE2E8F0);
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const _kBlue   = Color(0xFF4B55CC);   // indigo primary
+const _kBlue2  = Color(0xFF3D47B4);   // indigo darker
+const _kGreen  = Color(0xFF2D7A4E);   // muted green
+const _kRed    = Color(0xFF8A4430);   // terracotta alert
+const _kAmber  = Color(0xFF74633E);   // amber
+const _kP1     = Color(0xFF4B55CC);   // same as primary
+const _kBg     = Color(0xFFF8F6F2);   // warm off-white
+const _kWiz    = Color(0xFFECEAE4);   // warm surface
+const _kNavy   = Color(0xFF302D28);   // warm near-black
+const _kSlate  = Color(0xFF6E6A63);   // warm slate
+const _kMuted  = Color(0xFF979088);   // warm muted
+const _kBorder = Color(0xFFE0DDD7);   // warm border
 
 const _kVisitTypeLabels = ['OPD', 'Emergency', 'Follow-up'];
 
@@ -1761,7 +1761,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         // ── History & Complaint | Examination Finding ─────────────────────
         twoCol(
           sCard('History & Complaint', Icons.history_edu_outlined,
-              const Color(0xFF6366F1),
+              _kBlue,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               eRow('Previous History',
                   _prevHistoryCtrl.text.trim(), _prevHistoryFiles),
@@ -1770,7 +1770,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             ]),
           ),
           sCard('Examination Finding', Icons.search_outlined,
-              const Color(0xFF0EA5E9),
+              _kBlue2,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               eRow('General',
                   _examGeneralCtrl.text.trim(), _examGeneralFiles),
