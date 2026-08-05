@@ -369,7 +369,7 @@ class _PatientHeaderCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(children: [
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         // Initials avatar
         Container(
           width: 56,
@@ -387,7 +387,7 @@ class _PatientHeaderCard extends StatelessWidget {
         ),
         const SizedBox(width: 14),
 
-        // Name + gender badge + meta
+        // Name + gender + meta + patient ID (all stacked vertically)
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,7 +423,7 @@ class _PatientHeaderCard extends StatelessWidget {
                   ],
                 ],
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 4),
               Text(
                 [
                   if (patient.ageSex.isNotEmpty) patient.ageSex,
@@ -434,61 +434,44 @@ class _PatientHeaderCard extends StatelessWidget {
                     color: _kSlate,
                     fontWeight: FontWeight.w400),
               ),
-            ],
-          ),
-        ),
-
-        const SizedBox(width: 12),
-
-        // Patient ID box with copy button
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F5FA),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kBorder),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Patient ID',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: _kMuted,
-                          fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 3),
-                  Text(patient.prn,
+              const SizedBox(height: 6),
+              Row(children: [
+                const Text('ID: ',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: _kMuted,
+                        fontWeight: FontWeight.w500)),
+                Flexible(
+                  child: Text(patient.prn,
                       style: const TextStyle(
                           color: _kAccent,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: patient.prn));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Patient ID copied'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: _kAccent.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.copy_outlined,
-                      size: 15, color: _kAccent),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
+                      overflow: TextOverflow.ellipsis),
                 ),
-              ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: patient.prn));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Patient ID copied'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: _kAccent.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.copy_outlined,
+                        size: 13, color: _kAccent),
+                  ),
+                ),
+              ]),
             ],
           ),
         ),
@@ -828,22 +811,15 @@ class _DataRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SizedBox(
-            width: 130,
-            child: Text(label,
-                style: const TextStyle(
-                    fontSize: 11,
-                    color: _kMuted,
-                    fontWeight: FontWeight.w600)),
-          ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600)),
-          ),
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600)),
         ]),
       );
 }
@@ -943,15 +919,15 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
             topLeft: Radius.circular(8), topRight: Radius.circular(8)),
         ),
         child: Row(children: const [
-          Expanded(
+          Expanded(flex: 4,
               child: Text('File Name',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
                       color: _kMuted, letterSpacing: 0.3))),
-          SizedBox(width: 170,
+          Expanded(flex: 4,
               child: Text('Uploaded On',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
                       color: _kMuted, letterSpacing: 0.3))),
-          SizedBox(width: 110,
+          Expanded(flex: 3,
               child: Text('Actions',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
                       color: _kMuted, letterSpacing: 0.3))),
@@ -1060,12 +1036,13 @@ class _AttachmentRow extends StatelessWidget {
           ]),
         ),
         // Date
-        SizedBox(width: 170,
+        Expanded(flex: 4,
             child: Text(dateStr,
-                style: const TextStyle(fontSize: 11, color: _kSlate))),
+                style: const TextStyle(fontSize: 11, color: _kSlate),
+                maxLines: 2, overflow: TextOverflow.ellipsis)),
         // Actions
-        SizedBox(
-          width: 110,
+        Expanded(
+          flex: 3,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [

@@ -208,9 +208,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 3),
       ));
-      setState(() => _step = 2);
-      unawaited(_pageCtrl.animateToPage(2,
-          duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
+      context.go('/patients/${patient.id}');
     } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Registration failed. Please try again.'),
@@ -365,22 +363,24 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kWiz,
-      body: Column(children: [
-        _buildWizardHeader(),
-        _buildStepBar(),
-        Expanded(
-          child: PageView(
-            controller: _pageCtrl,
-            physics: const NeverScrollableScrollPhysics(),
-            children: [
-              _buildStep1(),
-              _buildStep2(),
-              _buildStep3(),
-            ],
+      body: SafeArea(
+        child: Column(children: [
+          _buildWizardHeader(),
+          _buildStepBar(),
+          Expanded(
+            child: PageView(
+              controller: _pageCtrl,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildStep1(),
+                _buildStep2(),
+                _buildStep3(),
+              ],
+            ),
           ),
-        ),
-        _buildBottomNav(),
-      ]),
+          _buildBottomNav(),
+        ]),
+      ),
     );
   }
 
@@ -398,12 +398,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
 
   Widget _buildWizardHeader() => Container(
     color: Colors.white,
-    padding: EdgeInsets.only(
-      top: MediaQuery.of(context).padding.top + 8,
-      left: 4,
-      right: 16,
-      bottom: 14,
-    ),
+    padding: const EdgeInsets.fromLTRB(4, 8, 16, 14),
     child: Row(children: [
       IconButton(
         icon: const Icon(Icons.arrow_back_ios_new, color: _kNavy, size: 18),
@@ -527,7 +522,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     final isPreview = _step == 2;   // Preview & Print step
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(4),

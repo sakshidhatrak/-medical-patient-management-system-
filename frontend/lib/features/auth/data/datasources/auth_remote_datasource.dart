@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 
 import '../../../../core/config/env_config.dart';
@@ -15,9 +17,11 @@ class AuthSpringDataSourceImpl implements AuthRemoteDataSource {
   AuthSpringDataSourceImpl() {
     _dio = Dio(BaseOptions(
       baseUrl: EnvConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      connectTimeout: const Duration(seconds: 60),
+      receiveTimeout: const Duration(seconds: 60),
+      contentType: 'application/json; charset=utf-8',
+      responseType: ResponseType.json,
+      headers: {'Accept': 'application/json'},
     ));
   }
 
@@ -29,7 +33,7 @@ class AuthSpringDataSourceImpl implements AuthRemoteDataSource {
     try {
       final response = await _dio.post<Map<String, dynamic>>(
         '/auth/login',
-        data: {'email': email.trim().toLowerCase(), 'password': password},
+        data: jsonEncode({'email': email.trim().toLowerCase(), 'password': password}),
       );
       final data = response.data?['data'] as Map<String, dynamic>?;
       if (data == null) {
