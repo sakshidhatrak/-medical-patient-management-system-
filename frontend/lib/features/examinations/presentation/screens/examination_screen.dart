@@ -235,7 +235,7 @@ class _ExaminationScreenState extends ConsumerState<ExaminationScreen>
     if (exam != null && !_loaded) _apply(exam);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF8F6F2),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -392,7 +392,7 @@ class _ExamTab extends StatelessWidget {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide:
-                        const BorderSide(color: Color(0xFFE0E0E0)),
+                        const BorderSide(color: Color(0xFFE0DDD7)),
                   ),
                   contentPadding: const EdgeInsets.all(14),
                 ),

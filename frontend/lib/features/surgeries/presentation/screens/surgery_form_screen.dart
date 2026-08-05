@@ -16,12 +16,14 @@ import '../../domain/entities/surgery_entity.dart';
 import '../providers/surgery_provider.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
-const _kRed   = Color(0xFFDC2626);
-const _kRedL  = Color(0xFFFEE2E2);
-const _kBg    = Color(0xFFF8FAFC);
-const _kText2 = Color(0xFF475569);
-const _kGrey  = Color(0xFF94A3B8);
-const _kLine  = Color(0xFFE2E8F0);
+const _kPrimary = Color(0xFF4B55CC);
+const _kRed   = Color(0xFF8A4430);
+const _kRedL  = Color(0xFFF0E4DE);
+const _kBg    = Color(0xFFF8F6F2);
+const _kText2 = Color(0xFF6E6A63);
+const _kGrey  = Color(0xFF979088);
+const _kLine  = Color(0xFFE0DDD7);
+const _kNavy  = Color(0xFF302D28);
 
 const _kSLabels = ['Patient', 'Details', 'Preop', 'Intraop', 'Postop', 'Review'];
 const _kSTitles = [
@@ -514,7 +516,7 @@ class _SWizDropdown<T> extends StatelessWidget {
       value: value, isExpanded: true, underline: const SizedBox(),
       hint: hint != null ? Text(hint!, style: const TextStyle(color: _kGrey, fontSize: 13)) : null,
       icon: const Icon(Icons.keyboard_arrow_down, color: _kGrey),
-      style: const TextStyle(fontSize: 13, color: Color(0xFF37474F)),
+      style: const TextStyle(fontSize: 13, color: Color(0xFF302D28)),
       items: items.map((i) => DropdownMenuItem(value: i, child: Text(label(i)))).toList(),
       onChanged: onChanged,
     ),
@@ -539,7 +541,7 @@ class _STappableField extends StatelessWidget {
       child: Row(children: [
         Icon(icon, size: 16, color: _kGrey),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF37474F))),
+        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF302D28))),
       ]),
     ),
   );
@@ -553,8 +555,8 @@ class _SStep1Patient extends ConsumerWidget {
   const _SStep1Patient({required this.patientId});
 
   static const _colors = [
-    Color(0xFF1565C0), Color(0xFF00695C), Color(0xFF6A1B9A),
-    Color(0xFFE65100), Color(0xFFC62828), Color(0xFF00838F),
+    Color(0xFF4B55CC), Color(0xFF2D7A4E), Color(0xFF52537A),
+    Color(0xFF74633E), Color(0xFF8A4430), Color(0xFF3D6E7A),
   ];
 
   @override
@@ -655,7 +657,7 @@ class _SPatientCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(patient.fullName,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A2E))),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF302D28))),
                 const SizedBox(height: 2),
                 Text('${patient.ageSex}  ·  UHID: ${patient.prn}',
                     style: const TextStyle(color: _kGrey, fontSize: 11)),
@@ -1237,7 +1239,7 @@ class _SReviewCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(r.v,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF37474F), fontWeight: FontWeight.w600)),
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF302D28), fontWeight: FontWeight.w600)),
               ),
             ],
           ),

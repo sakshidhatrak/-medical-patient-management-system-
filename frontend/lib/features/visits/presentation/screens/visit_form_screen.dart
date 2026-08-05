@@ -20,15 +20,15 @@ import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kP1    = Color(0xFF7C3AED);
-const _kP2    = Color(0xFF3B82F6);
-const _kRed   = Color(0xFFEF4444);
-const _kGreen = Color(0xFF10B981);
-const _kBg    = Color(0xFFF8FAFC);
-const _kNavy  = Color(0xFF0F172A);
-const _kSlate = Color(0xFF475569);
-const _kMuted = Color(0xFF94A3B8);
-const _kBorder= Color(0xFFE2E8F0);
+const _kP1    = Color(0xFF4B55CC);
+const _kP2    = Color(0xFF3D47B4);
+const _kRed   = Color(0xFF8A4430);
+const _kGreen = Color(0xFF2D7A4E);
+const _kBg    = Color(0xFFF8F6F2);
+const _kNavy  = Color(0xFF302D28);
+const _kSlate = Color(0xFF6E6A63);
+const _kMuted = Color(0xFF979088);
+const _kBorder= Color(0xFFE0DDD7);
 
 const _kVisitTypeLabels = ['OPD', 'Emergency', 'Follow-up'];
 
@@ -88,10 +88,10 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
   void initState() {
     super.initState();
     _slots = [
-      _ReportSlot('Prescription',  Icons.receipt_long_rounded,  const Color(0xFF7C3AED), PhotoCategory.patientReport),
-      _ReportSlot('Lab Report',    Icons.science_rounded,       const Color(0xFF0891B2), PhotoCategory.patientReport),
-      _ReportSlot('X-Ray',         Icons.image_search_rounded,  const Color(0xFF059669), PhotoCategory.radiology),
-      _ReportSlot('MRI / CT Scan', Icons.biotech_rounded,       const Color(0xFFDC2626), PhotoCategory.radiology),
+      _ReportSlot('Prescription',  Icons.receipt_long_rounded,  const Color(0xFF4B55CC), PhotoCategory.patientReport),
+      _ReportSlot('Lab Report',    Icons.science_rounded,       const Color(0xFF3D6E7A), PhotoCategory.patientReport),
+      _ReportSlot('X-Ray',         Icons.image_search_rounded,  const Color(0xFF2D7A4E), PhotoCategory.radiology),
+      _ReportSlot('MRI / CT Scan', Icons.biotech_rounded,       const Color(0xFF8A4430), PhotoCategory.radiology),
     ];
   }
 
@@ -428,7 +428,7 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
               _SectionCard(
                 title: 'Upload Reports',
                 icon: Icons.folder_open_rounded,
-                color: const Color(0xFF0891B2),
+                color: const Color(0xFF3D6E7A),
                 badge: 'Optional',
                 child: _UploadSection(
                   slots: _slots,
@@ -512,7 +512,7 @@ class _GradientHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF6D28D9), Color(0xFF2563EB)],
+          colors: [Color(0xFF4B55CC), Color(0xFF3D47B4)],
         ),
       ),
       child: Row(children: [
@@ -1126,8 +1126,8 @@ class _SavedDocTile extends StatelessWidget {
   final VoidCallback onDelete;
   const _SavedDocTile({required this.photo, required this.onDelete});
 
-  static const _kDocBlue  = Color(0xFF3B82F6);
-  static const _kDocGreen = Color(0xFF10B981);
+  static const _kDocBlue  = Color(0xFF4B55CC);
+  static const _kDocGreen = Color(0xFF2D7A4E);
 
   IconData get _icon => switch (photo.category) {
     PhotoCategory.radiology    => Icons.image_search_rounded,

@@ -20,16 +20,16 @@ import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kP1    = Color(0xFF7C3AED);
-const _kP2    = Color(0xFF3B82F6);
-const _kRed   = Color(0xFFEF4444);
-const _kGreen = Color(0xFF10B981);
-const _kAmber = Color(0xFFF59E0B);
-const _kBg    = Color(0xFFF8FAFC);
-const _kNavy  = Color(0xFF0F172A);
-const _kSlate = Color(0xFF475569);
-const _kMuted = Color(0xFF94A3B8);
-const _kBorder= Color(0xFFE2E8F0);
+const _kP1    = Color(0xFF4B55CC);
+const _kP2    = Color(0xFF3D47B4);
+const _kRed   = Color(0xFF8A4430);
+const _kGreen = Color(0xFF2D7A4E);
+const _kAmber = Color(0xFF74633E);
+const _kBg    = Color(0xFFF8F6F2);
+const _kNavy  = Color(0xFF302D28);
+const _kSlate = Color(0xFF6E6A63);
+const _kMuted = Color(0xFF979088);
+const _kBorder= Color(0xFFE0DDD7);
 
 class VisitViewScreen extends ConsumerWidget {
   final String patientId;
@@ -360,7 +360,7 @@ class _VisitHeroBg extends StatelessWidget {
     decoration: const BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [Color(0xFF6D28D9), Color(0xFF2563EB)],
+        colors: [Color(0xFF4B55CC), Color(0xFF3D47B4)],
       ),
     ),
     child: Stack(children: [
@@ -542,7 +542,7 @@ class _VitalChip extends StatelessWidget {
   };
   static const _colors = <String, Color>{
     'BP': _kP1, 'Pulse': _kRed, 'Temp': _kAmber,
-    'SpO₂': _kP2, 'Weight': _kGreen, 'Height': Color(0xFF8B5CF6),
+    'SpO₂': _kP2, 'Weight': _kGreen, 'Height': Color(0xFF52537A),
   };
 
   @override

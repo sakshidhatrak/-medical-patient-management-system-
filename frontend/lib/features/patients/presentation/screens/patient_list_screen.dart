@@ -58,7 +58,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
     final canWrite = ref.watch(canWriteProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF8F6F2),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -99,7 +99,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
                       )
                     : null,
                 filled: true,
-                fillColor: const Color(0xFFF2F3F5),
+                fillColor: const Color(0xFFECEAE4),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -214,7 +214,7 @@ class _PatientCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFE8E8E8)),
+        side: const BorderSide(color: Color(0xFFE0DDD7)),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
