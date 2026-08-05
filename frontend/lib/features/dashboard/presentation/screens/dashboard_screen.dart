@@ -8,14 +8,15 @@ import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kP1    = Color(0xFF4F46E5);
-const _kP2    = Color(0xFF3B82F6);
-const _kRed   = Color(0xFFEF4444);
-const _kBg    = Color(0xFFF8FAFC);
-const _kNavy  = Color(0xFF0F172A);
-const _kSlate = Color(0xFF475569);
-const _kMuted = Color(0xFF94A3B8);
-const _kBorder= Color(0xFFE2E8F0);
+const _kPrimary  = Color(0xFF4B55CC);
+const _kPrimSurf = Color(0xFFE8EBF8);
+const _kPrimText = Color(0xFF3D47B4);
+const _kBg       = Color(0xFFF8F6F2);
+const _kBorder   = Color(0xFFE0DDD7);
+const _kNavy     = Color(0xFF302D28);
+const _kSlate    = Color(0xFF6E6A63);
+const _kMuted    = Color(0xFF979088);
+const _kRed      = Color(0xFFEF4444);
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -49,59 +50,77 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(patientsProvider);
+    final vp    = MediaQuery.of(context).viewPadding;
 
     return Scaffold(
       backgroundColor: _kBg,
-      floatingActionButton: _GradientFab(
-        onPressed: () => context.push('/patients/register'),
-      ),
       body: Column(children: [
-        _DashboardTopBar(),
+        // ── Sticky primary header ──────────────────────────────────
+        _PrimaryHeader(
+          topPadding: vp.top,
+          searchCtrl: _searchCtrl,
+          patientCount: state.patients.length,
+          isLoading: state.isLoading && state.patients.isNotEmpty,
+          onChanged: (v) {
+            setState(() {});
+            ref.read(patientsProvider.notifier).search(v);
+          },
+          onClear: () {
+            _searchCtrl.clear();
+            ref.read(patientsProvider.notifier).search('');
+            setState(() {});
+          },
+          onRefresh: () => ref.read(patientsProvider.notifier).refresh(),
+        ),
+
+        // ── Patient list ─────────────────────────────────────────
         Expanded(
-          child: ListView(
-            controller: _scrollCtrl,
-            padding: EdgeInsets.zero,
-            children: [
-              _SearchSection(
-                controller: _searchCtrl,
-                onChanged: (v) {
-                  setState(() {});
-                  ref.read(patientsProvider.notifier).search(v);
-                },
-                onClear: () {
-                  _searchCtrl.clear();
-                  ref.read(patientsProvider.notifier).search('');
-                  setState(() {});
-                },
-                state: state,
-                onRefresh: () => ref.read(patientsProvider.notifier).refresh(),
-              ),
-              _PatientListSection(
-                state: state,
-                onTap: (p) => context.push('/patients/${p.id}'),
-                onRegister: () => context.push('/patients/register'),
-                onRetry: () => ref.read(patientsProvider.notifier).refresh(),
-              ),
-              const SizedBox(height: 100),
-            ],
+          child: _PatientListSection(
+            state: state,
+            scrollCtrl: _scrollCtrl,
+            onTap: (p) => context.push('/patients/${p.id}'),
+            onRegister: () => context.push('/patients/register'),
+            onRetry: () => ref.read(patientsProvider.notifier).refresh(),
           ),
         ),
       ]),
+
+      // ── FAB ───────────────────────────────────────────────────
+      floatingActionButton: _NewPatientFab(
+        onPressed: () => context.push('/patients/register'),
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Top bar
+// Primary header with search
 // ─────────────────────────────────────────────────────────────────────────────
-class _DashboardTopBar extends ConsumerWidget {
+class _PrimaryHeader extends ConsumerWidget {
+  final double topPadding;
+  final TextEditingController searchCtrl;
+  final int patientCount;
+  final bool isLoading;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+  final VoidCallback onRefresh;
+
+  const _PrimaryHeader({
+    required this.topPadding,
+    required this.searchCtrl,
+    required this.patientCount,
+    required this.isLoading,
+    required this.onChanged,
+    required this.onClear,
+    required this.onRefresh,
+  });
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
-    final user = authState is AuthAuthenticated ? authState.user : null;
-    final firstName = user?.fullName.split(' ').first ?? 'Doctor';
+    final user      = authState is AuthAuthenticated ? authState.user : null;
     final fullName  = user?.fullName ?? 'Doctor';
-    final roleLabel = user?.roleDisplayName ?? 'Administrator';
+    final roleLabel = user?.roleDisplayName ?? 'Doctor';
     final initials  = fullName
         .split(' ')
         .where((w) => w.isNotEmpty)
@@ -112,262 +131,110 @@ class _DashboardTopBar extends ConsumerWidget {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: _kBorder)),
-      ),
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 12,
-        left: 20, right: 20, bottom: 12,
-      ),
-      child: Text(
-        fullName,
-        style: const TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Quick Actions
-// ─────────────────────────────────────────────────────────────────────────────
-class _QuickActionsSection extends StatelessWidget {
-  final VoidCallback onRegister;
-  const _QuickActionsSection({required this.onRegister});
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Quick Actions',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy)),
-      const SizedBox(height: 12),
-      Row(children: [
-        Expanded(
-          child: _QuickActionCard(
-            iconBg: const Color(0xFFEEF2FF),
-            iconColor: _kP1,
-            icon: Icons.person_add_outlined,
-            title: 'Register Patient',
-            subtitle: 'Add new patient',
-            onTap: onRegister,
-          ),
+        color: _kPrimary,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(22),
+          bottomRight: Radius.circular(22),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _QuickActionCard(
-            iconBg: const Color(0xFFEFF6FF),
-            iconColor: _kP2,
-            icon: Icons.calendar_today_outlined,
-            title: 'New Visit',
-            subtitle: 'Record patient visit',
-            onTap: () => context.push('/patients'),
-          ),
-        ),
-      ]),
-    ]),
-  );
-}
-
-class _QuickActionCard extends StatelessWidget {
-  final Color iconBg, iconColor;
-  final IconData icon;
-  final String title, subtitle;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
-    required this.iconBg, required this.iconColor, required this.icon,
-    required this.title, required this.subtitle, required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(14),
-    child: InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: _kBorder),
-        ),
-        child: Row(children: [
+      ),
+      padding: EdgeInsets.fromLTRB(16, topPadding + 16, 16, 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // User row
+        Row(children: [
+          // Avatar
           Container(
-            width: 48, height: 48,
+            width: 34, height: 34,
             decoration: BoxDecoration(
-              color: iconBg,
-              borderRadius: BorderRadius.circular(12),
+              color: Colors.white.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: iconColor, size: 24),
+            alignment: Alignment.center,
+            child: Text(initials,
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(title,
+              Text(fullName,
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white)),
+              Text(roleLabel,
                   style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700, color: iconColor)),
-              const SizedBox(height: 2),
-              Text(subtitle,
-                  style: const TextStyle(fontSize: 12, color: _kMuted)),
+                      fontSize: 11, color: Colors.white.withValues(alpha: 0.7))),
             ]),
           ),
-          Icon(Icons.chevron_right_rounded, color: _kMuted, size: 22),
-        ]),
-      ),
-    ),
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Search + list header
-// ─────────────────────────────────────────────────────────────────────────────
-class _SearchSection extends StatelessWidget {
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-  final PatientsState state;
-  final VoidCallback onRefresh;
-
-  const _SearchSection({
-    required this.controller,
-    required this.onChanged,
-    required this.onClear,
-    required this.state,
-    required this.onRefresh,
-  });
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // Search + filter row
-      Row(children: [
-        // Search field
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _kBorder),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 6, offset: const Offset(0, 2)),
-              ],
-            ),
-            child: TextField(
-              controller: controller,
-              style: const TextStyle(fontSize: 14, color: _kNavy),
-              decoration: InputDecoration(
-                hintText: 'Search by name, PRN or phone...',
-                hintStyle: const TextStyle(color: _kMuted, fontSize: 14),
-                prefixIcon: const Icon(Icons.search_rounded, color: _kMuted, size: 20),
-                suffixIcon: controller.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close, size: 17, color: _kMuted),
-                        onPressed: onClear)
-                    : null,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: _kP1, width: 1.5),
-                ),
+          // Logout
+          GestureDetector(
+            onTap: () => ref.read(authProvider.notifier).logout(),
+            child: Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
               ),
-              onChanged: onChanged,
+              child: const Icon(Icons.logout_rounded, color: Colors.white, size: 16),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
+        ]),
 
-        // All Patients dropdown (decorative label)
-        _FilterButton(
-          child: Row(mainAxisSize: MainAxisSize.min, children: const [
-            Text('All Patients',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kNavy)),
-            SizedBox(width: 4),
-            Icon(Icons.keyboard_arrow_down_rounded, color: _kMuted, size: 18),
-          ]),
-        ),
-        const SizedBox(width: 8),
+        const SizedBox(height: 12),
 
-        // Filters button
-        _FilterButton(
-          child: Row(mainAxisSize: MainAxisSize.min, children: const [
-            Icon(Icons.tune_rounded, color: _kSlate, size: 16),
-            SizedBox(width: 5),
-            Text('Filters',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kNavy)),
-          ]),
-        ),
-        const SizedBox(width: 8),
-
-        // Refresh icon
-        GestureDetector(
-          onTap: onRefresh,
-          child: Container(
-            width: 42, height: 42,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _kBorder),
-            ),
-            child: state.isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(11),
-                    child: CircularProgressIndicator(strokeWidth: 2, color: _kP1))
-                : const Icon(Icons.refresh_rounded, color: _kSlate, size: 18),
-          ),
-        ),
-      ]),
-
-      const SizedBox(height: 16),
-
-      // List header
-      Row(children: [
-        Text(
-          state.isLoading && state.patients.isEmpty
-              ? 'Loading patients…'
-              : state.search?.isNotEmpty == true
-                  ? 'Results'
-                  : 'All Patients',
-          style: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w700, color: _kNavy),
-        ),
-        const SizedBox(width: 8),
-        if (!state.isLoading || state.patients.isNotEmpty)
+        // Patients title + count
+        Row(children: [
+          const Text('Patients',
+              style: TextStyle(
+                  fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white)),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFFEEF2FF),
+              color: Colors.white.withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text('${state.patients.length}',
+            child: Text('$patientCount',
                 style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700, color: _kP1)),
+                    fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white)),
           ),
+        ]),
+
+        const SizedBox(height: 10),
+
+        // Search bar
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: TextField(
+            controller: searchCtrl,
+            style: const TextStyle(fontSize: 13.5, color: _kNavy),
+            decoration: InputDecoration(
+              hintText: 'Search by name, ID or phone',
+              hintStyle: const TextStyle(color: _kMuted, fontSize: 13.5),
+              prefixIcon: isLoading
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: _kPrimary)))
+                  : const Icon(Icons.search_rounded, color: _kMuted, size: 18),
+              prefixIconConstraints: const BoxConstraints(minWidth: 44),
+              suffixIcon: searchCtrl.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close, size: 16, color: _kMuted),
+                      onPressed: onClear)
+                  : null,
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onChanged: onChanged,
+          ),
+        ),
       ]),
-    ]),
-  );
-}
-
-class _FilterButton extends StatelessWidget {
-  final Widget child;
-  const _FilterButton({required this.child});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: _kBorder),
-    ),
-    child: child,
-  );
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -375,13 +242,17 @@ class _FilterButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientListSection extends StatelessWidget {
   final PatientsState state;
+  final ScrollController scrollCtrl;
   final void Function(PatientEntity) onTap;
   final VoidCallback onRegister;
   final VoidCallback onRetry;
 
   const _PatientListSection({
-    required this.state, required this.onTap,
-    required this.onRegister, required this.onRetry,
+    required this.state,
+    required this.scrollCtrl,
+    required this.onTap,
+    required this.onRegister,
+    required this.onRetry,
   });
 
   @override
@@ -390,64 +261,53 @@ class _PatientListSection extends StatelessWidget {
       return _ErrorState(message: state.error!, onRetry: onRetry);
     }
     if (state.isLoading && state.patients.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(60),
-        child: Center(child: CircularProgressIndicator(color: _kP1)),
-      );
+      return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(60),
+            child: CircularProgressIndicator(color: _kPrimary),
+          ));
     }
     if (state.patients.isEmpty) {
       return _EmptyState(hasSearch: state.search?.isNotEmpty == true, onRegister: onRegister);
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _kBorder),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
-                blurRadius: 8, offset: const Offset(0, 2)),
-          ],
-        ),
-        child: Column(
-          children: state.patients.asMap().entries.map((e) {
-            final isLast = e.key == state.patients.length - 1;
-            return _PatientTile(
-              patient: e.value,
-              onTap: () => onTap(e.value),
-              isLast: isLast,
-            );
-          }).toList(),
-        ),
-      ),
+    return ListView.builder(
+      controller: scrollCtrl,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 100),
+      itemCount: state.patients.length + (state.isLoading ? 1 : 0),
+      itemBuilder: (context, i) {
+        if (i == state.patients.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator(color: _kPrimary, strokeWidth: 2)),
+          );
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _PatientCard(
+            patient: state.patients[i],
+            onTap: () => onTap(state.patients[i]),
+          ),
+        );
+      },
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Patient tile
+// Patient card
 // ─────────────────────────────────────────────────────────────────────────────
-class _PatientTile extends StatelessWidget {
+class _PatientCard extends StatelessWidget {
   final PatientEntity patient;
   final VoidCallback onTap;
-  final bool isLast;
 
-  const _PatientTile({
-    required this.patient,
-    required this.onTap,
-    this.isLast = false,
-  });
+  const _PatientCard({required this.patient, required this.onTap});
 
   static const _avatarColors = [
-    Color(0xFF14B8A6),
-    Color(0xFF3B82F6),
-    Color(0xFFF97316),
-    Color(0xFF8B5CF6),
-    Color(0xFFEC4899),
-    Color(0xFF10B981),
+    Color(0xFF4B55CC),
+    Color(0xFF7A6040),
+    Color(0xFF8A4430),
+    Color(0xFF52537A),
   ];
 
   String _timeAgo(DateTime t) {
@@ -463,95 +323,60 @@ class _PatientTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _avatarColors[patient.id.hashCode.abs() % _avatarColors.length];
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.vertical(
-          top: isLast == false && patient.id == patient.id ? Radius.zero : Radius.zero,
-          bottom: isLast ? const Radius.circular(16) : Radius.zero,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: _kBorder),
+          borderRadius: BorderRadius.circular(14),
         ),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            border: isLast
-                ? null
-                : const Border(bottom: BorderSide(color: _kBorder)),
-          ),
-          child: Row(children: [
-            // Circle avatar
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: color,
-              child: Text(
-                patient.initials,
+        child: Row(children: [
+          // Avatar
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: color,
+            child: Text(patient.initials,
                 style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
+                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+          ),
+          const SizedBox(width: 12),
+
+          // Name + meta
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(patient.fullName,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700, color: _kNavy)),
+              const SizedBox(height: 3),
+              Text(
+                '${patient.ageSex}${patient.ageSex.isNotEmpty ? ' · ' : ''}${patient.prn}',
+                style: const TextStyle(fontSize: 11.5, color: _kMuted),
               ),
-            ),
-            const SizedBox(width: 12),
-
-            // Name + chips
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(patient.fullName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14, color: _kNavy)),
-                const SizedBox(height: 5),
-                Wrap(spacing: 5, runSpacing: 4, children: [
-                  if (patient.ageSex.isNotEmpty)
-                    _Chip(patient.ageSex, color),
-                  _Chip('PRN: ${patient.prn}', _kMuted),
-                  if (patient.phone?.isNotEmpty == true)
-                    _Chip(patient.phone!, _kMuted, icon: Icons.phone_outlined),
-                ]),
-              ]),
-            ),
-
-            // Time + chevron
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(_timeAgo(patient.createdAt),
-                  style: const TextStyle(fontSize: 11, color: _kMuted, fontWeight: FontWeight.w500)),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right_rounded, size: 20, color: _kMuted),
             ]),
+          ),
+
+          // Time + chevron
+          Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min,
+              children: [
+            Text(_timeAgo(patient.createdAt),
+                style: const TextStyle(fontSize: 10.5, color: _kMuted)),
+            const SizedBox(height: 4),
+            const Icon(Icons.chevron_right_rounded, size: 18, color: _kMuted),
           ]),
-        ),
+        ]),
       ),
     );
   }
 }
 
-class _Chip extends StatelessWidget {
-  final String text;
-  final Color color;
-  final IconData? icon;
-  const _Chip(this.text, this.color, {this.icon});
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      if (icon != null) ...[
-        Icon(icon, size: 9, color: color),
-        const SizedBox(width: 3),
-      ],
-      Text(text,
-          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
-    ]),
-  );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Gradient FAB
+// FAB
 // ─────────────────────────────────────────────────────────────────────────────
-class _GradientFab extends StatelessWidget {
+class _NewPatientFab extends StatelessWidget {
   final VoidCallback onPressed;
-  const _GradientFab({required this.onPressed});
+  const _NewPatientFab({required this.onPressed});
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -560,12 +385,12 @@ class _GradientFab extends StatelessWidget {
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 22),
       decoration: BoxDecoration(
-        color: _kP1,
+        color: _kPrimary,
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-              color: _kP1.withValues(alpha: 0.35),
-              blurRadius: 16, offset: const Offset(0, 6)),
+              color: _kPrimary.withValues(alpha: 0.4),
+              blurRadius: 20, offset: const Offset(0, 8)),
         ],
       ),
       child: const Row(mainAxisSize: MainAxisSize.min, children: [
@@ -592,20 +417,21 @@ class _EmptyState extends StatelessWidget {
     padding: const EdgeInsets.all(48),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(
-        width: 80, height: 80,
+        width: 72, height: 72,
         decoration: BoxDecoration(
-          color: _kP1.withValues(alpha: 0.08),
+          color: _kPrimSurf,
           shape: BoxShape.circle,
         ),
         child: Icon(
           hasSearch ? Icons.search_off_rounded : Icons.people_outline_rounded,
-          size: 40, color: _kP1.withValues(alpha: 0.5),
+          size: 36, color: _kPrimary,
         ),
       ),
-      const SizedBox(height: 20),
+      const SizedBox(height: 18),
       Text(hasSearch ? 'No patients found' : 'No patients yet',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: _kNavy)),
-      const SizedBox(height: 8),
+          style: const TextStyle(
+              fontWeight: FontWeight.w700, fontSize: 16, color: _kNavy)),
+      const SizedBox(height: 7),
       Text(
         hasSearch
             ? 'Try different search terms'
@@ -618,18 +444,13 @@ class _EmptyState extends StatelessWidget {
         GestureDetector(
           onTap: onRegister,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
             decoration: BoxDecoration(
-              color: _kP1,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                    color: _kP1.withValues(alpha: 0.3),
-                    blurRadius: 12, offset: const Offset(0, 4)),
-              ],
+              color: _kPrimary,
+              borderRadius: BorderRadius.circular(13),
             ),
             child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
+              Icon(Icons.person_add_rounded, color: Colors.white, size: 17),
               SizedBox(width: 8),
               Text('Register Patient',
                   style: TextStyle(
@@ -655,17 +476,17 @@ class _ErrorState extends StatelessWidget {
     padding: const EdgeInsets.all(48),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(
-        width: 80, height: 80,
-        decoration: BoxDecoration(
-          color: _kRed.withValues(alpha: 0.08),
+        width: 72, height: 72,
+        decoration: const BoxDecoration(
+          color: Color(0xFFF0E4DE),
           shape: BoxShape.circle,
         ),
-        child: Icon(Icons.cloud_off_rounded, size: 40, color: _kRed.withValues(alpha: 0.7)),
+        child: const Icon(Icons.cloud_off_rounded, size: 36, color: Color(0xFF8A4430)),
       ),
-      const SizedBox(height: 20),
+      const SizedBox(height: 18),
       const Text('Could not load patients',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: _kNavy)),
-      const SizedBox(height: 8),
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: _kNavy)),
+      const SizedBox(height: 7),
       Text(
         message.contains('timed out')
             ? 'Connection timed out. Check your network.'
@@ -679,16 +500,17 @@ class _ErrorState extends StatelessWidget {
       GestureDetector(
         onTap: onRetry,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
           decoration: BoxDecoration(
-            color: _kP1,
-            borderRadius: BorderRadius.circular(14),
+            color: _kPrimary,
+            borderRadius: BorderRadius.circular(13),
           ),
           child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+            Icon(Icons.refresh_rounded, color: Colors.white, size: 17),
             SizedBox(width: 8),
             Text('Try Again',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
           ]),
         ),
       ),

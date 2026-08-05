@@ -92,15 +92,15 @@ String _pick(String? a, String b) =>
 
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kAccent  = Color(0xFF3D3BF3);   // blue-purple dot & accents
-const _kRed     = Color(0xFFEF4444);   // surgery colour
-const _kBg      = Color(0xFFF5F5F5);
+const _kAccent  = Color(0xFF4B55CC);   // indigo primary
+const _kRed     = Color(0xFF8A4430);   // surgery / alert colour
+const _kBg      = Color(0xFFF8F6F2);   // warm off-white background
 const _kCard    = Colors.white;
-const _kNavy    = Color(0xFF0F172A);
-const _kSlate   = Color(0xFF475569);
-const _kMuted   = Color(0xFF94A3B8);
-const _kBorder  = Color(0xFFE8ECF0);
-const _kLine    = Color(0xFFDDE2EA);   // timeline connecting line
+const _kNavy    = Color(0xFF302D28);   // warm near-black
+const _kSlate   = Color(0xFF6E6A63);   // warm slate
+const _kMuted   = Color(0xFF979088);   // warm muted
+const _kBorder  = Color(0xFFE0DDD7);   // warm border
+const _kLine    = Color(0xFFE0DDD7);   // timeline connecting line
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -311,29 +311,22 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) => AppBar(
-    backgroundColor: Colors.white,
+    backgroundColor: _kBg,
     elevation: 0,
-    surfaceTintColor: Colors.white,
-    centerTitle: true,
+    surfaceTintColor: _kBg,
+    centerTitle: false,
     leading: IconButton(
       icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy),
       onPressed: () => context.go('/patients'),
     ),
     title: const Text(
-      'Patient Timeline',
+      'Patient Profile',
       style: TextStyle(
-          fontSize: 17,
+          fontSize: 16,
           fontWeight: FontWeight.w700,
           color: _kNavy,
           letterSpacing: -0.2),
     ),
-    actions: [
-      IconButton(
-        icon: const Icon(Icons.tune_rounded, color: _kSlate, size: 22),
-        onPressed: onFilter,
-        tooltip: 'Filter',
-      ),
-    ],
     bottom: PreferredSize(
       preferredSize: const Size.fromHeight(1),
       child: Container(height: 1, color: _kBorder),
@@ -375,13 +368,13 @@ class _PatientHeaderCard extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: const BoxDecoration(
-            color: Color(0xFFE8F5E9),
+            color: Color(0xFFE8EBF8),
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
           child: Text(initials,
               style: const TextStyle(
-                  color: Color(0xFF2E7D32),
+                  color: _kAccent,
                   fontWeight: FontWeight.w800,
                   fontSize: 20)),
         ),
@@ -614,7 +607,7 @@ class _TimelineRowState extends State<_TimelineRow> {
             padding: const EdgeInsets.only(bottom: 16),
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F1FF),
+                color: const Color(0xFFE8EBF8),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: accentColor.withValues(alpha: 0.18)),
               ),
@@ -691,11 +684,11 @@ class _TimelineRowState extends State<_TimelineRow> {
                                 child: Container(
                                   width: 34, height: 34,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+                                    color: const Color(0xFF4B55CC).withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(9),
                                   ),
                                   child: const Icon(Icons.print_outlined,
-                                      size: 17, color: Color(0xFF7C3AED)),
+                                      size: 17, color: Color(0xFF4B55CC)),
                                 ),
                               ),
                             ),
@@ -846,7 +839,7 @@ String _attachTypeLabel(PhotoEntity p) {
 Color _attachIconBg(PhotoEntity p) {
   final t = _attachTypeLabel(p);
   if (t == 'PDF')   return const Color(0xFFEF4444);
-  if (t == 'Image') return const Color(0xFF7C3AED);
+  if (t == 'Image') return const Color(0xFF4B55CC);
   if (t == 'Excel') return const Color(0xFF16A34A);
   if (t == 'Word')  return const Color(0xFF2563EB);
   return _kSlate;
@@ -913,7 +906,7 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
+          color: _kBg,
           border: Border.all(color: _kBorder),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(8), topRight: Radius.circular(8)),
@@ -1408,11 +1401,11 @@ class _PatientReportsSection extends StatelessWidget {
           Container(
             width: 28, height: 28,
             decoration: BoxDecoration(
-              color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+              color: const Color(0xFF4B55CC).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.folder_outlined,
-                size: 15, color: Color(0xFF7C3AED)),
+                size: 15, color: Color(0xFF4B55CC)),
           ),
           const SizedBox(width: 8),
           const Text(
@@ -1424,14 +1417,14 @@ class _PatientReportsSection extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFF7C3AED).withValues(alpha: 0.08),
+              color: const Color(0xFF4B55CC).withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               '${reports.length} file${reports.length == 1 ? '' : 's'}',
               style: const TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF7C3AED),
+                  color: Color(0xFF4B55CC),
                   fontWeight: FontWeight.w600),
             ),
           ),
@@ -1478,19 +1471,19 @@ class _PdfReportTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF4FF),
+        color: const Color(0xFFE8EBF8),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF7C3AED).withValues(alpha: 0.2)),
+        border: Border.all(color: const Color(0xFF4B55CC).withValues(alpha: 0.2)),
       ),
       child: Row(children: [
         Container(
           width: 38, height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF7C3AED).withValues(alpha: 0.1),
+            color: const Color(0xFF4B55CC).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(Icons.picture_as_pdf_rounded,
-              color: Color(0xFF7C3AED), size: 20),
+              color: Color(0xFF4B55CC), size: 20),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1517,7 +1510,7 @@ class _PdfReportTile extends StatelessWidget {
           icon: const Icon(Icons.open_in_new_rounded, size: 14),
           label: const Text('Open', style: TextStyle(fontSize: 12)),
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF7C3AED),
+            foregroundColor: const Color(0xFF4B55CC),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
