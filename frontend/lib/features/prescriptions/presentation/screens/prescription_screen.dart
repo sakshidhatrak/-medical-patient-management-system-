@@ -293,7 +293,7 @@ class _PrescriptionScreenState
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide:
-                      const BorderSide(color: Color(0xFFE0E0E0)),
+                      const BorderSide(color: Color(0xFFE0DDD7)),
                 ),
                 contentPadding: const EdgeInsets.all(14),
               ),
@@ -382,7 +382,7 @@ class _DrugList extends StatelessWidget {
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
-              side: const BorderSide(color: Color(0xFFE8E8E8)),
+              side: const BorderSide(color: Color(0xFFE0DDD7)),
             ),
             child: ListTile(
               dense: true,
@@ -432,7 +432,7 @@ class _DrugPickerPanelState extends State<_DrugPickerPanel> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE0E0E0)),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
       ),
       padding: const EdgeInsets.all(12),
       child: Column(

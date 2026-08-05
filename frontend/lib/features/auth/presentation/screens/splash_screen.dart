@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/route_names.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../providers/auth_provider.dart';
+
+const _kPrimary = Color(0xFF4B55CC);
+const _kBg      = Color(0xFF1E1C19);
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -50,7 +52,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     });
 
     return Scaffold(
-      backgroundColor: AppColors.sidebarBg,
+      backgroundColor: _kBg,
       body: FadeTransition(
         opacity: _fadeAnim,
         child: ScaleTransition(
@@ -60,42 +62,41 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
-                  padding: const EdgeInsets.all(24),
+                  width: 80, height: 80,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.15),
-                    shape: BoxShape.circle,
+                    color: _kPrimary.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(22),
                   ),
                   child: const Icon(
-                    Icons.local_hospital_rounded,
-                    size: 56,
-                    color: AppColors.primary,
+                    Icons.monitor_heart_outlined,
+                    size: 40,
+                    color: _kPrimary,
                   ),
                 ),
                 const SizedBox(height: 24),
                 const Text(
-                  'MediManage',
+                  'MediCare',
                   style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
                     color: Colors.white,
                     letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
-                  'Patient Management System',
+                  'Neurosurgery Care Platform',
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 13,
+                    color: Colors.white.withValues(alpha: 0.5),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 64),
                 SizedBox(
-                  width: 32,
-                  height: 32,
+                  width: 28, height: 28,
                   child: CircularProgressIndicator(
-                    color: AppColors.primary.withOpacity(0.6),
+                    color: _kPrimary.withValues(alpha: 0.7),
                     strokeWidth: 2,
                   ),
                 ),
