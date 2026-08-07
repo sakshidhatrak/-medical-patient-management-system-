@@ -219,10 +219,12 @@ class LocalPatientCache {
           'address': apiJson['address'],
           'notes': apiJson['notes'],
           'data_json': jsonEncode(apiJson),
-          'sync_status': 'synced',
+          'sync_status': apiJson['syncStatus'] ?? apiJson['sync_status'] ?? 'synced',
           'is_active': apiJson['isActive'] == false ? 0 : 1,
           'created_at': apiJson['createdAt'] ?? apiJson['created_at'] ?? now,
           'updated_at': apiJson['updatedAt'] ?? apiJson['updated_at'] ?? now,
+          'created_by': apiJson['createdBy'] ?? apiJson['created_by'],
+          'updated_by': apiJson['updatedBy'] ?? apiJson['updated_by'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -305,9 +307,12 @@ class LocalVisitCache {
           'notes': apiJson['notes'],
           'status': apiJson['status'] ?? 'draft',
           'data_json': jsonEncode(apiJson),
-          'sync_status': 'synced',
+          'sync_status': apiJson['syncStatus'] ?? apiJson['sync_status'] ?? 'synced',
+          'is_active': apiJson['isActive'] == false ? 0 : 1,
           'created_at': apiJson['createdAt'] ?? apiJson['created_at'] ?? now,
           'updated_at': apiJson['updatedAt'] ?? apiJson['updated_at'] ?? now,
+          'created_by': apiJson['createdBy'] ?? apiJson['created_by'],
+          'updated_by': apiJson['updatedBy'] ?? apiJson['updated_by'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -318,10 +323,20 @@ class LocalVisitCache {
     final db = await _db.database;
     return db.query(
       'visits',
-      where: 'patient_id = ?',
+      where: 'patient_id = ? AND is_active = 1',
       whereArgs: [patientId],
       orderBy: 'visit_date DESC',
     );
+  }
+
+  // Hard-delete a temp local entry (e.g., client UUID after server returned a different ID).
+  Future<void> purge(String id) async {
+    if (kIsWeb) {
+      await _web?.deleteVisit(id);
+      return;
+    }
+    final db = await _db.database;
+    await db.delete('visits', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<Map<String, dynamic>?> getById(String id) async {
@@ -332,13 +347,21 @@ class LocalVisitCache {
     return rows.isEmpty ? null : rows.first;
   }
 
+  Future<void> markPending(String id) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('visits', {'sync_status': 'pending'},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> delete(String id) async {
     if (kIsWeb) {
       await _web?.deleteVisit(id);
       return;
     }
     final db = await _db.database;
-    await db.delete('visits', where: 'id = ?', whereArgs: [id]);
+    await db.update('visits', {'is_active': 0, 'sync_status': 'pending'},
+        where: 'id = ?', whereArgs: [id]);
   }
 }
 
@@ -386,9 +409,12 @@ class LocalSurgeryCache {
           'post_op_plan': apiJson['postOpPlan'] ?? apiJson['post_op_plan'],
           'status': apiJson['status'] ?? 'draft',
           'data_json': jsonEncode(apiJson),
-          'sync_status': 'synced',
+          'sync_status': apiJson['syncStatus'] ?? apiJson['sync_status'] ?? 'synced',
+          'is_active': apiJson['isActive'] == false ? 0 : 1,
           'created_at': apiJson['createdAt'] ?? apiJson['created_at'] ?? now,
           'updated_at': apiJson['updatedAt'] ?? apiJson['updated_at'] ?? now,
+          'created_by': apiJson['createdBy'] ?? apiJson['created_by'],
+          'updated_by': apiJson['updatedBy'] ?? apiJson['updated_by'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -413,13 +439,21 @@ class LocalSurgeryCache {
     return rows.isEmpty ? null : rows.first;
   }
 
+  Future<void> markPending(String id) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('surgeries', {'sync_status': 'pending'},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> delete(String id) async {
     if (kIsWeb) {
       await _web?.deleteSurgery(id);
       return;
     }
     final db = await _db.database;
-    await db.delete('surgeries', where: 'id = ?', whereArgs: [id]);
+    await db.update('surgeries', {'is_active': 0, 'sync_status': 'pending'},
+        where: 'id = ?', whereArgs: [id]);
   }
 }
 
@@ -514,6 +548,20 @@ class LocalPrescriptionCache {
     final db = await _db.database;
     await db.update('prescriptions', {'sync_status': 'pending'},
         where: 'visit_id = ?', whereArgs: [visitId]);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllForPatient(String patientId) async {
+    if (kIsWeb) return [];
+    final db = await _db.database;
+    final rows = await db.query('prescriptions',
+        where: 'patient_id = ?',
+        whereArgs: [patientId],
+        orderBy: 'updated_at DESC');
+    return rows.map((r) => {
+      ...jsonDecode(r['data_json'] as String) as Map<String, dynamic>,
+      '_visitId': r['visit_id'],
+      '_updatedAt': r['updated_at'],
+    }).toList();
   }
 }
 

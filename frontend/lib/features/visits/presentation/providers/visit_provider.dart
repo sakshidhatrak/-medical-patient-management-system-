@@ -38,11 +38,12 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
       final rows = await _local.getForPatient(patientId);
       if (rows.isNotEmpty) {
         state = rows.map((r) {
+          final syncStatus = r['sync_status'] as String? ?? 'synced';
           final js = r['data_json'] as String?;
           if (js != null) {
-            return VisitModel.fromJson(
-                    jsonDecode(js) as Map<String, dynamic>)
-                .toEntity();
+            final decoded = jsonDecode(js) as Map<String, dynamic>;
+            decoded['syncStatus'] = syncStatus;
+            return VisitModel.fromJson(decoded).toEntity();
           }
           return VisitModel.fromJson({
             'id': r['id'],
@@ -55,8 +56,10 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
             'plan': r['plan'],
             'notes': r['notes'],
             'status': r['status'],
+            'isActive': (r['is_active'] as int? ?? 1) == 1,
             'createdAt': r['created_at'],
             'updatedAt': r['updated_at'],
+            'syncStatus': syncStatus,
           }).toEntity();
         }).toList();
       }
@@ -106,6 +109,11 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
     String? plan,
     String? notes,
   }) async {
+    // Reject blank visits — all meaningful fields are empty.
+    final hasData = [complaints, examination, clinicalImpression, plan, notes]
+        .any((f) => f != null && f.trim().isNotEmpty);
+    if (!hasData) return null;
+
     try {
       final now = DateTime.now().toUtc();
       final model = VisitModel(
@@ -143,6 +151,10 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         final saved = isNew
             ? await _ds.createVisit(model)
             : await _ds.updateVisit(model);
+        // Remove the temp client-UUID entry; server assigned a different (Long) ID.
+        if (isNew && saved.id != model.id) {
+          await _local.purge(model.id);
+        }
         await _local.upsert(saved.toFullJson());
         final entity = saved.toEntity();
         if (isNew) {
@@ -152,24 +164,26 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         }
         return entity;
       } catch (e) {
-        debugPrint('[VisitProvider] API error: $e');
-        return null;
+        debugPrint('[VisitProvider] API error (will sync later): $e');
+        // Fall through to offline path — visit is already cached locally.
       }
     }
 
-    // Offline: enqueue for sync when connection restores
+    // Offline or API-unreachable: enqueue for sync when connection restores
     await _queue.enqueue(
       entityType: 'visits',
       entityId: model.id,
       operation: isNew ? 'insert' : 'update',
       payload: {...model.toFullJson(), 'patientId': model.patientId},
     );
+    await _local.markPending(model.id);
+    final pendingEntity = model.toEntity().copyWith(syncStatus: 'pending');
     if (isNew) {
-      state = [model.toEntity(), ...state];
+      state = [pendingEntity, ...state];
     } else {
-      state = state.map((v) => v.id == model.id ? model.toEntity() : v).toList();
+      state = state.map((v) => v.id == model.id ? pendingEntity : v).toList();
     }
-    return model.toEntity();
+    return pendingEntity;
   }
 
   Future<void> deleteVisit(String id) async {

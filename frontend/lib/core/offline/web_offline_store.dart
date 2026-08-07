@@ -188,7 +188,9 @@ class WebOfflineStore {
   }
 
   List<Map<String, dynamic>> getVisitsForPatient(String patientId) {
-    final list = _getList('visits_$patientId');
+    final list = _getList('visits_$patientId')
+        .where((v) => v['is_active'] != 0)
+        .toList();
     list.sort((a, b) =>
         (b['visit_date'] as String).compareTo(a['visit_date'] as String));
     return list;
