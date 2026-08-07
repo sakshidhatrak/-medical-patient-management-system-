@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../domain/models/print_field.dart';
 import '../../domain/models/report_section.dart';
 import '../providers/print_config_provider.dart';
@@ -30,16 +31,16 @@ class _ConfigLeftPanelState extends ConsumerState<ConfigLeftPanel> {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.cardColor,
         border: Border(
-          right: BorderSide(color: AppColors.border),
+          right: BorderSide(color: context.borderColor),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _PanelHeader(),
-          const Divider(height: 1, color: AppColors.divider),
+          Divider(height: 1, color: context.dividerColor),
           Expanded(
             child: ReorderableListView.builder(
               padding: const EdgeInsets.all(AppDimensions.sm),
@@ -49,7 +50,7 @@ class _ConfigLeftPanelState extends ConsumerState<ConfigLeftPanel> {
               itemCount: sectionOrder.length,
               proxyDecorator: (child, index, animation) => Material(
                 elevation: 6,
-                shadowColor: AppColors.primary.withOpacity(0.18),
+                shadowColor: AppColors.primary.withValues(alpha: 0.18),
                 borderRadius:
                     BorderRadius.circular(AppDimensions.radiusLg),
                 child: child,
@@ -103,7 +104,7 @@ class _PanelHeader extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppColors.primarySurface,
+                  color: context.primarySurf,
                   borderRadius:
                       BorderRadius.circular(AppDimensions.radiusMd),
                 ),
@@ -111,24 +112,24 @@ class _PanelHeader extends StatelessWidget {
                     size: 16, color: AppColors.primary),
               ),
               const SizedBox(width: AppDimensions.sm),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Print Configuration',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: context.textPrimary,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Select fields to include in the report. Drag sections to reorder.',
             style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: context.textSecondary,
             ),
           ),
         ],
@@ -163,9 +164,9 @@ class _SectionExpansion extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: context.bgColor,
         borderRadius: BorderRadius.circular(AppDimensions.radiusLg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(
@@ -182,13 +183,13 @@ class _SectionExpansion extends ConsumerWidget {
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.drag_indicator_rounded,
-                  size: 18, color: AppColors.textDisabled),
+              Icon(Icons.drag_indicator_rounded,
+                  size: 18, color: context.textDisabled),
               const SizedBox(width: 4),
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: section.color.withOpacity(0.12),
+                  color: section.color.withValues(alpha: 0.12),
                   borderRadius:
                       BorderRadius.circular(AppDimensions.radiusMd),
                 ),
@@ -201,10 +202,10 @@ class _SectionExpansion extends ConsumerWidget {
               Expanded(
                 child: Text(
                   section.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: context.textPrimary,
                   ),
                 ),
               ),
@@ -221,8 +222,8 @@ class _SectionExpansion extends ConsumerWidget {
                     .read(printConfigProvider.notifier)
                     .toggleSection(section.id, enable: !allEnabled),
               ),
-              const Icon(Icons.expand_more_rounded,
-                  size: 18, color: AppColors.textSecondary),
+              Icon(Icons.expand_more_rounded,
+                  size: 18, color: context.textSecondary),
             ],
           ),
           children: allFields
@@ -246,8 +247,8 @@ class _FieldCountBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: enabled > 0
-            ? AppColors.primarySurface
-            : AppColors.surfaceVariant,
+            ? context.primarySurf
+            : context.surfaceVar,
         borderRadius:
             BorderRadius.circular(AppDimensions.radiusRound),
       ),
@@ -257,7 +258,7 @@ class _FieldCountBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color:
-              enabled > 0 ? AppColors.primary : AppColors.textSecondary,
+              enabled > 0 ? AppColors.primary : context.textSecondary,
         ),
       ),
     );
@@ -280,7 +281,7 @@ class _SectionToggle extends StatelessWidget {
           duration: const Duration(milliseconds: 150),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: allEnabled ? AppColors.primary : AppColors.surfaceVariant,
+            color: allEnabled ? AppColors.primary : context.surfaceVar,
             borderRadius:
                 BorderRadius.circular(AppDimensions.radiusRound),
           ),
@@ -289,7 +290,7 @@ class _SectionToggle extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,
-              color: allEnabled ? Colors.white : AppColors.textSecondary,
+              color: allEnabled ? Colors.white : context.textSecondary,
             ),
           ),
         ),
@@ -310,16 +311,16 @@ class _SelectAllFooter extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(AppDimensions.sm),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        border: Border(top: BorderSide(color: AppColors.divider)),
+        color: context.surfaceVar,
+        border: Border(top: BorderSide(color: context.dividerColor)),
       ),
       child: Row(
         children: [
           Text(
             '$enabledCount of $totalFields fields selected',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: context.textSecondary,
             ),
           ),
           const Spacer(),
@@ -354,7 +355,7 @@ class _SelectAllFooter extends ConsumerWidget {
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              foregroundColor: AppColors.textSecondary,
+              foregroundColor: context.textSecondary,
             ),
             child: const Text('Clear All',
                 style: TextStyle(fontSize: 12)),

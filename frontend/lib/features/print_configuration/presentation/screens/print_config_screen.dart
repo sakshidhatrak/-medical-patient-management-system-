@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../widgets/config_left_panel.dart';
 import '../widgets/preview_right_panel.dart';
 import '../widgets/report_action_bar.dart';
@@ -27,7 +28,7 @@ class _PrintConfigScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       appBar: _buildAppBar(context),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -51,12 +52,12 @@ class _PrintConfigScreenState
 
   AppBar _buildAppBar(BuildContext context) {
     return AppBar(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            size: 18, color: AppColors.textPrimary),
+        icon: Icon(Icons.arrow_back_ios_new_rounded,
+            size: 18, color: context.textPrimary),
         onPressed: () => context.pop(),
       ),
       title: Row(
@@ -64,7 +65,7 @@ class _PrintConfigScreenState
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: AppColors.primarySurface,
+              color: context.primarySurf,
               borderRadius:
                   BorderRadius.circular(AppDimensions.radiusMd),
             ),
@@ -72,12 +73,12 @@ class _PrintConfigScreenState
                 size: 16, color: AppColors.primary),
           ),
           const SizedBox(width: AppDimensions.sm),
-          const Text(
+          Text(
             'Report Generator',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: context.textPrimary,
             ),
           ),
         ],
@@ -95,7 +96,7 @@ class _PrintConfigScreenState
                   _configPanelVisible
                       ? Icons.view_sidebar_rounded
                       : Icons.view_sidebar_outlined,
-                  color: AppColors.textSecondary,
+                  color: context.textSecondary,
                   size: 20,
                 ),
                 onPressed: () => setState(
@@ -210,10 +211,11 @@ class _MobileLayout extends ConsumerWidget {
         initialChildSize: 0.75,
         maxChildSize: 0.95,
         minChildSize: 0.4,
-        builder: (_, controller) => Container(
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.vertical(
+        builder: (ctx, controller) => Builder(
+          builder: (bCtx) => Container(
+          decoration: BoxDecoration(
+            color: bCtx.cardColor,
+            borderRadius: const BorderRadius.vertical(
               top: Radius.circular(AppDimensions.radiusXl),
             ),
           ),
@@ -225,7 +227,7 @@ class _MobileLayout extends ConsumerWidget {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.border,
+                    color: bCtx.borderColor,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -233,7 +235,7 @@ class _MobileLayout extends ConsumerWidget {
               const Expanded(child: ConfigLeftPanel()),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

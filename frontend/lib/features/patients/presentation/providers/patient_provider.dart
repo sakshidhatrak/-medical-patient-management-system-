@@ -82,11 +82,12 @@ class PatientsNotifier extends Notifier<PatientsState> {
       final rows = await _local.getAll(search: state.search);
       if (rows.isNotEmpty) {
         final entities = rows.map((r) {
+          final syncStatus = r['sync_status'] as String? ?? 'synced';
           final jsonStr = r['data_json'] as String?;
           if (jsonStr != null) {
-            return PatientModel.fromJson(
-                    jsonDecode(jsonStr) as Map<String, dynamic>)
-                .toEntity();
+            final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+            decoded['syncStatus'] = syncStatus;
+            return PatientModel.fromJson(decoded).toEntity();
           }
           // Legacy rows without data_json — reconstruct from columns.
           return PatientModel.fromJson({
@@ -103,6 +104,7 @@ class PatientsNotifier extends Notifier<PatientsState> {
             'isActive': (r['is_active'] as int? ?? 1) == 1,
             'createdAt': r['created_at'],
             'updatedAt': r['updated_at'],
+            'syncStatus': syncStatus,
           }).toEntity();
         }).toList();
         state = state.copyWith(
@@ -247,7 +249,8 @@ class PatientsNotifier extends Notifier<PatientsState> {
         operation: 'insert',
         payload: model.toFullJson(),
       );
-      final entity = model.toEntity();
+      await _local.markPending(model.id);
+      final entity = model.toEntity().copyWith(syncStatus: 'pending');
       state = state.copyWith(patients: [entity, ...state.patients]);
       return entity;
     } catch (e) {

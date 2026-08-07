@@ -36,11 +36,12 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
       final rows = await _local.getForPatient(patientId);
       if (rows.isNotEmpty) {
         state = rows.map((r) {
+          final syncStatus = r['sync_status'] as String? ?? 'synced';
           final js = r['data_json'] as String?;
           if (js != null) {
-            return SurgeryModel.fromJson(
-                    jsonDecode(js) as Map<String, dynamic>)
-                .toEntity();
+            final decoded = jsonDecode(js) as Map<String, dynamic>;
+            decoded['syncStatus'] = syncStatus;
+            return SurgeryModel.fromJson(decoded).toEntity();
           }
           return SurgeryModel.fromJson({
             'id': r['id'],
@@ -59,8 +60,10 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
             'complications': r['complications'],
             'postOpPlan': r['post_op_plan'],
             'status': r['status'],
+            'isActive': (r['is_active'] as int? ?? 1) == 1,
             'createdAt': r['created_at'],
             'updatedAt': r['updated_at'],
+            'syncStatus': syncStatus,
           }).toEntity();
         }).toList();
       }
@@ -135,12 +138,14 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
       operation: isNew ? 'insert' : 'update',
       payload: {...model.toFullJson(), 'patientId': model.patientId},
     );
+    await _local.markPending(model.id);
+    final pendingEntity = model.toEntity().copyWith(syncStatus: 'pending');
     if (isNew) {
-      state = [model.toEntity(), ...state];
+      state = [pendingEntity, ...state];
     } else {
-      state = state.map((s) => s.id == model.id ? model.toEntity() : s).toList();
+      state = state.map((s) => s.id == model.id ? pendingEntity : s).toList();
     }
-    return model.toEntity();
+    return pendingEntity;
   }
 
   Future<void> deleteSurgery(String id) async {

@@ -47,6 +47,9 @@ class PatientEntity extends Equatable {
   final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String? createdBy;
+  final String? updatedBy;
+  final String syncStatus; // 'synced' | 'pending'
 
   const PatientEntity({
     required this.id,
@@ -83,6 +86,9 @@ class PatientEntity extends Equatable {
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
+    this.createdBy,
+    this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   String get fullName =>
@@ -147,6 +153,7 @@ class PatientEntity extends Equatable {
     String? treatmentNotes,
     String? advice,
     String? notes,
+    String? syncStatus,
   }) =>
       PatientEntity(
         id: id,
@@ -183,6 +190,9 @@ class PatientEntity extends Equatable {
         isActive: isActive,
         createdAt: createdAt,
         updatedAt: updatedAt,
+        createdBy: createdBy,
+        updatedBy: updatedBy,
+        syncStatus: syncStatus ?? this.syncStatus,
       );
 
   @override

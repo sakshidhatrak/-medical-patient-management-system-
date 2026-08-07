@@ -2,6 +2,7 @@
 // patient_register_screen.dart  –  Comprehensive Patient Registration
 // ─────────────────────────────────────────────────────────────────────────────
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -14,20 +15,25 @@ import '../providers/patient_provider.dart';
 import '../../../photos/domain/entities/photo_entity.dart';
 import '../../../photos/presentation/providers/photo_provider.dart';
 import '../../../print_configuration/presentation/providers/print_config_provider.dart';
+import '../../../visits/domain/entities/visit_entity.dart';
+import '../../../visits/presentation/providers/visit_provider.dart';
+import '../../../medicines/data/medicine_service.dart';
+import '../../../medicines/presentation/widgets/medicine_autocomplete_field.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kBlue  = Color(0xFF4B55CC);   // indigo primary
-const _kBlue2 = Color(0xFF3D47B4);   // indigo darker
-const _kP1    = Color(0xFF4B55CC);   // same as primary
-const _kRed   = Color(0xFF8A4430);   // terracotta alert
-const _kAmber = Color(0xFF74633E);   // amber
-const _kGreen = Color(0xFF2D7A4E);   // muted green
-const _kBg    = Color(0xFFF8F6F2);   // warm off-white
-const _kWiz   = Color(0xFFECEAE4);   // warm surface
-const _kNavy  = Color(0xFF302D28);   // warm near-black
-const _kSlate = Color(0xFF6E6A63);   // warm slate
-const _kMuted = Color(0xFF979088);   // warm muted
-const _kBorder= Color(0xFFE0DDD7);   // warm border
+const _kBlue   = Color(0xFF5B5ECC);   // indigo primary (dark-bg variant)
+const _kBlue2  = Color(0xFF4B55CC);   // indigo darker
+const _kP1     = Color(0xFF5B5ECC);   // same as primary
+const _kRed    = Color(0xFFE07878);   // soft red on dark
+const _kAmber  = Color(0xFFD4A855);   // warm amber on dark
+const _kGreen  = Color(0xFF4EC080);   // soft green on dark
+const _kBg     = Color(0xFF171629);   // dark navy scaffold
+const _kCard   = Color(0xFF252545);   // dark card bg
+const _kInput  = Color(0xFF1E1C35);   // dark input bg
+const _kNavy   = Color(0xFFEEECFF);   // light lavender text
+const _kSlate  = Color(0xFFCCCAE8);   // muted lavender text
+const _kMuted  = Color(0xFF9896B8);   // very muted text
+const _kBorder = Color(0xFF3A3865);   // dark border
 
 
 class PatientRegisterScreen extends ConsumerStatefulWidget {
@@ -132,6 +138,29 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     setState(() => _duplicates = dupes);
   }
 
+  bool _hasAnyTreatmentData() => [
+    _prevHistoryCtrl, _complaintCtrl, _examGeneralCtrl, _examNeurologicalCtrl,
+    _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
+    _diagnosisCtrl, _treatmentCtrl, _medicationsCtrl, _treatNotesCtrl, _adviceCtrl,
+  ].any((c) => c.text.trim().isNotEmpty);
+
+  String? _buildExaminationJson() {
+    final m = <String, String>{};
+    void add(String k, String v) { if (v.isNotEmpty) m[k] = v; }
+    add('previousHistory',    _prevHistoryCtrl.text.trim());
+    add('examGeneral',        _examGeneralCtrl.text.trim());
+    add('examNeurological',   _examNeurologicalCtrl.text.trim());
+    add('clinicalDiagnosis',  _clinicalDiagnosisCtrl.text.trim());
+    add('imaging',            _imagingCtrl.text.trim());
+    add('otherInvestigation', _otherInvestCtrl.text.trim());
+    add('medications',        _medicationsCtrl.text.trim());
+    add('advice',             _adviceCtrl.text.trim());
+    add('weight',             _weightCtrl.text.trim());
+    add('bp',                 _bpCtrl.text.trim());
+    add('temperature',        _tempCtrl.text.trim());
+    return m.isEmpty ? null : jsonEncode(m);
+  }
+
   Future<void> _save() async {
     // Guard against double-tap or back-then-resubmit duplicates.
     if (_saving || _savedPatient != null) return;
@@ -171,27 +200,60 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     if (!mounted) return;
 
     if (patient != null) {
-      // Upload all per-field files as patient-level documents
-      final allFieldFiles = <({String name, Uint8List bytes, String caption})>[
-        ..._prevHistoryFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Previous History')),
-        ..._chiefComplaintFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Chief Complaint')),
-        ..._examGeneralFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'General Examination')),
-        ..._examNeurologicalFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Neurological Examination')),
-        ..._clinicalDiagnosisFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Clinical Diagnosis')),
-        ..._imagingFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Imaging')),
-        ..._otherInvestFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Other Investigations')),
-        ..._impressionFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Impression')),
-        ..._planFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Plan')),
-        ..._treatmentMedFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Treatment')),
+      // ── Auto-create first OPD visit if any treatment fields were filled ──
+      String? firstVisitId;
+      if (_hasAnyTreatmentData()) {
+        final visit = await ref
+            .read(visitsProvider(patient.id).notifier)
+            .createFullVisit(
+              patientId:          patient.id,
+              type:               VisitType.opd,
+              visitDate:          DateTime.now(),
+              complaints:         _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
+              examination:        _buildExaminationJson(),
+              clinicalImpression: _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
+              plan:               _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
+              notes:              _treatNotesCtrl.text.trim().isEmpty ? null : _treatNotesCtrl.text.trim(),
+            );
+        firstVisitId = visit?.id;
+      }
+
+      // Always persist medications to prescriptions cache so future visits can
+      // suggest them. Use the auto-created visit ID if available; fall back to a
+      // registration-scoped key so prescription is saved even when the API is
+      // unreachable (visit returns null despite being stored locally).
+      if (_medicationsCtrl.text.trim().isNotEmpty) {
+        final presVisitId = firstVisitId ?? 'reg_${patient.id}';
+        unawaited(ref.read(medicineServiceProvider).savePrescription(
+          visitId: presVisitId,
+          patientId: patient.id,
+          visitDate: DateTime.now(),
+          medicationsText: _medicationsCtrl.text.trim(),
+        ));
+      }
+
+      // Upload all per-field files (link to first visit if created)
+      final allFieldFiles = <({String name, Uint8List bytes, String caption, PhotoCategory cat})>[
+        ..._prevHistoryFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Previous History', cat: PhotoCategory.visit)),
+        ..._chiefComplaintFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Chief Complaint', cat: PhotoCategory.visit)),
+        ..._examGeneralFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'General Examination', cat: PhotoCategory.examination)),
+        ..._examNeurologicalFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Neurological Examination', cat: PhotoCategory.examination)),
+        ..._clinicalDiagnosisFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Clinical Diagnosis', cat: PhotoCategory.visit)),
+        ..._imagingFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Imaging', cat: PhotoCategory.radiology)),
+        ..._otherInvestFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Other Investigations', cat: PhotoCategory.visit)),
+        ..._impressionFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Impression', cat: PhotoCategory.treatment)),
+        ..._planFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Plan', cat: PhotoCategory.treatment)),
+        ..._treatmentMedFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Treatment', cat: PhotoCategory.treatment)),
       ];
       if (allFieldFiles.isNotEmpty) {
         final photoNotifier = ref.read(photoProvider(patient.id).notifier);
         for (final f in allFieldFiles) {
           await photoNotifier.upload(
-            bytes: f.bytes,
+            bytes:    f.bytes,
             filename: f.name,
-            category: PhotoCategory.patientReport,
-            caption: f.caption,
+            category: f.cat,
+            visitId:  firstVisitId,
+            caption:  f.caption,
           );
         }
       }
@@ -334,7 +396,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             ),
           ),
           filled: true,
-          fillColor: _kBg,
+          fillColor: _kInput,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
@@ -362,7 +424,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _kWiz,
+      backgroundColor: _kBg,
       body: SafeArea(
         child: Column(children: [
           _buildWizardHeader(),
@@ -397,7 +459,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   ];
 
   Widget _buildWizardHeader() => Container(
-    color: Colors.white,
+    color: _kCard,
     padding: const EdgeInsets.fromLTRB(4, 8, 16, 14),
     child: Row(children: [
       IconButton(
@@ -413,20 +475,20 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         ]),
       ),
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         decoration: BoxDecoration(
-          color: _kBlue.withValues(alpha: 0.08),
+          color: _kBlue,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text('Step ${_step + 1} of 3',
             style: const TextStyle(
-                color: _kBlue, fontSize: 11, fontWeight: FontWeight.w700)),
+                color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
       ),
     ]),
   );
 
   Widget _buildStepBar() => Container(
-    color: Colors.white,
+    color: _kCard,
     padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,23 +514,23 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 250),
                   width: 36, height: 36,
                   decoration: BoxDecoration(
-                    color: (isDone || isCurrent) ? _kBlue : Colors.white,
+                    color: (isDone || isCurrent) ? _kBlue : _kCard,
                     shape: BoxShape.circle,
-                    border: Border.all(
-                      color: (isDone || isCurrent) ? _kBlue : _kBorder,
-                      width: 2,
-                    ),
-                    boxShadow: isCurrent
-                        ? [BoxShadow(color: _kBlue.withValues(alpha: 0.3),
-                            blurRadius: 8, spreadRadius: 1)]
+                    border: (isDone || isCurrent)
+                        ? null
+                        : Border.all(color: _kBorder, width: 1.5),
+                    boxShadow: (isDone || isCurrent)
+                        ? [BoxShadow(
+                            color: _kBlue.withValues(alpha: 0.4),
+                            blurRadius: 8, offset: const Offset(0, 3))]
                         : null,
                   ),
                   child: Center(
                     child: isDone
-                        ? const Icon(Icons.check_rounded, color: Colors.white, size: 15)
+                        ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
                         : idx == 2
-                            ? Icon(Icons.print_outlined,
-                                  color: isCurrent ? Colors.white : _kMuted, size: 15)
+                            ? const Icon(Icons.print_outlined,
+                                  color: Colors.white, size: 16)
                             : Text('${idx + 1}',
                                 style: TextStyle(
                                   color: isCurrent ? Colors.white : _kMuted,
@@ -482,7 +544,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                    color: isCurrent ? _kBlue : (isDone ? _kNavy : _kMuted),
+                    color: isCurrent ? _kBlue : (isDone ? _kSlate : _kMuted),
                   ),
                 ),
               ]);
@@ -497,14 +559,10 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               duration: const Duration(milliseconds: 200),
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: _step == 2
-                    ? _kBlue.withValues(alpha: 0.08)
-                    : _kBorder.withValues(alpha: 0.4),
+                color: _step == 2 ? _kBlue.withValues(alpha: 0.15) : _kInput,
                 borderRadius: BorderRadius.circular(9),
                 border: Border.all(
-                  color: _step == 2
-                      ? _kBlue.withValues(alpha: 0.3)
-                      : _kBorder,
+                  color: _step == 2 ? _kBlue : _kBorder,
                 ),
               ),
               child: Icon(Icons.print_outlined, size: 16,
@@ -521,7 +579,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     final isLast    = _step == 1;   // Treatment → triggers save → goes to preview
     final isPreview = _step == 2;   // Preview & Print step
     return Container(
-      color: Colors.white,
+      color: _kCard,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
@@ -588,13 +646,30 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ]),
         ] else ...[
           Row(children: [
+            if (_step == 0) ...[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => context.pop(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kSlate,
+                    side: BorderSide(color: _kBorder, width: 1.5),
+                    backgroundColor: _kInput,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
             if (_step > 0) ...[
               Expanded(
                 child: OutlinedButton(
                   onPressed: _saving ? null : _prevStep,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _kSlate,
-                    side: const BorderSide(color: _kBorder, width: 1.5),
+                    side: BorderSide(color: _kBorder, width: 1.5),
+                    backgroundColor: _kInput,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -728,9 +803,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           child: Column(children: [
             Row(children: [
               Expanded(
-                flex: 2,
                 child: _RegField(
-                  label: 'Age (years)',
+                  label: 'Age',
                   controller: _ageCtrl,
                   keyboardType: TextInputType.number,
                   prefixIcon: Icons.cake_outlined,
@@ -744,14 +818,40 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                flex: 3,
-                child: _DropdownField(
-                  label: 'Gender',
-                  value: _sex,
-                  options: _sexOptions,
-                  onChanged: (v) => setState(() => _sex = v),
-                  hint: 'Select',
-                ),
+                flex: 2,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Gender',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+                  const SizedBox(height: 6),
+                  Row(children: _sexOptions.asMap().entries.map((e) {
+                    final isFirst = e.key == 0;
+                    final isLast  = e.key == _sexOptions.length - 1;
+                    final selected = _sex == e.value;
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _sex = e.value),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selected ? _kBlue : _kInput,
+                            borderRadius: BorderRadius.horizontal(
+                              left: isFirst ? const Radius.circular(10) : Radius.zero,
+                              right: isLast  ? const Radius.circular(10) : Radius.zero,
+                            ),
+                            border: Border.all(color: selected ? _kBlue : _kBorder),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(e.value,
+                              style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600,
+                                color: selected ? Colors.white : _kSlate,
+                              )),
+                        ),
+                      ),
+                    );
+                  }).toList()),
+                ]),
               ),
             ]),
             const SizedBox(height: 12),
@@ -768,25 +868,47 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           title: 'ID Proof',
           icon: Icons.credit_card_outlined,
           color: _kGreen,
-          child: Row(children: [
-            Expanded(
-              child: _DropdownField(
-                label: 'ID Type',
-                value: _idProofType,
-                options: _idProofOptions,
-                onChanged: (v) => setState(() => _idProofType = v),
-                hint: 'Select',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _RegField(
-                label: 'ID Number',
-                controller: _idProofCtrl,
-                textCapitalization: TextCapitalization.characters,
-                prefixIcon: Icons.pin_outlined,
-                hint: _idProofType == 'PAN Card' ? 'ABCDE1234F' : '1234 5678 9012',
-              ),
+          child: Column(children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('ID Type',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+              const SizedBox(height: 6),
+              Row(children: _idProofOptions.asMap().entries.map((e) {
+                final isFirst = e.key == 0;
+                final isLast  = e.key == _idProofOptions.length - 1;
+                final selected = _idProofType == e.value;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _idProofType = e.value),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected ? _kBlue : _kInput,
+                        borderRadius: BorderRadius.horizontal(
+                          left: isFirst ? const Radius.circular(10) : Radius.zero,
+                          right: isLast  ? const Radius.circular(10) : Radius.zero,
+                        ),
+                        border: Border.all(color: selected ? _kBlue : _kBorder),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(e.value,
+                          style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600,
+                            color: selected ? Colors.white : _kSlate,
+                          )),
+                    ),
+                  ),
+                );
+              }).toList()),
+            ]),
+            const SizedBox(height: 12),
+            _RegField(
+              label: 'ID Number',
+              controller: _idProofCtrl,
+              textCapitalization: TextCapitalization.characters,
+              prefixIcon: Icons.pin_outlined,
+              hint: _idProofType == 'PAN Card' ? 'ABCDE1234F' : 'ID number',
             ),
           ]),
         ),
@@ -944,7 +1066,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'general' ? _kBlue : Colors.white,
+                    color: _examTab == 'general' ? _kBlue : _kInput,
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(10), bottomLeft: Radius.circular(10)),
                     border: Border.all(
@@ -966,7 +1088,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'neurological' ? _kBlue : Colors.white,
+                    color: _examTab == 'neurological' ? _kBlue : _kInput,
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(10), bottomRight: Radius.circular(10)),
                     border: Border.all(
@@ -1018,7 +1140,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     ],
                   ),
                 ),
-                filled: true, fillColor: _kBg,
+                filled: true, fillColor: _kInput,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
@@ -1069,7 +1191,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     ],
                   ),
                 ),
-                filled: true, fillColor: _kBg,
+                filled: true, fillColor: _kInput,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
                 enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
@@ -1144,13 +1266,18 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             hint: 'Recommended plan…',
           ),
           const SizedBox(height: 12),
-          _fieldWithUpload(
-            label: 'Treatment',
-            controller: _medicationsCtrl,
-            files: _treatmentMedFiles,
-            onFilesChange: (f) => _treatmentMedFiles..clear()..addAll(f),
-            prefixIcon: Icons.medication_outlined,
-            hint: 'e.g. Aspirin 325 mg · Metoprolol 25 mg…',
+          MedicineAutocompleteField(
+            patientId: '',
+            initialText: _medicationsCtrl.text,
+            onChanged: (text) => _medicationsCtrl.text = text,
+            medicineService: ref.read(medicineServiceProvider),
+            cardColor: _kCard,
+            inputBgColor: _kInput,
+            textColor: _kNavy,
+            hintColor: _kMuted,
+            borderColor: _kBorder,
+            primaryColor: _kBlue,
+            historyColor: _kGreen,
           ),
           const SizedBox(height: 12),
           _RegField(
@@ -1247,13 +1374,9 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     Widget sCard(String title, IconData icon, Color color, Widget body) =>
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _kCard,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: _kBorder),
-            boxShadow: [BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 6, offset: const Offset(0, 2),
-            )],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Padding(
@@ -1483,7 +1606,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
                 decoration: const BoxDecoration(
-                  color: _kWiz,
+                  color: _kCard,
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
@@ -1566,16 +1689,9 @@ class _WizardCard extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 14),
     child: Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _kCard,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _kBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
@@ -1584,7 +1700,7 @@ class _WizardCard extends StatelessWidget {
             Container(
               width: 32, height: 32,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
+                color: color.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Icon(icon, color: color, size: 16),
@@ -1595,7 +1711,7 @@ class _WizardCard extends StatelessWidget {
                     fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
           ]),
         ),
-        const Divider(height: 1, color: _kBorder),
+        Divider(height: 1, color: _kBorder),
         Padding(
           padding: const EdgeInsets.all(14),
           child: child,
@@ -1633,9 +1749,9 @@ class _DuplicateWarning extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _kCard,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kAmber.withValues(alpha: 0.2)),
+            border: Border.all(color: _kAmber.withValues(alpha: 0.3)),
           ),
           child: Row(children: [
             Container(
@@ -1718,7 +1834,7 @@ class _RegField extends StatelessWidget {
               ? Icon(prefixIcon, size: 17, color: _kMuted)
               : null,
           filled: true,
-          fillColor: _kBg,
+          fillColor: _kInput,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(
@@ -1770,7 +1886,7 @@ class _DropdownField extends StatelessWidget {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: _kBg,
+          color: _kInput,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: _kBorder),
         ),
@@ -1778,6 +1894,7 @@ class _DropdownField extends StatelessWidget {
           value: value,
           isExpanded: true,
           underline: const SizedBox(),
+          dropdownColor: _kCard,
           hint: Text(hint,
               style: const TextStyle(fontSize: 14, color: _kMuted)),
           icon: const Icon(Icons.keyboard_arrow_down, color: _kMuted),

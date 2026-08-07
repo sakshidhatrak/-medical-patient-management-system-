@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../services/pdf_export_service.dart';
 import '../providers/print_config_provider.dart';
 import 'template_save_dialog.dart';
@@ -20,11 +21,11 @@ class ReportActionBar extends ConsumerWidget {
         vertical: 10,
       ),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        color: context.cardColor,
+        border: Border(bottom: BorderSide(color: context.borderColor)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -49,7 +50,7 @@ class ReportActionBar extends ConsumerWidget {
           _BarButton(
             icon: Icons.refresh_rounded,
             label: 'Reset',
-            color: AppColors.textSecondary,
+            color: context.textSecondary,
             outlined: true,
             onTap: () => ref.read(printConfigProvider.notifier).reset(),
           ),
@@ -65,11 +66,11 @@ class ReportActionBar extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: AppDimensions.sm),
-            const Text(
+            Text(
               'Generating…',
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.textSecondary,
+                color: context.textSecondary,
               ),
             ),
           ] else ...[
@@ -150,9 +151,9 @@ class _TemplateDropdown extends ConsumerWidget {
       constraints: const BoxConstraints(maxWidth: 220),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: context.bgColor,
         borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.borderColor),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -162,12 +163,12 @@ class _TemplateDropdown extends ConsumerWidget {
               : state.templates.first.id,
           isDense: true,
           isExpanded: true,
-          icon: const Icon(Icons.expand_more_rounded,
-              size: 16, color: AppColors.textSecondary),
-          style: const TextStyle(
+          icon: Icon(Icons.expand_more_rounded,
+              size: 16, color: context.textSecondary),
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
+            color: context.textPrimary,
           ),
           items: state.templates
               .map(
@@ -197,9 +198,9 @@ class _TemplateDropdown extends ConsumerWidget {
                           onTap: () => ref
                               .read(printConfigProvider.notifier)
                               .deleteTemplate(t.id),
-                          child: const Icon(Icons.close_rounded,
+                          child: Icon(Icons.close_rounded,
                               size: 12,
-                              color: AppColors.textSecondary),
+                              color: context.textSecondary),
                         ),
                       ],
                     ],
@@ -258,15 +259,15 @@ class _BarButtonState extends State<_BarButton> {
           decoration: BoxDecoration(
             color: widget.outlined
                 ? (_hovered
-                    ? widget.color.withOpacity(0.06)
+                    ? widget.color.withValues(alpha: 0.06)
                     : Colors.transparent)
                 : (_hovered
-                    ? widget.color.withOpacity(0.85)
+                    ? widget.color.withValues(alpha: 0.85)
                     : widget.color),
             borderRadius:
                 BorderRadius.circular(AppDimensions.radiusMd),
             border: widget.outlined
-                ? Border.all(color: widget.color.withOpacity(0.5))
+                ? Border.all(color: widget.color.withValues(alpha: 0.5))
                 : null,
           ),
           child: Row(

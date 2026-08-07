@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../domain/models/print_field.dart';
 import '../providers/print_config_provider.dart';
 
@@ -40,14 +41,14 @@ class _FieldToggleTileState extends ConsumerState<FieldToggleTile> {
           ),
           decoration: BoxDecoration(
             color: enabled
-                ? AppColors.primarySurface
+                ? context.primarySurf
                 : _hovered
-                    ? AppColors.surfaceVariant
+                    ? context.surfaceVar
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(AppDimensions.radiusMd),
             border: Border.all(
               color: enabled
-                  ? AppColors.primary.withOpacity(0.3)
+                  ? AppColors.primary.withValues(alpha: 0.3)
                   : Colors.transparent,
             ),
           ),
@@ -64,7 +65,7 @@ class _FieldToggleTileState extends ConsumerState<FieldToggleTile> {
                   border: Border.all(
                     color: enabled
                         ? AppColors.primary
-                        : AppColors.border,
+                        : context.borderColor,
                     width: 1.5,
                   ),
                 ),
@@ -79,7 +80,7 @@ class _FieldToggleTileState extends ConsumerState<FieldToggleTile> {
                 size: 14,
                 color: enabled
                     ? AppColors.primary
-                    : AppColors.textSecondary,
+                    : context.textSecondary,
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -90,8 +91,8 @@ class _FieldToggleTileState extends ConsumerState<FieldToggleTile> {
                     fontWeight:
                         enabled ? FontWeight.w600 : FontWeight.w400,
                     color: enabled
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary,
+                        ? context.textPrimary
+                        : context.textSecondary,
                   ),
                 ),
               ),

@@ -34,10 +34,12 @@ class VisitEntity extends Equatable {
   final String? notes;
 
   final String status;   // draft / completed
+  final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? createdBy;
   final String? updatedBy;
+  final String syncStatus; // 'synced' | 'pending'
 
   const VisitEntity({
     required this.id,
@@ -50,10 +52,12 @@ class VisitEntity extends Equatable {
     this.plan,
     this.notes,
     this.status = 'draft',
+    this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
     this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   bool get isDraft => status == 'draft';
@@ -74,6 +78,8 @@ class VisitEntity extends Equatable {
     String? plan,
     String? notes,
     String? status,
+    bool? isActive,
+    String? syncStatus,
   }) =>
       VisitEntity(
         id: id,
@@ -86,10 +92,12 @@ class VisitEntity extends Equatable {
         plan: plan ?? this.plan,
         notes: notes ?? this.notes,
         status: status ?? this.status,
+        isActive: isActive ?? this.isActive,
         createdAt: createdAt,
         updatedAt: updatedAt,
         createdBy: createdBy,
         updatedBy: updatedBy,
+        syncStatus: syncStatus ?? this.syncStatus,
       );
 
   @override
