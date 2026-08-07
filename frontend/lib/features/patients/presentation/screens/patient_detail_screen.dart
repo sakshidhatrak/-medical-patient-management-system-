@@ -1,7 +1,3 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// patient_detail_screen.dart  –  Patient Timeline
-// Clean vertical timeline · patient header card · Add New Visit CTA
-// ─────────────────────────────────────────────────────────────────────────────
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -22,12 +18,17 @@ import '../../../surgeries/presentation/providers/surgery_provider.dart';
 import '../../../visits/domain/entities/visit_entity.dart';
 import '../../../visits/presentation/providers/visit_provider.dart';
 import '../providers/patient_provider.dart';
+import 'package:medical_patient_management/core/theme/theme_extensions.dart';
+import 'package:medical_patient_management/core/widgets/sync_status_badge.dart';
+
+// ── Fixed accent colours (same in both modes) ─────────────────────────────────
+const _kAccent = Color(0xFF4B55CC);
+const _kRed    = Color(0xFF8A4430);
 
 // ── Print data builder ────────────────────────────────────────────────────────
 Map<String, String> _buildVisitPrintMap(
     PatientEntity patient, VisitEntity visit,
     {List<PhotoEntity> photos = const []}) {
-  // Parse patient notes JSON
   Map<String, String> pNotes = {};
   if (patient.notes?.isNotEmpty == true) {
     try {
@@ -35,7 +36,6 @@ Map<String, String> _buildVisitPrintMap(
           .map((k, v) => MapEntry(k, v.toString()));
     } catch (_) {}
   }
-  // Parse visit examination JSON
   Map<String, String> exam = {};
   if (visit.examination?.isNotEmpty == true) {
     try {
@@ -51,7 +51,6 @@ Map<String, String> _buildVisitPrintMap(
       ? '${patient.sex![0].toUpperCase()}${patient.sex!.substring(1)}' : '—';
   final ageStr = patient.computedAge > 0 ? '${patient.computedAge} yrs' : '—';
   return {
-    // ── Basic Information ──────────────────────────────────────────────────
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
     'age':             ageStr,
@@ -65,11 +64,9 @@ Map<String, String> _buildVisitPrintMap(
     'idProofNumber':   pn('idProofNumber'),
     'allergies':       pn('allergies'),
     'medicalHistory':  pn('medicalHistory'),
-    // ── Vitals — visit overrides patient-level ─────────────────────────────
     'weight':          _pick(ex('weight'),       pn('weight')),
     'bloodPressure':   _pick(ex('bp'),           pn('bloodPressure')),
     'temperature':     _pick(ex('temperature'),  pn('temperature')),
-    // ── Treatment — visit data first, patient registration fallback ─────────
     'previousHistory':    _pick(ex('previousHistory'),    pn('previousHistory')),
     'chiefComplaint':     _pick(visit.complaints,          pn('chiefComplaint')),
     'examGeneral':        _pick(ex('examGeneral'),         pn('examGeneral')),
@@ -86,21 +83,7 @@ Map<String, String> _buildVisitPrintMap(
   }..removeWhere((_, v) => v.isEmpty);
 }
 
-/// Returns [a] when non-null and non-empty, otherwise [b].
-String _pick(String? a, String b) =>
-    (a?.isNotEmpty == true) ? a! : b;
-
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _kAccent  = Color(0xFF4B55CC);   // indigo primary
-const _kRed     = Color(0xFF8A4430);   // surgery / alert colour
-const _kBg      = Color(0xFFF8F6F2);   // warm off-white background
-const _kCard    = Colors.white;
-const _kNavy    = Color(0xFF302D28);   // warm near-black
-const _kSlate   = Color(0xFF6E6A63);   // warm slate
-const _kMuted   = Color(0xFF979088);   // warm muted
-const _kBorder  = Color(0xFFE0DDD7);   // warm border
-const _kLine    = Color(0xFFE0DDD7);   // timeline connecting line
+String _pick(String? a, String b) => (a?.isNotEmpty == true) ? a! : b;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -133,9 +116,9 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
     final canWrite     = ref.watch(canWriteProvider);
 
     return patientAsync.when(
-      loading: () => const Scaffold(
-        backgroundColor: _kBg,
-        body: Center(child: CircularProgressIndicator(color: _kAccent)),
+      loading: () => Scaffold(
+        backgroundColor: context.bgColor,
+        body: const Center(child: CircularProgressIndicator(color: _kAccent)),
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
@@ -149,36 +132,31 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
           );
         }
 
-        // Show all visits sorted newest-first
         final sortedVisits = visits.toList()
           ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
 
-        // Build unified timeline sorted newest-first
         final timeline = <_TimelineItem>[
           ...sortedVisits.map((v) => _TimelineItem.fromVisit(v)),
           ...surgeries.map((s) => _TimelineItem.fromSurgery(s)),
         ]..sort((a, b) => b.date.compareTo(a.date));
 
         return Scaffold(
-          backgroundColor: _kBg,
+          backgroundColor: context.bgColor,
           appBar: _TimelineAppBar(
             patientId: patientId,
             onFilter: () {},
           ),
           body: Column(children: [
-            // Patient header card
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _PatientHeaderCard(patient: patient),
             ),
 
-            // Patient reports (PDFs / files uploaded at patient level)
             _PatientReportsSection(
               patientId: patientId,
               allPhotos: allPhotos,
             ),
 
-            // Timeline
             Expanded(
               child: timeline.isEmpty
                   ? _EmptyTimeline()
@@ -223,9 +201,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
             ),
           ]),
 
-          // ── Fixed bottom CTA (admin only) ─────────────────────────
-          floatingActionButtonLocation:
-              FloatingActionButtonLocation.centerDocked,
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
           bottomNavigationBar: canWrite
               ? _AddVisitBar(
                   patientId: patientId,
@@ -243,12 +219,13 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
 // ─────────────────────────────────────────────────────────────────────────────
 class _TimelineItem {
   final String id;
-  final String type;         // 'visit' | 'surgery'
+  final String type;
   final DateTime date;
-  final String title;        // diagnosis or procedure
-  final String subtitle;     // medications or pre-op diagnosis
+  final String title;
+  final String subtitle;
   final bool isDraft;
-  final VisitEntity? visit;  // full visit entity for print
+  final String syncStatus;
+  final VisitEntity? visit;
 
   const _TimelineItem({
     required this.id,
@@ -257,18 +234,17 @@ class _TimelineItem {
     required this.title,
     required this.subtitle,
     required this.isDraft,
+    this.syncStatus = 'synced',
     this.visit,
   });
 
   factory _TimelineItem.fromVisit(VisitEntity v) {
-    // Title: diagnosis > complaint > 'OPD Visit'
     final title = v.clinicalImpression?.trim().isNotEmpty == true
         ? v.clinicalImpression!
         : v.complaints?.trim().isNotEmpty == true
             ? v.complaints!
             : 'OPD Visit';
 
-    // Subtitle: medications from examination JSON
     String meds = '';
     if (v.examination?.isNotEmpty == true) {
       try {
@@ -278,23 +254,25 @@ class _TimelineItem {
     }
 
     return _TimelineItem(
-      id:       v.id,
-      type:     'visit',
-      date:     v.visitDate,
-      title:    title,
-      subtitle: meds,
-      isDraft:  v.isDraft,
-      visit:    v,
+      id:         v.id,
+      type:       'visit',
+      date:       v.visitDate,
+      title:      title,
+      subtitle:   meds,
+      isDraft:    v.isDraft,
+      syncStatus: v.syncStatus,
+      visit:      v,
     );
   }
 
   factory _TimelineItem.fromSurgery(SurgeryEntity s) => _TimelineItem(
-    id:       s.id,
-    type:     'surgery',
-    date:     s.surgeryDate,
-    title:    s.procedure ?? 'Surgery',
-    subtitle: s.preOpDiagnosis ?? '',
-    isDraft:  s.status == 'draft',
+    id:         s.id,
+    type:       'surgery',
+    date:       s.surgeryDate,
+    title:      s.procedure ?? 'Surgery',
+    subtitle:   s.preOpDiagnosis ?? '',
+    isDraft:    s.status == 'draft',
+    syncStatus: s.syncStatus,
   );
 }
 
@@ -311,25 +289,25 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) => AppBar(
-    backgroundColor: _kBg,
+    backgroundColor: context.bgColor,
     elevation: 0,
-    surfaceTintColor: _kBg,
+    surfaceTintColor: context.bgColor,
     centerTitle: false,
     leading: IconButton(
-      icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy),
+      icon: Icon(Icons.arrow_back_ios_new, size: 18, color: context.textPrimary),
       onPressed: () => context.go('/patients'),
     ),
-    title: const Text(
+    title: Text(
       'Patient Profile',
       style: TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          color: _kNavy,
+          color: context.textPrimary,
           letterSpacing: -0.2),
     ),
     bottom: PreferredSize(
       preferredSize: const Size.fromHeight(1),
-      child: Container(height: 1, color: _kBorder),
+      child: Container(height: 1, color: context.borderColor),
     ),
   );
 }
@@ -351,9 +329,9 @@ class _PatientHeaderCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       decoration: BoxDecoration(
-        color: _kCard,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: context.borderColor),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -363,12 +341,11 @@ class _PatientHeaderCard extends StatelessWidget {
         ],
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // Initials avatar
         Container(
           width: 56,
           height: 56,
-          decoration: const BoxDecoration(
-            color: Color(0xFFE8EBF8),
+          decoration: BoxDecoration(
+            color: context.primarySurf,
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
@@ -380,7 +357,6 @@ class _PatientHeaderCard extends StatelessWidget {
         ),
         const SizedBox(width: 14),
 
-        // Name + gender + meta + patient ID (all stacked vertically)
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,10 +365,10 @@ class _PatientHeaderCard extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(patient.fullName,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: _kNavy,
+                            color: context.textPrimary,
                             letterSpacing: -0.3),
                         overflow: TextOverflow.ellipsis),
                   ),
@@ -422,17 +398,17 @@ class _PatientHeaderCard extends StatelessWidget {
                   if (patient.ageSex.isNotEmpty) patient.ageSex,
                   if (patient.phone?.isNotEmpty == true) patient.phone!,
                 ].join(' • '),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12,
-                    color: _kSlate,
+                    color: context.textSecondary,
                     fontWeight: FontWeight.w400),
               ),
               const SizedBox(height: 6),
               Row(children: [
-                const Text('ID: ',
+                Text('ID: ',
                     style: TextStyle(
                         fontSize: 11,
-                        color: _kMuted,
+                        color: context.textDisabled,
                         fontWeight: FontWeight.w500)),
                 Flexible(
                   child: Text(patient.prn,
@@ -509,18 +485,17 @@ class _TimelineRowState extends State<_TimelineRow> {
 
   _TimelineItem get item => widget.item;
   bool get isLast => widget.isLast;
-  bool get canWrite => widget.canWrite;
   List<PhotoEntity> get photos => widget.photos;
 
   Color get _dotColor => item.type == 'visit' ? _kAccent : _kRed;
 
   @override
   Widget build(BuildContext context) {
-    final dateStr = DateFormat('dd MMM yyyy').format(item.date);
-    final timeStr = DateFormat('hh:mm a').format(item.date);
-    final dotColor = _dotColor;
+    final dateStr    = DateFormat('dd MMM yyyy').format(item.date);
+    final timeStr    = DateFormat('hh:mm a').format(item.date);
+    final dotColor   = _dotColor;
+    final accentColor = item.type == 'visit' ? _kAccent : _kRed;
 
-    // ── Parse examination JSON ────────────────────────────────────
     final examMap = <String, String>{};
     if (item.visit?.examination?.isNotEmpty == true) {
       try {
@@ -532,7 +507,6 @@ class _TimelineRowState extends State<_TimelineRow> {
     }
     String ex(String k) => examMap[k] ?? '';
 
-    // ── Collect all data fields (only non-empty) ──────────────────
     final dataRows = <({String label, String value})>[];
     void add(String label, String val) {
       if (val.trim().isNotEmpty) dataRows.add((label: label, value: val.trim()));
@@ -552,22 +526,17 @@ class _TimelineRowState extends State<_TimelineRow> {
       add('Notes',               item.visit!.notes ?? '');
       add('Advice',              ex('advice'));
     } else {
-      // Surgery
-      add('Procedure',           item.title);
-      add('Pre-op Diagnosis',    item.subtitle);
+      add('Procedure',        item.title);
+      add('Pre-op Diagnosis', item.subtitle);
     }
 
-    // Vitals: show in a dedicated row only if any present
     final bp   = ex('bp');
     final wt   = ex('weight');
     final temp = ex('temperature');
     final hasVitals = bp.isNotEmpty || wt.isNotEmpty || temp.isNotEmpty;
 
-    final accentColor = item.type == 'visit' ? _kAccent : _kRed;
-
     return IntrinsicHeight(
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // ── Left: dot + line ──────────────────────────────────────
         SizedBox(
           width: 28,
           child: Column(
@@ -592,7 +561,7 @@ class _TimelineRowState extends State<_TimelineRow> {
               if (!isLast)
                 Expanded(
                   child: Center(
-                    child: Container(width: 1.5, color: _kLine),
+                    child: Container(width: 1.5, color: context.borderColor),
                   ),
                 ),
             ],
@@ -601,20 +570,18 @@ class _TimelineRowState extends State<_TimelineRow> {
 
         const SizedBox(width: 8),
 
-        // ── Right: card ───────────────────────────────────────────
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFE8EBF8),
+                color: context.primarySurf,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: accentColor.withValues(alpha: 0.18)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Header row (always visible, tap to expand) ─────
                   InkWell(
                     onTap: () => setState(() => _expanded = !_expanded),
                     borderRadius: BorderRadius.circular(12),
@@ -637,23 +604,23 @@ class _TimelineRowState extends State<_TimelineRow> {
                             children: [
                               Row(children: [
                                 Text(dateStr,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
-                                        color: _kNavy)),
+                                        color: context.textPrimary)),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Text('|',
                                       style: TextStyle(
                                           fontSize: 14,
-                                          color: _kMuted.withValues(alpha: 0.6),
+                                          color: context.textDisabled.withValues(alpha: 0.6),
                                           fontWeight: FontWeight.w300)),
                                 ),
                                 Text(timeStr,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w700,
-                                        color: _kNavy)),
+                                        color: context.textPrimary)),
                               ]),
                               const SizedBox(height: 4),
                               Row(children: [
@@ -670,11 +637,12 @@ class _TimelineRowState extends State<_TimelineRow> {
                                       ? const Color(0xFFD97706)
                                       : const Color(0xFF059669),
                                 ),
+                                const SizedBox(width: 6),
+                                SyncStatusBadge(syncStatus: item.syncStatus),
                               ]),
                             ],
                           ),
                         ),
-                        // Action buttons
                         Row(mainAxisSize: MainAxisSize.min, children: [
                           if (widget.onPrint != null) ...[
                             Tooltip(
@@ -684,29 +652,27 @@ class _TimelineRowState extends State<_TimelineRow> {
                                 child: Container(
                                   width: 34, height: 34,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF4B55CC).withValues(alpha: 0.08),
+                                    color: _kAccent.withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(9),
                                   ),
                                   child: const Icon(Icons.print_outlined,
-                                      size: 17, color: Color(0xFF4B55CC)),
+                                      size: 17, color: _kAccent),
                                 ),
                               ),
                             ),
                             const SizedBox(width: 6),
                           ],
-                          // Expand/collapse chevron
                           AnimatedRotation(
                             turns: _expanded ? 0.5 : 0,
                             duration: const Duration(milliseconds: 200),
                             child: Icon(Icons.keyboard_arrow_down_rounded,
-                                size: 20, color: _kMuted),
+                                size: 20, color: context.textDisabled),
                           ),
                         ]),
                       ]),
                     ),
                   ),
 
-                  // ── Collapsible body ──────────────────────────
                   if (_expanded && (dataRows.isNotEmpty || hasVitals || photos.isNotEmpty)) ...[
                     Divider(height: 1, thickness: 1,
                         color: accentColor.withValues(alpha: 0.12)),
@@ -749,7 +715,7 @@ class _TimelineRowState extends State<_TimelineRow> {
   }
 }
 
-// ── Small helpers used inside _TimelineRow ────────────────────────────────────
+// ── Small helpers inside _TimelineRow ─────────────────────────────────────────
 class _Chip extends StatelessWidget {
   final String label;
   final Color color;
@@ -773,26 +739,25 @@ class _VitalChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _VitalChip(
-      {required this.icon, required this.label, required this.value});
+  const _VitalChip({required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.cardColor,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _kBorder),
+          border: Border.all(color: context.borderColor),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 12, color: _kMuted),
+          Icon(icon, size: 12, color: context.textDisabled),
           const SizedBox(width: 4),
           Text('$label: ',
-              style: const TextStyle(
-                  fontSize: 11, color: _kMuted, fontWeight: FontWeight.w500)),
+              style: TextStyle(
+                  fontSize: 11, color: context.textDisabled, fontWeight: FontWeight.w500)),
           Text(value,
-              style: const TextStyle(
-                  fontSize: 11, color: _kNavy, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  fontSize: 11, color: context.textPrimary, fontWeight: FontWeight.w700)),
         ]),
       );
 }
@@ -807,12 +772,12 @@ class _DataRow extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label,
-              style: const TextStyle(
-                  fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 10, color: context.textDisabled, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           Text(value,
-              style: const TextStyle(
-                  fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 12, color: context.textPrimary, fontWeight: FontWeight.w600)),
         ]),
       );
 }
@@ -842,7 +807,7 @@ Color _attachIconBg(PhotoEntity p) {
   if (t == 'Image') return const Color(0xFF4B55CC);
   if (t == 'Excel') return const Color(0xFF16A34A);
   if (t == 'Word')  return const Color(0xFF2563EB);
-  return _kSlate;
+  return const Color(0xFF6E6A63);
 }
 
 IconData _attachIconData(PhotoEntity p) {
@@ -854,25 +819,34 @@ IconData _attachIconData(PhotoEntity p) {
   return Icons.insert_drive_file_rounded;
 }
 
-String _attachSizeLabel(PhotoEntity p) {
-  final b = p.fileSize;
-  if (b == null || b == 0) return '—';
-  if (b < 1024) return '$b B';
-  if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
-  return '${(b / (1024 * 1024)).toStringAsFixed(2)} MB';
+bool _isImageFile(PhotoEntity p) {
+  final s = _attachFilename(p).toLowerCase();
+  return s.endsWith('.jpg') || s.endsWith('.jpeg') ||
+      s.endsWith('.png') || s.endsWith('.webp') || s.endsWith('.gif') ||
+      (p.url?.contains('res.cloudinary.com') == true &&
+          !s.endsWith('.pdf') && !s.endsWith('.doc') &&
+          !s.endsWith('.docx') && !s.endsWith('.xls') && !s.endsWith('.xlsx'));
 }
 
 Future<void> _openAttachment(PhotoEntity p) async {
   final url = p.url;
   if (url == null || url.isEmpty) return;
-  final uri = Uri.parse(url);
-  if (await canLaunchUrl(uri)) {
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  try {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
+
+void _viewImageInApp(BuildContext context, PhotoEntity p) {
+  final url = p.url;
+  if (url == null || url.isEmpty) return;
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => _ImageViewerDialog(photo: p),
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Attachments table — used in both timeline cards and patient details card
+// Attachments table
 // ─────────────────────────────────────────────────────────────────────────────
 class _AttachmentsSection extends StatefulWidget {
   final List<PhotoEntity> photos;
@@ -894,46 +868,45 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
     final hiddenCount = widget.photos.length - widget.initialShow;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // ── Header ───────────────────────────────────────────────────
       Row(children: [
         Text('Attachments (${widget.photos.length})',
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: _kNavy)),
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: context.textPrimary)),
       ]),
       const SizedBox(height: 8),
 
-      // ── Table header row ─────────────────────────────────────────
+      // Table header row
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: _kBg,
-          border: Border.all(color: _kBorder),
+          color: context.bgColor,
+          border: Border.all(color: context.borderColor),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(8), topRight: Radius.circular(8)),
         ),
-        child: Row(children: const [
+        child: Row(children: [
           Expanded(flex: 4,
               child: Text('File Name',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _kMuted, letterSpacing: 0.3))),
+                      color: context.textDisabled, letterSpacing: 0.3))),
           Expanded(flex: 4,
               child: Text('Uploaded On',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _kMuted, letterSpacing: 0.3))),
+                      color: context.textDisabled, letterSpacing: 0.3))),
           Expanded(flex: 3,
               child: Text('Actions',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                      color: _kMuted, letterSpacing: 0.3))),
+                      color: context.textDisabled, letterSpacing: 0.3))),
         ]),
       ),
 
-      // ── Data rows ────────────────────────────────────────────────
+      // Data rows
       Container(
         decoration: BoxDecoration(
           border: Border(
-            left: BorderSide(color: _kBorder),
-            right: BorderSide(color: _kBorder),
-            bottom: BorderSide(color: _kBorder),
+            left: BorderSide(color: context.borderColor),
+            right: BorderSide(color: context.borderColor),
+            bottom: BorderSide(color: context.borderColor),
           ),
           borderRadius: const BorderRadius.only(
             bottomLeft: Radius.circular(8),
@@ -945,7 +918,6 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
         ),
       ),
 
-      // ── "N more" expand button ───────────────────────────────────
       if (!_showAll && hiddenCount > 0)
         GestureDetector(
           onTap: () => setState(() => _showAll = true),
@@ -965,19 +937,18 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
           ),
         ),
 
-      // ── "Show less" collapse ─────────────────────────────────────
       if (_showAll && hiddenCount > 0)
         GestureDetector(
           onTap: () => setState(() => _showAll = false),
           child: Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Row(children: const [
+            child: Row(children: [
               Icon(Icons.remove_circle_outline_rounded,
-                  size: 14, color: _kMuted),
-              SizedBox(width: 4),
+                  size: 14, color: context.textDisabled),
+              const SizedBox(width: 4),
               Text('Show less',
                   style: TextStyle(
-                      fontSize: 12, color: _kMuted, fontWeight: FontWeight.w600)),
+                      fontSize: 12, color: context.textDisabled, fontWeight: FontWeight.w600)),
             ]),
           ),
         ),
@@ -1000,13 +971,12 @@ class _AttachmentRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         border: isLast
             ? null
-            : const Border(bottom: BorderSide(color: _kBorder)),
+            : Border(bottom: BorderSide(color: context.borderColor)),
       ),
       child: Row(children: [
-        // File icon + name
         Expanded(
           flex: 5,
           child: Row(children: [
@@ -1021,46 +991,58 @@ class _AttachmentRow extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(name,
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy),
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w600, color: context.textPrimary),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis),
             ),
           ]),
         ),
-        // Date
         Expanded(flex: 4,
             child: Text(dateStr,
-                style: const TextStyle(fontSize: 11, color: _kSlate),
+                style: TextStyle(fontSize: 11, color: context.textSecondary),
                 maxLines: 2, overflow: TextOverflow.ellipsis)),
-        // Actions
         Expanded(
           flex: 3,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              // View
-              GestureDetector(
-                onTap: photo.url != null ? () => _openAttachment(photo) : null,
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.remove_red_eye_outlined,
-                      size: 15,
-                      color: photo.url != null ? _kAccent : _kMuted),
-                  const SizedBox(width: 3),
-                  Text('View',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: photo.url != null ? _kAccent : _kMuted)),
-                ]),
+              InkWell(
+                onTap: photo.url != null
+                    ? () {
+                        if (_isImageFile(photo)) {
+                          _viewImageInApp(context, photo);
+                        } else {
+                          _openAttachment(photo);
+                        }
+                      }
+                    : null,
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.remove_red_eye_outlined,
+                        size: 15,
+                        color: photo.url != null ? _kAccent : context.textDisabled),
+                    const SizedBox(width: 3),
+                    Text('View',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: photo.url != null ? _kAccent : context.textDisabled)),
+                  ]),
+                ),
               ),
-              const SizedBox(width: 16),
-              // Download
-              GestureDetector(
+              const SizedBox(width: 12),
+              InkWell(
                 onTap: photo.url != null ? () => _openAttachment(photo) : null,
-                child: Icon(Icons.download_rounded,
-                    size: 18,
-                    color: photo.url != null ? _kAccent : _kMuted),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(Icons.download_rounded,
+                      size: 18,
+                      color: photo.url != null ? _kAccent : context.textDisabled),
+                ),
               ),
             ],
           ),
@@ -1091,15 +1073,15 @@ class _EmptyTimeline extends StatelessWidget {
                 size: 36, color: _kAccent.withValues(alpha: 0.5)),
           ),
           const SizedBox(height: 18),
-          const Text('No visits yet',
+          Text('No visits yet',
               style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  color: _kNavy)),
+                  color: context.textPrimary)),
           const SizedBox(height: 8),
-          const Text('Tap "+ Add New Visit" below to get started',
+          Text('Tap "+ Add New Visit" below to get started',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: _kMuted)),
+              style: TextStyle(fontSize: 13, color: context.textDisabled)),
         ],
       ),
     ),
@@ -1107,7 +1089,7 @@ class _EmptyTimeline extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Patient Details Card — shows all registration fields
+// Patient Details Card
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientDetailsCard extends StatefulWidget {
   final PatientEntity patient;
@@ -1142,9 +1124,9 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: context.borderColor),
         boxShadow: [BoxShadow(
           color: Colors.black.withValues(alpha: 0.03),
           blurRadius: 8, offset: const Offset(0, 2),
@@ -1153,7 +1135,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header row (tap to expand/collapse) ──────────────────
           InkWell(
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(14), topRight: Radius.circular(14)),
@@ -1171,24 +1152,23 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       color: _kAccent, size: 16),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text('Patient Information',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: context.textPrimary)),
                 ),
                 Icon(_expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                    color: _kMuted, size: 20),
+                    color: context.textDisabled, size: 20),
               ]),
             ),
           ),
 
           if (_expanded) ...[
-            const Divider(height: 1, color: _kBorder),
+            Divider(height: 1, color: context.borderColor),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Contact & Identity
                   if (_nonEmpty(p.email) || _nonEmpty(p.altPhone) ||
                       _nonEmpty(p.address) || _nonEmpty(p.idProofType))
                     _Section(
@@ -1204,7 +1184,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // Vitals
                   if (_nonEmpty(p.weight) || _nonEmpty(p.bloodPressure) || _nonEmpty(p.temperature))
                     _Section(
                       title: 'Vitals',
@@ -1217,7 +1196,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // History
                   if (_nonEmpty(p.allergies) || _nonEmpty(p.medicalHistory) || _nonEmpty(p.previousHistory))
                     _Section(
                       title: 'Medical History',
@@ -1230,7 +1208,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // Clinical Findings
                   if (_nonEmpty(p.chiefComplaint) || _nonEmpty(p.examGeneral) || _nonEmpty(p.examNeurological))
                     _Section(
                       title: 'Clinical Findings',
@@ -1243,7 +1220,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // Investigation
                   if (_nonEmpty(p.clinicalDiagnosis) || _nonEmpty(p.imaging) || _nonEmpty(p.otherInvestigations))
                     _Section(
                       title: 'Investigation',
@@ -1256,7 +1232,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // Clinical Plan
                   if (_nonEmpty(p.impression) || _nonEmpty(p.plan) || _nonEmpty(p.treatment) ||
                       _nonEmpty(p.treatmentNotes) || _nonEmpty(p.advice))
                     _Section(
@@ -1272,7 +1247,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                       ],
                     ),
 
-                  // Uploaded Documents
                   if (widget.photos.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     _AttachmentsSection(photos: widget.photos),
@@ -1331,29 +1305,25 @@ class _Section extends StatelessWidget {
             SizedBox(
               width: 140,
               child: Text(r.label,
-                  style: const TextStyle(
-                      fontSize: 11, color: _kMuted, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      fontSize: 11, color: context.textDisabled, fontWeight: FontWeight.w600)),
             ),
             const SizedBox(width: 4),
             Expanded(
               child: Text(r.value,
-                  style: const TextStyle(
-                      fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      fontSize: 12, color: context.textPrimary, fontWeight: FontWeight.w600)),
             ),
           ]),
         )),
-        const Divider(height: 1, color: _kBorder),
+        Divider(height: 1, color: context.borderColor),
       ]),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _DocsSection removed — _AttachmentsSection is used directly
-// ─────────────────────────────────────────────────────────────────────────────
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Patient Reports Section — shows patientReport photos/PDFs even without visits
+// Patient Reports Section
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientReportsSection extends StatelessWidget {
   final String patientId;
@@ -1384,9 +1354,9 @@ class _PatientReportsSection extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: context.borderColor),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.03),
@@ -1396,47 +1366,44 @@ class _PatientReportsSection extends StatelessWidget {
         ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Header
         Row(children: [
           Container(
             width: 28, height: 28,
             decoration: BoxDecoration(
-              color: const Color(0xFF4B55CC).withValues(alpha: 0.1),
+              color: _kAccent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.folder_outlined,
-                size: 15, color: Color(0xFF4B55CC)),
+                size: 15, color: _kAccent),
           ),
           const SizedBox(width: 8),
-          const Text(
+          Text(
             'Patient Reports',
             style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy),
+                fontSize: 13, fontWeight: FontWeight.w700, color: context.textPrimary),
           ),
           const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFF4B55CC).withValues(alpha: 0.08),
+              color: _kAccent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
               '${reports.length} file${reports.length == 1 ? '' : 's'}',
               style: const TextStyle(
                   fontSize: 11,
-                  color: Color(0xFF4B55CC),
+                  color: _kAccent,
                   fontWeight: FontWeight.w600),
             ),
           ),
         ]),
 
-        // PDF files
         if (pdfs.isNotEmpty) ...[
           const SizedBox(height: 10),
           ...pdfs.map((p) => _PdfReportTile(photo: p)),
         ],
 
-        // Image files
         if (images.isNotEmpty) ...[
           const SizedBox(height: 10),
           PhotoGalleryWidget(photos: images),
@@ -1459,10 +1426,9 @@ class _PdfReportTile extends StatelessWidget {
   Future<void> _open() async {
     final url = photo.url;
     if (url == null || url.isEmpty) return;
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {}
   }
 
   @override
@@ -1471,36 +1437,36 @@ class _PdfReportTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFE8EBF8),
+        color: context.primarySurf,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFF4B55CC).withValues(alpha: 0.2)),
+        border: Border.all(color: _kAccent.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
         Container(
           width: 38, height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFF4B55CC).withValues(alpha: 0.1),
+            color: _kAccent.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: const Icon(Icons.picture_as_pdf_rounded,
-              color: Color(0xFF4B55CC), size: 20),
+              color: _kAccent, size: 20),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               _filename,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: _kNavy),
+                  color: context.textPrimary),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 2),
             Text(
               DateFormat('dd MMM yyyy').format(photo.createdAt),
-              style: const TextStyle(fontSize: 11, color: _kMuted),
+              style: TextStyle(fontSize: 11, color: context.textDisabled),
             ),
           ]),
         ),
@@ -1510,7 +1476,7 @@ class _PdfReportTile extends StatelessWidget {
           icon: const Icon(Icons.open_in_new_rounded, size: 14),
           label: const Text('Open', style: TextStyle(fontSize: 12)),
           style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFF4B55CC),
+            foregroundColor: _kAccent,
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             minimumSize: Size.zero,
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1522,7 +1488,72 @@ class _PdfReportTile extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom "Add New Visit" bar  –  navigates directly to wizard (no pre-create)
+// Full-screen in-app image viewer
+// ─────────────────────────────────────────────────────────────────────────────
+class _ImageViewerDialog extends StatelessWidget {
+  final PhotoEntity photo;
+  const _ImageViewerDialog({required this.photo});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _attachFilename(photo);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(
+          name,
+          style: const TextStyle(fontSize: 14, color: Colors.white),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white),
+            tooltip: 'Open / Download',
+            onPressed: () => _openAttachment(photo),
+          ),
+        ],
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 5,
+          child: Image.network(
+            photo.url!,
+            fit: BoxFit.contain,
+            loadingBuilder: (ctx, child, progress) {
+              if (progress == null) return child;
+              return const Center(
+                  child: CircularProgressIndicator(color: Colors.white));
+            },
+            errorBuilder: (ctx, _, __) => Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.broken_image_rounded,
+                    size: 64, color: Colors.white54),
+                const SizedBox(height: 12),
+                const Text('Could not load image',
+                    style: TextStyle(color: Colors.white54)),
+                const SizedBox(height: 16),
+                TextButton.icon(
+                  onPressed: () => _openAttachment(photo),
+                  icon: const Icon(Icons.open_in_new, color: Colors.white70),
+                  label: const Text('Open in browser',
+                      style: TextStyle(color: Colors.white70)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom "Add New Visit" bar
 // ─────────────────────────────────────────────────────────────────────────────
 class _AddVisitBar extends StatelessWidget {
   final String patientId;
@@ -1534,7 +1565,7 @@ class _AddVisitBar extends StatelessWidget {
     final bottom = MediaQuery.of(context).padding.bottom;
     return Container(
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottom),
-      color: Colors.white,
+      color: context.cardColor,
       child: SizedBox(
         width: double.infinity,
         height: 52,

@@ -17,10 +17,12 @@ class SurgeryModel {
   final String? complications;
   final String? postOpPlan;
   final String status;
+  final bool isActive;
   final String createdAt;
   final String updatedAt;
   final String? createdBy;
   final String? updatedBy;
+  final String syncStatus;
 
   const SurgeryModel({
     required this.id,
@@ -39,10 +41,12 @@ class SurgeryModel {
     this.complications,
     this.postOpPlan,
     this.status = 'draft',
+    this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
     this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   factory SurgeryModel.fromJson(Map<String, dynamic> j) => SurgeryModel(
@@ -66,6 +70,8 @@ class SurgeryModel {
         updatedAt: (j['updatedAt'] ?? j['updated_at']) as String,
         createdBy: (j['createdBy'] ?? j['created_by']) as String?,
         updatedBy: (j['updatedBy'] ?? j['updated_by']) as String?,
+        isActive: (j['isActive'] ?? j['is_active']) as bool? ?? true,
+        syncStatus: (j['syncStatus'] ?? j['sync_status']) as String? ?? 'synced',
       );
 
   Map<String, dynamic> toApiJson() => {
@@ -89,8 +95,12 @@ class SurgeryModel {
   Map<String, dynamic> toFullJson() => {
         ...toApiJson(),
         'patientId': patientId,
+        'isActive': isActive,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
+        'createdBy': createdBy,
+        'updatedBy': updatedBy,
+        'syncStatus': syncStatus,
       };
 
   Map<String, dynamic> toSupabaseJson() => {
@@ -129,10 +139,12 @@ class SurgeryModel {
         complications: complications,
         postOpPlan: postOpPlan,
         status: status,
+        isActive: isActive,
         createdAt: DateTime.parse(createdAt),
         updatedAt: DateTime.parse(updatedAt),
         createdBy: createdBy,
         updatedBy: updatedBy,
+        syncStatus: syncStatus,
       );
 
   factory SurgeryModel.fromEntity(SurgeryEntity e) => SurgeryModel(
@@ -152,9 +164,11 @@ class SurgeryModel {
         complications: e.complications,
         postOpPlan: e.postOpPlan,
         status: e.status,
+        isActive: e.isActive,
         createdAt: e.createdAt.toIso8601String(),
         updatedAt: e.updatedAt.toIso8601String(),
         createdBy: e.createdBy,
         updatedBy: e.updatedBy,
+        syncStatus: e.syncStatus,
       );
 }

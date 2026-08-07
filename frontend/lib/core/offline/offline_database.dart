@@ -22,7 +22,7 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 3,
+      version: 4,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -51,6 +51,35 @@ class OfflineDatabase {
       _createPhotosTable(batch);
       await batch.commit(noResult: true);
     }
+    if (oldVersion < 4) {
+      // Add audit columns to all tables
+      final stmts = [
+        'ALTER TABLE patients ADD COLUMN created_by TEXT',
+        'ALTER TABLE patients ADD COLUMN updated_by TEXT',
+        'ALTER TABLE visits ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE visits ADD COLUMN created_by TEXT',
+        'ALTER TABLE visits ADD COLUMN updated_by TEXT',
+        'ALTER TABLE surgeries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE surgeries ADD COLUMN created_by TEXT',
+        'ALTER TABLE surgeries ADD COLUMN updated_by TEXT',
+        'ALTER TABLE photos ADD COLUMN sync_status TEXT NOT NULL DEFAULT \'synced\'',
+        'ALTER TABLE photos ADD COLUMN updated_at TEXT',
+        'ALTER TABLE photos ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE photos ADD COLUMN created_by TEXT',
+        'ALTER TABLE photos ADD COLUMN updated_by TEXT',
+        'ALTER TABLE examinations ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE examinations ADD COLUMN created_at TEXT',
+        'ALTER TABLE examinations ADD COLUMN created_by TEXT',
+        'ALTER TABLE examinations ADD COLUMN updated_by TEXT',
+        'ALTER TABLE prescriptions ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
+        'ALTER TABLE prescriptions ADD COLUMN created_at TEXT',
+        'ALTER TABLE prescriptions ADD COLUMN created_by TEXT',
+        'ALTER TABLE prescriptions ADD COLUMN updated_by TEXT',
+      ];
+      for (final sql in stmts) {
+        await db.execute(sql);
+      }
+    }
   }
 
   void _createSchema(Batch batch) {
@@ -71,7 +100,9 @@ class OfflineDatabase {
         sync_status  TEXT NOT NULL DEFAULT 'synced',
         is_active    INTEGER NOT NULL DEFAULT 1,
         created_at   TEXT NOT NULL,
-        updated_at   TEXT NOT NULL
+        updated_at   TEXT NOT NULL,
+        created_by   TEXT,
+        updated_by   TEXT
       )
     ''');
     batch.execute(
@@ -94,8 +125,11 @@ class OfflineDatabase {
         status              TEXT NOT NULL DEFAULT 'draft',
         data_json           TEXT,
         sync_status         TEXT NOT NULL DEFAULT 'pending',
+        is_active           INTEGER NOT NULL DEFAULT 1,
         created_at          TEXT NOT NULL,
-        updated_at          TEXT NOT NULL
+        updated_at          TEXT NOT NULL,
+        created_by          TEXT,
+        updated_by          TEXT
       )
     ''');
     batch.execute(
@@ -122,8 +156,11 @@ class OfflineDatabase {
         status              TEXT NOT NULL DEFAULT 'draft',
         data_json           TEXT,
         sync_status         TEXT NOT NULL DEFAULT 'pending',
+        is_active           INTEGER NOT NULL DEFAULT 1,
         created_at          TEXT NOT NULL,
-        updated_at          TEXT NOT NULL
+        updated_at          TEXT NOT NULL,
+        created_by          TEXT,
+        updated_by          TEXT
       )
     ''');
 
@@ -171,7 +208,12 @@ class OfflineDatabase {
         file_size    INTEGER,
         mime_type    TEXT,
         is_uploaded  INTEGER NOT NULL DEFAULT 0,
-        created_at   TEXT NOT NULL
+        sync_status  TEXT NOT NULL DEFAULT 'synced',
+        is_active    INTEGER NOT NULL DEFAULT 1,
+        created_at   TEXT NOT NULL,
+        updated_at   TEXT,
+        created_by   TEXT,
+        updated_by   TEXT
       )
     ''');
     batch.execute(
@@ -189,7 +231,11 @@ class OfflineDatabase {
         patient_id  TEXT NOT NULL,
         data_json   TEXT NOT NULL,
         sync_status TEXT NOT NULL DEFAULT 'synced',
-        updated_at  TEXT NOT NULL
+        is_active   INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT,
+        updated_at  TEXT NOT NULL,
+        created_by  TEXT,
+        updated_by  TEXT
       )
     ''');
   }
@@ -201,7 +247,11 @@ class OfflineDatabase {
         patient_id  TEXT NOT NULL,
         data_json   TEXT NOT NULL,
         sync_status TEXT NOT NULL DEFAULT 'synced',
-        updated_at  TEXT NOT NULL
+        is_active   INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT,
+        updated_at  TEXT NOT NULL,
+        created_by  TEXT,
+        updated_by  TEXT
       )
     ''');
   }

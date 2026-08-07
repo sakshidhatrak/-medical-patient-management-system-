@@ -19,10 +19,12 @@ class SurgeryEntity extends Equatable {
   final String? postOpPlan;
 
   final String status;
+  final bool isActive;
   final DateTime createdAt;
   final DateTime updatedAt;
   final String? createdBy;
   final String? updatedBy;
+  final String syncStatus; // 'synced' | 'pending'
 
   const SurgeryEntity({
     required this.id,
@@ -41,10 +43,12 @@ class SurgeryEntity extends Equatable {
     this.complications,
     this.postOpPlan,
     this.status = 'draft',
+    this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
     this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   String get summary =>
@@ -65,6 +69,8 @@ class SurgeryEntity extends Equatable {
     String? complications,
     String? postOpPlan,
     String? status,
+    bool? isActive,
+    String? syncStatus,
   }) =>
       SurgeryEntity(
         id: id,
@@ -83,10 +89,12 @@ class SurgeryEntity extends Equatable {
         complications: complications ?? this.complications,
         postOpPlan: postOpPlan ?? this.postOpPlan,
         status: status ?? this.status,
+        isActive: isActive ?? this.isActive,
         createdAt: createdAt,
         updatedAt: updatedAt,
         createdBy: createdBy,
         updatedBy: updatedBy,
+        syncStatus: syncStatus ?? this.syncStatus,
       );
 
   @override

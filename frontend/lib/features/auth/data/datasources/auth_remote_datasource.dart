@@ -43,12 +43,22 @@ class AuthSpringDataSourceImpl implements AuthRemoteDataSource {
       final userJson = data['user'] as Map<String, dynamic>;
       return (UserModel.fromJson(userJson), token);
     } on DioException catch (e) {
-      if (e.response?.statusCode == 401) {
+      final status = e.response?.statusCode;
+      if (status == 401) {
         throw const UnauthorizedException(
             'Incorrect email or password.', code: 'INVALID_CREDENTIALS');
       }
+      if (status == 404 ||
+          e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        throw const ServerException(
+            'Cannot reach server. Please check that the backend is running and the device is on the same network.',
+            code: 'SERVER_UNREACHABLE');
+      }
       throw ServerException(
-          e.message ?? 'Network error', code: 'NETWORK_ERROR');
+          e.response?.data?['message'] as String? ?? 'Network error',
+          code: 'NETWORK_ERROR');
     } catch (e) {
       if (e is AppException) rethrow;
       throw ServerException(e.toString(), code: 'LOGIN_FAILED');

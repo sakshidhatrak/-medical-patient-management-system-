@@ -47,6 +47,9 @@ class PatientModel {
   final bool isActive;
   final String createdAt;
   final String updatedAt;
+  final String? createdBy;
+  final String? updatedBy;
+  final String syncStatus;
 
   const PatientModel({
     required this.id,
@@ -83,6 +86,9 @@ class PatientModel {
     this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
+    this.createdBy,
+    this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   factory PatientModel.fromJson(Map<String, dynamic> j) => PatientModel(
@@ -120,6 +126,9 @@ class PatientModel {
         isActive: (j['isActive'] ?? j['is_active']) as bool? ?? true,
         createdAt: (j['createdAt'] ?? j['created_at']) as String,
         updatedAt: (j['updatedAt'] ?? j['updated_at']) as String,
+        createdBy: (j['createdBy'] ?? j['created_by']) as String?,
+        updatedBy: (j['updatedBy'] ?? j['updated_by']) as String?,
+        syncStatus: (j['syncStatus'] ?? j['sync_status']) as String? ?? 'synced',
       );
 
   // Full camelCase JSON for SQLite cache.
@@ -129,6 +138,9 @@ class PatientModel {
         'isActive': isActive,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
+        'createdBy': createdBy,
+        'updatedBy': updatedBy,
+        'syncStatus': syncStatus,
       };
 
   Map<String, dynamic> toApiJson() => {
@@ -237,6 +249,9 @@ class PatientModel {
         isActive: isActive,
         createdAt: DateTime.parse(createdAt),
         updatedAt: DateTime.parse(updatedAt),
+        createdBy: createdBy,
+        updatedBy: updatedBy,
+        syncStatus: syncStatus,
       );
 
   factory PatientModel.fromEntity(PatientEntity e) => PatientModel(
@@ -274,5 +289,8 @@ class PatientModel {
         isActive: e.isActive,
         createdAt: e.createdAt.toIso8601String(),
         updatedAt: e.updatedAt.toIso8601String(),
+        createdBy: e.createdBy,
+        updatedBy: e.updatedBy,
+        syncStatus: e.syncStatus,
       );
 }

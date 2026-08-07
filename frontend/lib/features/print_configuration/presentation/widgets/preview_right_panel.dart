@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../domain/models/print_field.dart';
 import '../providers/print_config_provider.dart';
 
@@ -15,7 +16,7 @@ class PreviewRightPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      color: const Color(0xFFEEEFF4),
+      color: context.surfaceVar,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -46,15 +47,15 @@ class _PreviewHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.md, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        color: context.cardColor,
+        border: Border(bottom: BorderSide(color: context.borderColor)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: AppColors.primarySurface,
+              color: context.primarySurf,
               borderRadius:
                   BorderRadius.circular(AppDimensions.radiusMd),
             ),
@@ -62,12 +63,12 @@ class _PreviewHeader extends StatelessWidget {
                 size: 14, color: AppColors.primary),
           ),
           const SizedBox(width: AppDimensions.sm),
-          const Text(
+          Text(
             'Live Report Preview',
             style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary),
+                color: context.textPrimary),
           ),
           const SizedBox(width: AppDimensions.sm),
           Container(
@@ -78,17 +79,19 @@ class _PreviewHeader extends StatelessWidget {
               borderRadius:
                   BorderRadius.circular(AppDimensions.radiusRound),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
+                SizedBox(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                      color: AppColors.success, shape: BoxShape.circle),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                        color: AppColors.success, shape: BoxShape.circle),
+                  ),
                 ),
-                const SizedBox(width: 4),
-                const Text('Live',
+                SizedBox(width: 4),
+                Text('Live',
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -100,15 +103,15 @@ class _PreviewHeader extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
+              color: context.surfaceVar,
               borderRadius: BorderRadius.circular(4),
             ),
-            child: const Text(
+            child: Text(
               'A4 · Portrait (fixed)',
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary),
+                  color: context.textSecondary),
             ),
           ),
         ],
@@ -135,7 +138,7 @@ class _ReportDocument extends ConsumerWidget {
         borderRadius: BorderRadius.circular(4),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
+            color: Colors.black.withValues(alpha: 0.12),
             blurRadius: 24,
             offset: const Offset(0, 4),
           ),
@@ -248,7 +251,7 @@ class _DocumentHeader extends StatelessWidget {
                   Text(
                     'General Hospital & Healthcare Services',
                     style: TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary),
+                        fontSize: 11, color: const Color(0xFF6E6A63)),
                   ),
                 ],
               ),
@@ -258,47 +261,47 @@ class _DocumentHeader extends StatelessWidget {
               width: 52,
               height: 52,
               decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.border)),
+                  border: Border.all(color: const Color(0xFFE0DDD7))),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Icon(Icons.qr_code_2_rounded,
-                      size: 22, color: AppColors.textSecondary),
+                      size: 22, color: const Color(0xFF6E6A63)),
                   const Text('Scan to Verify',
                       style: TextStyle(
                           fontSize: 6,
-                          color: AppColors.textSecondary)),
+                          color: const Color(0xFF6E6A63))),
                 ],
               ),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Divider(color: AppColors.divider),
+        const Divider(color: const Color(0xFFECEAE4)),
         const SizedBox(height: 4),
         // Address bar
         Row(
           children: [
             const Icon(Icons.location_on_outlined,
-                size: 12, color: AppColors.textSecondary),
+                size: 12, color: const Color(0xFF6E6A63)),
             const SizedBox(width: 4),
             const Text('123 Medical Drive, Healthcare City, HC 560001',
                 style: TextStyle(
-                    fontSize: 9, color: AppColors.textSecondary)),
+                    fontSize: 9, color: const Color(0xFF6E6A63))),
             const SizedBox(width: 16),
             const Icon(Icons.phone_outlined,
-                size: 12, color: AppColors.textSecondary),
+                size: 12, color: const Color(0xFF6E6A63)),
             const SizedBox(width: 4),
             const Text('+1 (555) 000-1234',
                 style: TextStyle(
-                    fontSize: 9, color: AppColors.textSecondary)),
+                    fontSize: 9, color: const Color(0xFF6E6A63))),
             const SizedBox(width: 16),
             const Icon(Icons.email_outlined,
-                size: 12, color: AppColors.textSecondary),
+                size: 12, color: const Color(0xFF6E6A63)),
             const SizedBox(width: 4),
             const Text('info@medimanage.com',
                 style: TextStyle(
-                    fontSize: 9, color: AppColors.textSecondary)),
+                    fontSize: 9, color: const Color(0xFF6E6A63))),
           ],
         ),
         const SizedBox(height: 8),
@@ -322,7 +325,7 @@ class _DocumentHeader extends StatelessWidget {
             '    |    ${DateFormat('HH:mm').format(now)}'
             '    |    Report ID: RPT-${DateFormat('ddMMyyyy').format(now)}-${DateFormat('HHmmss').format(now)}',
             style: const TextStyle(
-                fontSize: 10, color: AppColors.textSecondary),
+                fontSize: 10, color: const Color(0xFF6E6A63)),
           ),
         ),
       ],
@@ -384,7 +387,7 @@ class _PatientSummaryBox extends ConsumerWidget {
               Text(label,
                   style: const TextStyle(
                       fontSize: 9,
-                      color: AppColors.textSecondary)),
+                      color: const Color(0xFF6E6A63))),
               const SizedBox(height: 4),
               Text(
                 value,
@@ -427,7 +430,7 @@ class _VitalsSection extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: IntrinsicHeight(
@@ -470,7 +473,7 @@ class _VitalsSection extends ConsumerWidget {
                         horizontal: 16, vertical: 14),
                     decoration: const BoxDecoration(
                       border: Border(
-                        left: BorderSide(color: AppColors.border),
+                        left: BorderSide(color: const Color(0xFFE0DDD7)),
                       ),
                     ),
                     child: Column(
@@ -479,7 +482,7 @@ class _VitalsSection extends ConsumerWidget {
                         Text(v['label']!,
                             style: const TextStyle(
                                 fontSize: 9,
-                                color: AppColors.textSecondary)),
+                                color: const Color(0xFF6E6A63))),
                         const SizedBox(height: 4),
                         Text(v['value']!,
                             style: const TextStyle(
@@ -535,7 +538,7 @@ class _ClinicalInfoSection extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -553,7 +556,7 @@ class _ClinicalInfoSection extends ConsumerWidget {
                       fontSize: 12, fontWeight: FontWeight.w800)),
             ]),
           ),
-          const Divider(height: 1, color: AppColors.border),
+          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
           // Field rows
           ...fields.asMap().entries.map((entry) {
             final isLast = entry.key == fields.length - 1;
@@ -571,7 +574,7 @@ class _ClinicalInfoSection extends ConsumerWidget {
                           child: Text('-',
                               style: TextStyle(
                                   color:
-                                      AppColors.textSecondary))),
+                                      const Color(0xFF6E6A63)))),
                       SizedBox(
                         width: 160,
                         child: Text(f.label,
@@ -582,7 +585,7 @@ class _ClinicalInfoSection extends ConsumerWidget {
                       const SizedBox(width: 4),
                       Text(':  ',
                           style: TextStyle(
-                              color: AppColors.textSecondary)),
+                              color: const Color(0xFF6E6A63))),
                       Expanded(
                         child: Text(
                           data[f.id] ?? '—',
@@ -595,7 +598,7 @@ class _ClinicalInfoSection extends ConsumerWidget {
                 ),
                 if (!isLast)
                   const Divider(
-                      height: 1, color: AppColors.divider),
+                      height: 1, color: const Color(0xFFECEAE4)),
               ],
             );
           }),
@@ -625,7 +628,7 @@ class _PrescriptionSection extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -647,7 +650,7 @@ class _PrescriptionSection extends ConsumerWidget {
                       fontSize: 12, fontWeight: FontWeight.w800)),
             ]),
           ),
-          const Divider(height: 1, color: AppColors.border),
+          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
           // Table with black header
           ClipRRect(
             borderRadius: const BorderRadius.only(
@@ -656,7 +659,7 @@ class _PrescriptionSection extends ConsumerWidget {
             ),
             child: Table(
               border: TableBorder.all(
-                  color: AppColors.border, width: 0.5),
+                  color: const Color(0xFFE0DDD7), width: 0.5),
               columnWidths: const {
                 0: FlexColumnWidth(2.5),
                 1: FlexColumnWidth(1),
@@ -736,7 +739,7 @@ class _DoctorNotesRow extends ConsumerWidget {
     Widget notesBox = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -761,7 +764,7 @@ class _DoctorNotesRow extends ConsumerWidget {
     Widget adviceBox = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -808,7 +811,7 @@ class _DocumentFooter extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       children: [
-        const Divider(color: AppColors.divider),
+        const Divider(color: const Color(0xFFECEAE4)),
         const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -831,16 +834,16 @@ class _DocumentFooter extends ConsumerWidget {
                       'MBBS, MS Gen. Surg. (KEM Hospital, Mumbai)',
                       style: TextStyle(
                           fontSize: 9,
-                          color: AppColors.textSecondary)),
+                          color: const Color(0xFF6E6A63))),
                   const Text('MCh Neurosurgery (GMC, Goa)',
                       style: TextStyle(
                           fontSize: 9,
-                          color: AppColors.textSecondary)),
+                          color: const Color(0xFF6E6A63))),
                   const Text(
                       'Fellow in NeuroSurgical Oncology (Tata Memorial Hospital, Mumbai)',
                       style: TextStyle(
                           fontSize: 9,
-                          color: AppColors.textSecondary)),
+                          color: const Color(0xFF6E6A63))),
                   const SizedBox(height: 4),
                   const Text('MMC Reg. No: 2009031020',
                       style: TextStyle(
@@ -875,21 +878,21 @@ class _DocumentFooter extends ConsumerWidget {
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.border),
+                    border: Border.all(color: const Color(0xFFE0DDD7)),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Column(
                     children: [
                       const Icon(Icons.security_outlined,
                           size: 16,
-                          color: AppColors.textSecondary),
+                          color: const Color(0xFF6E6A63)),
                       const SizedBox(height: 4),
                       const Text(
                         'This is a system generated report.\nNo signature required.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 9,
-                            color: AppColors.textSecondary,
+                            color: const Color(0xFF6E6A63),
                             height: 1.4),
                       ),
                     ],
@@ -916,7 +919,7 @@ class _BorderedSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE0DDD7)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -927,7 +930,7 @@ class _BorderedSection extends StatelessWidget {
                 horizontal: 14, vertical: 10),
             child: header,
           ),
-          const Divider(height: 1, color: AppColors.border),
+          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
           child,
         ],
       ),
@@ -959,6 +962,6 @@ class _VertDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 1, color: AppColors.border);
+    return Container(width: 1, color: const Color(0xFFE0DDD7));
   }
 }
