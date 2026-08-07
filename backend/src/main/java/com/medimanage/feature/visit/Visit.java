@@ -30,6 +30,10 @@ public class Visit {
     @Column(name = "visit_type", nullable = false)
     private String visitType;
 
+    // Client-supplied UUID for idempotent create (mobile offline sync).
+    @Column(name = "client_id", unique = true)
+    private String clientId;
+
     // ── Visit fields ────────────────────────────────────────────────
     @Column(columnDefinition = "TEXT")
     private String complaints;

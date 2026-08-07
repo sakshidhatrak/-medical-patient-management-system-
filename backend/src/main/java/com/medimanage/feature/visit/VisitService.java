@@ -35,12 +35,19 @@ public class VisitService {
 
     @Transactional
     public VisitDto create(Long patientId, VisitRequest req, Long actorId) {
+        // Idempotent create: if the mobile client already sent this UUID, return the existing visit.
+        if (req.clientId() != null && !req.clientId().isBlank()) {
+            var existing = visitRepo.findByClientIdAndPatientId(req.clientId(), patientId);
+            if (existing.isPresent()) return VisitDto.from(existing.get());
+        }
+
         Patient patient = patientRepo.findByIdAndIsActiveTrue(patientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient", patientId));
         User actor = userRepo.findById(actorId).orElse(null);
 
         Visit v = Visit.builder()
                 .patient(patient)
+                .clientId(req.clientId())
                 .visitDate(req.visitDate() != null ? req.visitDate() : Instant.now())
                 .visitType(req.visitType() != null ? req.visitType() : "opd")
                 .complaints(req.complaints())

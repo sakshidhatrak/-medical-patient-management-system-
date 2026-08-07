@@ -3,6 +3,7 @@ package com.medimanage.feature.visit.dto;
 import java.time.Instant;
 
 public record VisitRequest(
+        String clientId,
         Instant visitDate,
         String visitType,
         String complaints,

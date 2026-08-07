@@ -11,10 +11,12 @@ class VisitModel {
   final String? plan;
   final String? notes;
   final String status;
+  final bool isActive;
   final String createdAt;
   final String updatedAt;
   final String? createdBy;
   final String? updatedBy;
+  final String syncStatus;
 
   const VisitModel({
     required this.id,
@@ -27,10 +29,12 @@ class VisitModel {
     this.plan,
     this.notes,
     this.status = 'draft',
+    this.isActive = true,
     required this.createdAt,
     required this.updatedAt,
     this.createdBy,
     this.updatedBy,
+    this.syncStatus = 'synced',
   });
 
   factory VisitModel.fromJson(Map<String, dynamic> j) {
@@ -73,6 +77,8 @@ class VisitModel {
       updatedAt: (j['updatedAt'] ?? j['updated_at']) as String,
       createdBy: (j['createdBy'] ?? j['created_by']) as String?,
       updatedBy: (j['updatedBy'] ?? j['updated_by']) as String?,
+      isActive: (j['isActive'] ?? j['is_active']) as bool? ?? true,
+      syncStatus: (j['syncStatus'] ?? j['sync_status']) as String? ?? 'synced',
     );
   }
 
@@ -89,7 +95,7 @@ class VisitModel {
   }
 
   Map<String, dynamic> toApiJson() => {
-        'id': id,
+        'clientId': id,
         'visitDate': visitDate,
         'visitType': visitType,
         'complaints': complaints,
@@ -103,8 +109,12 @@ class VisitModel {
   Map<String, dynamic> toFullJson() => {
         ...toApiJson(),
         'patientId': patientId,
+        'isActive': isActive,
         'createdAt': createdAt,
         'updatedAt': updatedAt,
+        'createdBy': createdBy,
+        'updatedBy': updatedBy,
+        'syncStatus': syncStatus,
       };
 
   Map<String, dynamic> toSupabaseJson() => {
@@ -131,10 +141,12 @@ class VisitModel {
         plan: plan,
         notes: notes,
         status: status,
+        isActive: isActive,
         createdAt: DateTime.parse(createdAt),
         updatedAt: DateTime.parse(updatedAt),
         createdBy: createdBy,
         updatedBy: updatedBy,
+        syncStatus: syncStatus,
       );
 
   factory VisitModel.fromEntity(VisitEntity e) => VisitModel(
@@ -148,9 +160,11 @@ class VisitModel {
         plan: e.plan,
         notes: e.notes,
         status: e.status,
+        isActive: e.isActive,
         createdAt: e.createdAt.toUtc().toIso8601String(),
         updatedAt: e.updatedAt.toUtc().toIso8601String(),
         createdBy: e.createdBy,
         updatedBy: e.updatedBy,
+        syncStatus: e.syncStatus,
       );
 }

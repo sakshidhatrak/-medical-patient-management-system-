@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/storage/storage_provider.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../medicines/data/medicine_service.dart';
 import '../../data/datasources/auth_local_datasource.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
 import '../../data/repositories/auth_repository_impl.dart';
@@ -74,6 +75,9 @@ class AuthNotifier extends Notifier<AuthState> {
     state = localUser != null
         ? AuthAuthenticated(localUser)
         : const AuthUnauthenticated();
+    if (state is AuthAuthenticated) {
+      ref.read(medicineServiceProvider).syncDrugsFromApi();
+    }
   }
 
   Future<void> login(String email, String password) async {
@@ -85,6 +89,10 @@ class AuthNotifier extends Notifier<AuthState> {
       (failure) => AuthError(failure.message),
       AuthAuthenticated.new,
     );
+    if (state is AuthAuthenticated) {
+      // Fire-and-forget: refresh drug master list from backend after login.
+      ref.read(medicineServiceProvider).syncDrugsFromApi();
+    }
   }
 
   Future<void> logout() async {
