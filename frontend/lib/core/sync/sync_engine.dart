@@ -400,6 +400,21 @@ class LocalVisitCache {
         where: 'id = ?', whereArgs: [id]);
   }
 
+  // Called at load time for numeric patient IDs: finds any visits still stored
+  // under an old client UUID that maps to this server ID, remaps them, and
+  // updates their data_json.  Handles the race where patient sync completed
+  // before the OPD visit was created in the registration wizard.
+  Future<void> remapFromIdMap(String numericPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    final mapped = await db.query('patient_id_map',
+        where: 'server_id = ?', whereArgs: [numericPatientId]);
+    for (final m in mapped) {
+      final clientId = m['client_id'] as String;
+      await remapPatientId(clientId, numericPatientId);
+    }
+  }
+
   // When the backend assigns a new numeric ID to a patient, update all local
   // visits that referenced the old client UUID so they can be found by the
   // new server-assigned ID on subsequent loads.
