@@ -60,6 +60,10 @@ class PhotoSpringDataSource implements PhotoDataSource {
     String? caption,
     String? clientId,
   }) async {
+    // The backend expects Long (numeric) IDs for visitId and surgeryId.
+    // If the visit/surgery hasn't synced yet the ID is still a UUID — skip
+    // those params so Spring Boot doesn't fail to parse them.
+    final _numericId = RegExp(r'^\d+$');
     try {
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
@@ -69,8 +73,8 @@ class PhotoSpringDataSource implements PhotoDataSource {
         ),
         'category': category.value,
         if (caption != null) 'caption': caption,
-        if (visitId != null) 'visitId': visitId,
-        if (surgeryId != null) 'surgeryId': surgeryId,
+        if (visitId != null && _numericId.hasMatch(visitId)) 'visitId': visitId,
+        if (surgeryId != null && _numericId.hasMatch(surgeryId)) 'surgeryId': surgeryId,
       });
 
       final response = await _dio.post<Map<String, dynamic>>(

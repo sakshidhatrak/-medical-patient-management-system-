@@ -37,7 +37,7 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 4,
+      version: 5,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -136,6 +136,16 @@ class OfflineDatabase {
       final batch = db.batch();
       _createPhotosTable(batch);
       await batch.commit(noResult: true);
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS patient_id_map (
+            client_id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL
+          )
+        ''');
+      } catch (_) {}
     }
     if (oldVersion < 4) {
       // Add audit columns to all tables.
@@ -268,6 +278,14 @@ class OfflineDatabase {
 
     // ── Drugs master cache ──────────────────────────────────────
     _createDrugsCacheTable(batch);
+
+    // ── Patient ID map (client UUID → server numeric ID) ────────
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS patient_id_map (
+        client_id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL
+      )
+    ''');
 
     // ── Sync queue ──────────────────────────────────────────────
     batch.execute('''
