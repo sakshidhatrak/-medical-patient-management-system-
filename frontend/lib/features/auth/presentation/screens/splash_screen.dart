@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/route_names.dart';
 import '../providers/auth_provider.dart';
 
-const _kBg = Color(0xFFFDF6EC); // warm beige matching the logo background
-
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -25,10 +23,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1000),
     );
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _scaleAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.82, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
     _controller.forward();
@@ -51,7 +49,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     });
 
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: const Color(0xFFF5F0E8),
       body: FadeTransition(
         opacity: _fadeAnim,
         child: ScaleTransition(
@@ -61,31 +59,32 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Image.asset(
-                  'assets/images/app_logo.jpeg',
-                  width: 200,
-                  height: 240,
+                  'assets/images/app_logo.png',
+                  width: 220,
+                  height: 270,
                   fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
                 const Text(
                   'The Brain & Spine Clinic',
                   style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF2E7D32),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1B5E20),
                     letterSpacing: -0.3,
                   ),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Neurosurgery Care Platform',
+                  'Excellence, Ethics, Efficiency',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF6B7280),
+                    color: Color(0xFF5D4037),
                     fontWeight: FontWeight.w500,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
-                const SizedBox(height: 56),
+                const SizedBox(height: 60),
                 const SizedBox(
                   width: 26,
                   height: 26,
