@@ -45,22 +45,26 @@ void main() async {
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
     ]);
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
-        systemNavigationBarIconBrightness: Brightness.dark,
-      ),
-    );
   }
 
-  // On web, SharedPreferences backs the storage layer.
-  // Pre-initialise it here so the sync Riverpod provider can receive it.
-  final overrides = <Override>[];
-  if (kIsWeb) {
-    final prefs = await SharedPreferences.getInstance();
-    overrides.add(sharedPreferencesProvider.overrideWithValue(prefs));
+  // SharedPreferences: used on web for offline storage, and on all platforms
+  // for lightweight preferences (e.g. theme mode persistence).
+  final prefs = await SharedPreferences.getInstance();
+  final overrides = <Override>[
+    sharedPreferencesProvider.overrideWithValue(prefs),
+  ];
+
+  // Apply system UI overlay style matching the persisted theme so the status
+  // bar and navigation bar look correct before the first frame renders.
+  if (!kIsWeb) {
+    final isDark = prefs.getString('app_theme_mode') == 'dark';
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarColor: isDark ? const Color(0xFF171629) : Colors.white,
+      systemNavigationBarIconBrightness:
+          isDark ? Brightness.light : Brightness.dark,
+    ));
   }
   if (_bypassLogin) {
     overrides.add(authProvider.overrideWith(_MockAuthNotifier.new));

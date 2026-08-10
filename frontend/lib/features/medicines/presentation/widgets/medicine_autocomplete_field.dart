@@ -4,35 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../../data/medicine_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MedicineAutocompleteField
-//
-// Chip-based medicine input with two-source autocomplete:
-//   1. Patient history  (labelled with visit date)
-//   2. Master list      (common medicines)
-//
-// Usage:
-//   MedicineAutocompleteField(
-//     patientId: patient.id,
-//     initialText: _medicationsCtrl.text,
-//     onChanged: (text) => _medicationsCtrl.text = text,
-//     medicineService: ref.read(medicineServiceProvider),
-//     cardColor: _kCard,
-//     inputBgColor: _kInput,
-//     textColor: _kNavy,
-//     hintColor: _kMuted,
-//     borderColor: _kBorder,
-//     primaryColor: _kBlue,
-//   )
-// ─────────────────────────────────────────────────────────────────────────────
-
 class MedicineAutocompleteField extends StatefulWidget {
   final String patientId;
   final String initialText;
   final ValueChanged<String> onChanged;
   final MedicineService medicineService;
 
-  // Theme tokens — caller passes its own const colors
   final Color cardColor;
   final Color inputBgColor;
   final Color textColor;
@@ -65,7 +42,8 @@ class _MedicineAutocompleteFieldState
     extends State<MedicineAutocompleteField> {
   final _inputCtrl = TextEditingController();
   final _inputFocus = FocusNode();
-  final _containerKey = GlobalKey();
+  // LayerLink ties the overlay to the input box and auto-tracks scroll/position.
+  final _layerLink = LayerLink();
   OverlayEntry? _overlay;
 
   List<String> _medicines = [];
@@ -89,8 +67,6 @@ class _MedicineAutocompleteFieldState
     super.dispose();
   }
 
-  // ── Parsing / serialisation ───────────────────────────────────────
-
   List<String> _parse(String text) {
     if (text.trim().isEmpty) return [];
     return text
@@ -102,18 +78,22 @@ class _MedicineAutocompleteFieldState
   }
 
   String _serialise(List<String> meds) => meds.join('\n');
-
   void _notify() => widget.onChanged(_serialise(_medicines));
-
-  // ── Chip management ───────────────────────────────────────────────
 
   void _addMedicine(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
-    if (_medicines.any((m) => m.toLowerCase() == trimmed.toLowerCase())) return;
-    setState(() => _medicines.add(trimmed));
-    _inputCtrl.clear();
+    if (_medicines.any((m) => m.toLowerCase() == trimmed.toLowerCase())) {
+      _removeOverlay();
+      _inputCtrl.clear();
+      return;
+    }
     _removeOverlay();
+    setState(() {
+      _medicines.add(trimmed);
+      _suggestions = [];
+    });
+    _inputCtrl.clear();
     _notify();
   }
 
@@ -121,8 +101,6 @@ class _MedicineAutocompleteFieldState
     setState(() => _medicines.removeAt(idx));
     _notify();
   }
-
-  // ── Autocomplete logic ────────────────────────────────────────────
 
   void _onFocusChange() {
     if (!_inputFocus.hasFocus) {
@@ -132,11 +110,11 @@ class _MedicineAutocompleteFieldState
 
   void _onInputChanged(String value) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 280), () async {
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
       final q = value.trim();
       if (q.length < 2) {
-        setState(() => _suggestions = []);
         _removeOverlay();
+        if (mounted) setState(() => _suggestions = []);
         return;
       }
       final results = await widget.medicineService.getSuggestions(
@@ -153,30 +131,113 @@ class _MedicineAutocompleteFieldState
     });
   }
 
-  // ── Overlay management ────────────────────────────────────────────
+  // ── Overlay (CompositedTransformFollower auto-tracks scroll position) ────────
 
   void _showOverlay() {
-    _removeOverlay();
-    final renderBox = _containerKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    final size = renderBox.size;
-    final offset = renderBox.localToGlobal(Offset.zero);
-
-    final overlay = Overlay.of(context);
-    _overlay = OverlayEntry(builder: (_) => _SuggestionDropdown(
-      left: offset.dx,
-      top: offset.dy + size.height + 4,
-      width: size.width,
-      suggestions: _suggestions,
-      onSelect: _addMedicine,
-      cardColor: widget.cardColor,
-      textColor: widget.textColor,
-      hintColor: widget.hintColor,
-      borderColor: widget.borderColor,
-      primaryColor: widget.primaryColor,
-      historyColor: widget.historyColor,
-    ));
-    overlay.insert(_overlay!);
+    if (_overlay != null) {
+      _overlay!.markNeedsBuild();
+      return;
+    }
+    final overlayState = Overlay.of(context);
+    _overlay = OverlayEntry(builder: (_) {
+      // Width matches the input box.
+      final box = context.findRenderObject() as RenderBox?;
+      final width = box?.size.width ?? 300;
+      return Positioned(
+        width: width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 4),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 240),
+              decoration: BoxDecoration(
+                color: widget.cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: widget.borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  shrinkWrap: true,
+                  itemCount: _suggestions.length,
+                  separatorBuilder: (_, __) => Divider(
+                      height: 1,
+                      color: widget.borderColor.withValues(alpha: 0.5)),
+                  itemBuilder: (_, i) {
+                    final s = _suggestions[i];
+                    return InkWell(
+                      onTap: () => _addMedicine(s.name),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 9),
+                        child: Row(children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: (s.isHistory
+                                      ? widget.historyColor
+                                      : widget.primaryColor)
+                                  .withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Icon(
+                              s.isHistory
+                                  ? Icons.history_rounded
+                                  : Icons.medication_rounded,
+                              size: 15,
+                              color: s.isHistory
+                                  ? widget.historyColor
+                                  : widget.primaryColor,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(s.name,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: widget.textColor),
+                                    overflow: TextOverflow.ellipsis),
+                                if (s.subtitle.isNotEmpty)
+                                  Text(s.subtitle,
+                                      style: TextStyle(
+                                          fontSize: 11,
+                                          color: s.isHistory
+                                              ? widget.historyColor
+                                              : widget.hintColor),
+                                      overflow: TextOverflow.ellipsis),
+                              ],
+                            ),
+                          ),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+    overlayState.insert(_overlay!);
   }
 
   void _removeOverlay() {
@@ -184,21 +245,22 @@ class _MedicineAutocompleteFieldState
     _overlay = null;
   }
 
-  // ── Build ─────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Treatment / Medications',
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: widget.hintColor)),
-        const SizedBox(height: 6),
-        Container(
-            key: _containerKey,
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Treatment / Medications',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: widget.hintColor)),
+          const SizedBox(height: 6),
+          Container(
             decoration: BoxDecoration(
               color: widget.inputBgColor,
               borderRadius: BorderRadius.circular(10),
@@ -209,30 +271,29 @@ class _MedicineAutocompleteFieldState
                 width: _inputFocus.hasFocus ? 1.5 : 1,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Chips ─────────────────────────────────────────
                 if (_medicines.isNotEmpty) ...[
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
-                    children: List.generate(_medicines.length, (i) {
-                      return _MedicineChip(
-                        label: _medicines[i],
-                        onRemove: () => _removeMedicine(i),
-                        bgColor:
-                            widget.primaryColor.withValues(alpha: 0.15),
-                        textColor: widget.primaryColor,
-                        borderColor:
-                            widget.primaryColor.withValues(alpha: 0.3),
-                      );
-                    }),
+                    children: List.generate(
+                        _medicines.length,
+                        (i) => _MedicineChip(
+                              label: _medicines[i],
+                              onRemove: () => _removeMedicine(i),
+                              bgColor: widget.primaryColor
+                                  .withValues(alpha: 0.15),
+                              textColor: widget.primaryColor,
+                              borderColor: widget.primaryColor
+                                  .withValues(alpha: 0.3),
+                            )),
                   ),
                   const SizedBox(height: 8),
                 ],
-                // ── Input row ─────────────────────────────────────
                 Row(children: [
                   Icon(Icons.medication_outlined,
                       size: 16, color: widget.hintColor),
@@ -270,9 +331,8 @@ class _MedicineAutocompleteFieldState
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
-                          color: widget.primaryColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                            color: widget.primaryColor,
+                            borderRadius: BorderRadius.circular(6)),
                         child: const Text('Add',
                             style: TextStyle(
                                 color: Colors.white,
@@ -284,15 +344,16 @@ class _MedicineAutocompleteFieldState
               ],
             ),
           ),
-        if (_medicines.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, left: 2),
-            child: Text(
-              'Press Enter or tap Add after typing each medicine',
-              style: TextStyle(fontSize: 10, color: widget.hintColor),
+          if (_medicines.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 2),
+              child: Text(
+                  'Press Enter or tap Add after typing each medicine',
+                  style:
+                      TextStyle(fontSize: 10, color: widget.hintColor)),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -331,126 +392,8 @@ class _MedicineChip extends StatelessWidget {
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onRemove,
-            child:
-                Icon(Icons.close_rounded, size: 13, color: textColor),
+            child: Icon(Icons.close_rounded, size: 13, color: textColor),
           ),
         ]),
       );
-}
-
-// ── Suggestion dropdown overlay ───────────────────────────────────────────────
-
-class _SuggestionDropdown extends StatelessWidget {
-  final double left;
-  final double top;
-  final double width;
-  final List<MedicineSuggestion> suggestions;
-  final ValueChanged<String> onSelect;
-  final Color cardColor;
-  final Color textColor;
-  final Color hintColor;
-  final Color borderColor;
-  final Color primaryColor;
-  final Color historyColor;
-
-  const _SuggestionDropdown({
-    required this.left,
-    required this.top,
-    required this.width,
-    required this.suggestions,
-    required this.onSelect,
-    required this.cardColor,
-    required this.textColor,
-    required this.hintColor,
-    required this.borderColor,
-    required this.primaryColor,
-    required this.historyColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: left,
-      top: top,
-      width: width,
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          constraints: const BoxConstraints(maxHeight: 240),
-          decoration: BoxDecoration(
-            color: cardColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              shrinkWrap: true,
-              itemCount: suggestions.length,
-              separatorBuilder: (_, __) => Divider(
-                  height: 1,
-                  color: borderColor.withValues(alpha: 0.5)),
-              itemBuilder: (_, i) {
-                final s = suggestions[i];
-                return InkWell(
-                  onTap: () => onSelect(s.name),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 9),
-                    child: Row(children: [
-                      Container(
-                        width: 28, height: 28,
-                        decoration: BoxDecoration(
-                          color: (s.isHistory ? historyColor : primaryColor)
-                              .withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: Icon(
-                          s.isHistory
-                              ? Icons.history_rounded
-                              : Icons.medication_rounded,
-                          size: 15,
-                          color: s.isHistory ? historyColor : primaryColor,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(s.name,
-                                style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: textColor),
-                                overflow: TextOverflow.ellipsis),
-                            if (s.subtitle.isNotEmpty)
-                              Text(s.subtitle,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: s.isHistory
-                                          ? historyColor
-                                          : hintColor),
-                                  overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                    ]),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }

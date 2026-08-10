@@ -108,9 +108,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
   }
 
   void _toggleTheme() {
-    final current = ref.read(themeModeProvider);
-    ref.read(themeModeProvider.notifier).state =
-        current == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    ref.read(themeModeProvider.notifier).toggle();
   }
 
   @override
@@ -159,8 +157,12 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
                         hasSearch: state.search?.isNotEmpty == true ||
                             _activeFilter != _FilterTab.all,
                       )
-                    : ListView.builder(
+                    : RefreshIndicator(
+                        onRefresh: () =>
+                            ref.read(patientsProvider.notifier).refresh(),
+                        child: ListView.builder(
                         controller: _scrollCtrl,
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                         itemCount:
                             filtered.length + (state.hasMore ? 1 : 0),
@@ -189,6 +191,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
                             },
                           );
                         },
+                      ),
                       ),
           ),
         ],

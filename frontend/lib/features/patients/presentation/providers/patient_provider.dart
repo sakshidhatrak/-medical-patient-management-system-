@@ -59,6 +59,10 @@ class PatientsState {
 class PatientsNotifier extends Notifier<PatientsState> {
   static const _pageSize = 20;
 
+  // IDs of patients whose _syncPatientToApi() call is currently in-flight.
+  // Used to avoid purging genuinely-pending patients during _syncFromApi().
+  final _inflightIds = <String>{};
+
   PatientSupabaseDataSource get _ds => ref.read(patientDataSourceProvider);
   LocalPatientCache get _local => ref.read(localPatientCacheProvider);
   OfflineQueue get _queue => ref.read(offlineQueueProvider);
@@ -128,9 +132,40 @@ class PatientsNotifier extends Notifier<PatientsState> {
         await _local.upsert(m.toFullJson());
       }
       final entities = models.map((m) => m.toEntity()).toList();
+      // On refresh, preserve locally-pending patients not yet in the API response.
+      final List<PatientEntity> merged;
+      if (refresh) {
+        final apiIds = entities.map((e) => e.id).toSet();
+        final pendingLocal = state.patients
+            .where((p) => !apiIds.contains(p.id) && p.syncStatus == 'pending')
+            .toList();
+
+        if (pendingLocal.isNotEmpty) {
+          // Determine which pending patients are genuinely waiting vs orphaned.
+          // Orphans: not in the sync queue AND no in-flight _syncPatientToApi().
+          // Example: v30 created patient P1 locally but the server assigned a
+          // different UUID — P1 sits in SQLite as 'pending' forever.
+          final queuedIds = (await _queue.pending())
+              .where((item) => item.entityType == 'patients')
+              .map((item) => item.entityId)
+              .toSet();
+          final keepPending = <PatientEntity>[];
+          for (final p in pendingLocal) {
+            if (queuedIds.contains(p.id) || _inflightIds.contains(p.id)) {
+              keepPending.add(p); // Genuinely pending — keep
+            } else {
+              await _local.purge(p.id); // Orphan — remove from SQLite
+            }
+          }
+          merged = [...entities, ...keepPending];
+        } else {
+          merged = [...entities];
+        }
+      } else {
+        merged = [...state.patients, ...entities];
+      }
       state = state.copyWith(
-        patients:
-            refresh ? entities : [...state.patients, ...entities],
+        patients: merged,
         isLoading: false,
         hasMore: models.length == _pageSize,
         page: page + 1,
@@ -144,9 +179,9 @@ class PatientsNotifier extends Notifier<PatientsState> {
     }
   }
 
-  void refresh() {
+  Future<void> refresh() async {
     state = state.copyWith(isLoading: true, page: 1);
-    Future.microtask(() => _syncFromApi(refresh: true));
+    await _syncFromApi(refresh: true);
   }
 
   void loadMore() {
@@ -231,31 +266,67 @@ class PatientsNotifier extends Notifier<PatientsState> {
         updatedAt: now.toIso8601String(),
       );
 
-      // Save locally first so UI is always fast (web: localStorage, mobile: SQLite).
+      // 1. Save locally immediately — always instant, works offline.
       await _local.upsert(model.toFullJson());
-
-      if (_online) {
-        final saved = await _ds.createPatient(model);
-        await _local.upsert(saved.toFullJson());
-        final entity = saved.toEntity();
-        state = state.copyWith(patients: [entity, ...state.patients]);
-        return entity;
-      }
-
-      // Offline: enqueue for sync when connection restores
-      await _queue.enqueue(
-        entityType: 'patients',
-        entityId: model.id,
-        operation: 'insert',
-        payload: model.toFullJson(),
-      );
       await _local.markPending(model.id);
+
+      // 2. Return local entity right away so UI never blocks on network.
       final entity = model.toEntity().copyWith(syncStatus: 'pending');
       state = state.copyWith(patients: [entity, ...state.patients]);
+
+      // 3. Sync to backend in background — fire-and-forget.
+      if (_online) {
+        _inflightIds.add(model.id);
+        unawaited(_syncPatientToApi(model, isNew: true)
+            .whenComplete(() => _inflightIds.remove(model.id)));
+      } else {
+        await _queue.enqueue(
+          entityType: 'patients',
+          entityId: model.id,
+          operation: 'insert',
+          payload: model.toFullJson(),
+        );
+        await _local.markPending(model.id);
+      }
+
       return entity;
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return null;
+    }
+  }
+
+  Future<void> _syncPatientToApi(PatientModel model,
+      {required bool isNew}) async {
+    try {
+      final saved = isNew
+          ? await _ds.createPatient(model)
+          : await _ds.updatePatient(model);
+      if (isNew && saved.id != model.id) {
+        await _local.purge(model.id);
+        // The backend assigned a new numeric ID. Remap all local visits and
+        // surgeries that still reference the old client UUID so they remain
+        // visible on subsequent loads and sync correctly.
+        await ref.read(localVisitCacheProvider).remapPatientId(model.id, saved.id);
+        await ref.read(localSurgeryCacheProvider).remapPatientId(model.id, saved.id);
+        await ref.read(offlineQueueProvider).remapPatientIdInQueue(model.id, saved.id);
+      }
+      await _local.upsert(saved.toFullJson());
+      final entity = saved.toEntity();
+      state = state.copyWith(
+        patients: isNew
+            ? [entity, ...state.patients.where((p) => p.id != model.id && p.id != entity.id)]
+            : state.patients.map((p) => p.id == entity.id ? entity : p).toList(),
+      );
+    } catch (e) {
+      // Queue for later retry
+      await _queue.enqueue(
+        entityType: 'patients',
+        entityId: model.id,
+        operation: isNew ? 'insert' : 'update',
+        payload: model.toFullJson(),
+      );
+      await _local.markPending(model.id);
     }
   }
 
@@ -271,27 +342,17 @@ class PatientsNotifier extends Notifier<PatientsState> {
             .toList(),
       );
 
+      // Sync to backend in background — fire-and-forget.
       if (_online) {
-        try {
-          final saved = await _ds.updatePatient(model);
-          await _local.upsert(saved.toFullJson());
-          final entity = saved.toEntity();
-          state = state.copyWith(
-            patients: state.patients
-                .map((p) => p.id == entity.id ? entity : p)
-                .toList(),
-          );
-          return entity;
-        } catch (_) {}
+        unawaited(_syncPatientToApi(model, isNew: false));
+      } else {
+        await _queue.enqueue(
+          entityType: 'patients',
+          entityId: model.id,
+          operation: 'update',
+          payload: model.toFullJson(),
+        );
       }
-
-      // Offline: queue update.
-      await _queue.enqueue(
-        entityType: 'patients',
-        entityId: model.id,
-        operation: 'update',
-        payload: model.toFullJson(),
-      );
       return patient;
     } catch (e) {
       state = state.copyWith(error: e.toString());
@@ -315,25 +376,33 @@ final patientsProvider =
 
 final patientByIdProvider =
     FutureProvider.family<PatientEntity?, String>((ref, id) async {
-  // Try API first if online.
-  if (ref.read(isOnlineProvider)) {
-    try {
-      final ds = ref.read(patientDataSourceProvider);
-      final model = await ds.getPatientById(id);
-      // Update local cache.
-      ref.read(localPatientCacheProvider).upsert(model.toFullJson());
-      return model.toEntity();
-    } catch (_) {}
-  }
-  // Fall back to local cache (works on web via localStorage).
+  // 1. Return local cache immediately — never block on the network.
   final row = await ref.read(localPatientCacheProvider).getById(id);
   if (row != null) {
     final jsonStr = row['data_json'] as String?;
     if (jsonStr != null) {
+      // Refresh from API in the background so next load has fresh data.
+      if (ref.read(isOnlineProvider)) {
+        ref
+            .read(patientDataSourceProvider)
+            .getPatientById(id)
+            .then((model) =>
+                ref.read(localPatientCacheProvider).upsert(model.toFullJson()))
+            .ignore();
+      }
       return PatientModel.fromJson(
               jsonDecode(jsonStr) as Map<String, dynamic>)
           .toEntity();
     }
+  }
+  // 2. No local data yet (first ever load) — must wait for API.
+  if (ref.read(isOnlineProvider)) {
+    try {
+      final model =
+          await ref.read(patientDataSourceProvider).getPatientById(id);
+      await ref.read(localPatientCacheProvider).upsert(model.toFullJson());
+      return model.toEntity();
+    } catch (_) {}
   }
   return null;
 });

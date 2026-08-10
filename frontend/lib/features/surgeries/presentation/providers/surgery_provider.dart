@@ -81,7 +81,7 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
     } catch (_) {}
   }
 
-  void refresh() => Future.microtask(() => _syncFromApi(arg));
+  Future<void> refresh() => _syncFromApi(arg);
 
   Future<SurgeryEntity?> createSurgery({
     required String patientId,

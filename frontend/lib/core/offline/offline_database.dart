@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
@@ -6,16 +8,29 @@ import 'package:sqflite/sqflite.dart';
 /// Only opens on mobile (not on web).
 class OfflineDatabase {
   static final OfflineDatabase _instance = OfflineDatabase._();
-  Database? _db;
+  // Cache the Future so concurrent callers all await the same open operation.
+  // Without this, ??= is not atomic across awaits and _open() can be called
+  // multiple times concurrently, which causes sqflite to deadlock on migration.
+  Future<Database>? _dbFuture;
 
   OfflineDatabase._();
   factory OfflineDatabase() => _instance;
 
-  Future<Database> get database async {
+  Future<Database> get database {
     if (kIsWeb) {
       throw UnsupportedError('SQLite unavailable on web.');
     }
-    return _db ??= await _open();
+    // If a previous open attempt failed, reset so the next call retries.
+    return _dbFuture ??= _openSafe();
+  }
+
+  Future<Database> _openSafe() async {
+    try {
+      return await _open();
+    } catch (e) {
+      _dbFuture = null;
+      rethrow;
+    }
   }
 
   Future<Database> _open() async {
@@ -26,7 +41,78 @@ class OfflineDatabase {
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      onOpen: _repairOrphanedVisits,
     );
+  }
+
+  // Runs on every DB open. Finds visits whose patient_id no longer exists in
+  // the patients table (happens when the server assigned a numeric ID to a
+  // patient that was created offline with a UUID) and re-links them to the
+  // correct patient by matching on creation timestamp proximity.
+  Future<void> _repairOrphanedVisits(Database db) async {
+    final orphans = await db.rawQuery('''
+      SELECT v.id, v.patient_id, v.created_at, v.data_json
+      FROM visits v
+      WHERE NOT EXISTS (
+        SELECT 1 FROM patients p WHERE p.id = v.patient_id AND p.is_active = 1
+      )
+      AND v.is_active = 1
+    ''');
+
+    for (final row in orphans) {
+      final createdAt = row['created_at'] as String?;
+      if (createdAt == null) continue;
+
+      // A registration visit is created within seconds of the patient record.
+      // Find the patient whose created_at is closest to the visit's.
+      final candidates = await db.rawQuery('''
+        SELECT id,
+               ABS(CAST(STRFTIME('%s', ?) AS INTEGER) -
+                   CAST(STRFTIME('%s', created_at) AS INTEGER)) AS diff
+        FROM patients
+        WHERE is_active = 1
+        ORDER BY diff ASC
+        LIMIT 1
+      ''', [createdAt]);
+
+      if (candidates.isEmpty) continue;
+      final diff = (candidates.first['diff'] as num?)?.toInt() ?? 99999;
+      if (diff > 300) continue; // >5 min apart → not a reliable match
+
+      final newPatientId = candidates.first['id'] as String;
+
+      final updates = <String, Object?>{'patient_id': newPatientId};
+      final js = row['data_json'] as String?;
+      if (js != null) {
+        try {
+          final decoded = jsonDecode(js) as Map<String, dynamic>;
+          decoded['patientId'] = newPatientId;
+          updates['data_json'] = jsonEncode(decoded);
+        } catch (_) {}
+      }
+      await db.update('visits', updates,
+          where: 'id = ?', whereArgs: [row['id']]);
+      debugPrint('[DB] Repaired orphaned visit ${row['id']} → patient $newPatientId');
+
+      // Reset queued sync attempts with the corrected patient ID so the
+      // SyncEngine can POST to /patients/{newId}/visits successfully.
+      final queued = await db.query('sync_queue',
+          where: 'entity_type = ? AND entity_id = ?',
+          whereArgs: ['visits', row['id']]);
+      for (final q in queued) {
+        try {
+          final payload =
+              jsonDecode(q['payload'] as String) as Map<String, dynamic>;
+          payload['patientId'] = newPatientId;
+          if (payload.containsKey('patient_id')) {
+            payload['patient_id'] = newPatientId;
+          }
+          await db.update('sync_queue',
+              {'payload': jsonEncode(payload), 'attempts': 0},
+              where: 'id = ?', whereArgs: [q['id']]);
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int _) async {
@@ -52,7 +138,10 @@ class OfflineDatabase {
       await batch.commit(noResult: true);
     }
     if (oldVersion < 4) {
-      // Add audit columns to all tables
+      // Add audit columns to all tables.
+      // Wrapped in try-catch: earlier app versions may have already created
+      // these tables with the v4 schema (because helper methods were updated
+      // before the version bump), so "duplicate column" errors are safe to ignore.
       final stmts = [
         'ALTER TABLE patients ADD COLUMN created_by TEXT',
         'ALTER TABLE patients ADD COLUMN updated_by TEXT',
@@ -62,7 +151,7 @@ class OfflineDatabase {
         'ALTER TABLE surgeries ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
         'ALTER TABLE surgeries ADD COLUMN created_by TEXT',
         'ALTER TABLE surgeries ADD COLUMN updated_by TEXT',
-        'ALTER TABLE photos ADD COLUMN sync_status TEXT NOT NULL DEFAULT \'synced\'',
+        "ALTER TABLE photos ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced'",
         'ALTER TABLE photos ADD COLUMN updated_at TEXT',
         'ALTER TABLE photos ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1',
         'ALTER TABLE photos ADD COLUMN created_by TEXT',
@@ -77,7 +166,11 @@ class OfflineDatabase {
         'ALTER TABLE prescriptions ADD COLUMN updated_by TEXT',
       ];
       for (final sql in stmts) {
-        await db.execute(sql);
+        try {
+          await db.execute(sql);
+        } catch (_) {
+          // Ignore — column likely already exists from a prior schema version.
+        }
       }
     }
   }
@@ -266,5 +359,9 @@ class OfflineDatabase {
     ''');
   }
 
-  Future<void> close() async => _db?.close();
+  Future<void> close() async {
+    final db = await _dbFuture;
+    await db?.close();
+    _dbFuture = null;
+  }
 }

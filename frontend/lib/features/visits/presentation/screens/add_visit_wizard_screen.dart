@@ -317,118 +317,135 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
     setState(() {});
 
-    String? nullIfEmpty(String s) => s.trim().isEmpty ? null : s.trim();
+    try {
+      String? nullIfEmpty(String s) => s.trim().isEmpty ? null : s.trim();
 
-    if (isNew) {
-      final visit = await ref
-          .read(visitsProvider(widget.patientId).notifier)
-          .createFullVisit(
-            patientId:          widget.patientId,
-            type:               _visitType,
-            visitDate:          _visitDate,
-            complaints:         nullIfEmpty(_complaintCtrl.text),
-            examination:        _buildExamination(),
-            clinicalImpression: nullIfEmpty(_diagnosisCtrl.text),
-            plan:               nullIfEmpty(_treatmentCtrl.text),
-            notes:              nullIfEmpty(_treatNotesCtrl.text),
-          );
-      if (!mounted) return;
-      setState(() { _saving = false; _savedVisit = visit; _justSaved = true; });
-      if (visit != null) {
-        // Persist prescription for offline medicine history
-        if (_medicationsCtrl.text.trim().isNotEmpty) {
-          unawaited(ref.read(medicineServiceProvider).savePrescription(
-            visitId: visit.id,
-            patientId: widget.patientId,
-            visitDate: _visitDate,
-            medicationsText: _medicationsCtrl.text.trim(),
+      if (isNew) {
+        // Timeout guards against a SQLite hang leaving the spinner frozen forever.
+        final visit = await ref
+            .read(visitsProvider(widget.patientId).notifier)
+            .createFullVisit(
+              patientId:          widget.patientId,
+              type:               _visitType,
+              visitDate:          _visitDate,
+              complaints:         nullIfEmpty(_complaintCtrl.text),
+              examination:        _buildExamination(),
+              clinicalImpression: nullIfEmpty(_diagnosisCtrl.text),
+              plan:               nullIfEmpty(_treatmentCtrl.text),
+              notes:              nullIfEmpty(_treatNotesCtrl.text),
+            )
+            .timeout(const Duration(seconds: 12), onTimeout: () => null);
+
+        if (!mounted) return;
+        setState(() { _saving = false; _savedVisit = visit; _justSaved = true; });
+        if (visit != null) {
+          // Persist prescription for offline medicine history
+          if (_medicationsCtrl.text.trim().isNotEmpty) {
+            unawaited(ref.read(medicineServiceProvider).savePrescription(
+              visitId: visit.id,
+              patientId: widget.patientId,
+              visitDate: _visitDate,
+              medicationsText: _medicationsCtrl.text.trim(),
+            ));
+          }
+          // Upload any files attached in the form
+          await _uploadVisitFiles(visit.id);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(
+                'Visit saved  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              )),
+            ]),
+            backgroundColor: _kGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ));
+          setState(() => _step = 2);
+          unawaited(_pageCtrl.animateToPage(2,
+              duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Failed to save visit. Please try again.'),
+            backgroundColor: _kRed,
+            behavior: SnackBarBehavior.floating,
           ));
         }
-        // Upload any files attached in the form
-        await _uploadVisitFiles(visit.id);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Row(children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(child: Text(
-              'Visit saved  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            )),
-          ]),
-          backgroundColor: _kGreen,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 3),
-        ));
-        setState(() => _step = 2);
-        unawaited(_pageCtrl.animateToPage(2,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
       } else {
+        // Edit mode – update existing visit
+        final editNotifier = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}').notifier);
+        final current      = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
+        if (current == null) return;
+
+        editNotifier.update(current.copyWith(
+          visitDate:          _visitDate,
+          visitType:          _visitType,
+          complaints:         nullIfEmpty(_complaintCtrl.text),
+          examination:        _buildExamination(),
+          clinicalImpression: nullIfEmpty(_diagnosisCtrl.text),
+          plan:               nullIfEmpty(_treatmentCtrl.text),
+          notes:              nullIfEmpty(_treatNotesCtrl.text),
+          status:             'completed',
+        ));
+        final ok = await editNotifier.save()
+            .timeout(const Duration(seconds: 12), onTimeout: () => false);
+        if (!mounted) return;
+        setState(() {
+          _saving     = false;
+          _justSaved  = true;
+          _savedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
+        });
+        if (ok) {
+          if (_medicationsCtrl.text.trim().isNotEmpty) {
+            unawaited(ref.read(medicineServiceProvider).savePrescription(
+              visitId: widget.visitId!,
+              patientId: widget.patientId,
+              visitDate: _visitDate,
+              medicationsText: _medicationsCtrl.text.trim(),
+            ));
+          }
+          await _uploadVisitFiles(widget.visitId!);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(
+                'Visit updated  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              )),
+            ]),
+            backgroundColor: _kGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 3),
+          ));
+          setState(() => _step = 2);
+          unawaited(_pageCtrl.animateToPage(2,
+              duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Failed to update visit. Please try again.'),
+            backgroundColor: _kRed,
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Failed to save visit. Please try again.'),
           backgroundColor: _kRed,
           behavior: SnackBarBehavior.floating,
         ));
       }
-    } else {
-      // Edit mode – update existing visit
-      final editNotifier = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}').notifier);
-      final current      = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
-      if (current == null) { setState(() => _saving = false); return; }
-
-      editNotifier.update(current.copyWith(
-        visitDate:          _visitDate,
-        visitType:          _visitType,
-        complaints:         nullIfEmpty(_complaintCtrl.text),
-        examination:        _buildExamination(),
-        clinicalImpression: nullIfEmpty(_diagnosisCtrl.text),
-        plan:               nullIfEmpty(_treatmentCtrl.text),
-        notes:              nullIfEmpty(_treatNotesCtrl.text),
-        status:             'completed',
-      ));
-      final ok = await editNotifier.save();
-      if (!mounted) return;
-      setState(() {
-        _saving     = false;
-        _justSaved  = true;
-        _savedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
-      });
-      if (ok) {
-        if (_medicationsCtrl.text.trim().isNotEmpty) {
-          unawaited(ref.read(medicineServiceProvider).savePrescription(
-            visitId: widget.visitId!,
-            patientId: widget.patientId,
-            visitDate: _visitDate,
-            medicationsText: _medicationsCtrl.text.trim(),
-          ));
-        }
-        await _uploadVisitFiles(widget.visitId!);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Row(children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-            const SizedBox(width: 10),
-            Expanded(child: Text(
-              'Visit updated  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            )),
-          ]),
-          backgroundColor: _kGreen,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          duration: const Duration(seconds: 3),
-        ));
-        setState(() => _step = 2);
-        unawaited(_pageCtrl.animateToPage(2,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Failed to update visit. Please try again.'),
-          backgroundColor: _kRed,
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
+    } finally {
+      // Always reset the spinner — no exception or navigation can leave it stuck.
+      if (mounted && _saving) setState(() => _saving = false);
     }
   }
 
