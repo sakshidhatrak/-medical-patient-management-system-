@@ -334,7 +334,8 @@ class PatientsNotifier extends Notifier<PatientsState> {
         await ref.read(offlineQueueProvider).remapPatientIdInQueue(model.id, saved.id);
         // Upload any photos that were saved locally while patient sync was
         // pending (race condition: photo step reached before Render responded).
-        unawaited(ref.read(photoProvider(model.id).notifier).syncPending());
+        // Use saved.id (numeric) — photos were remapped to new patient_id above.
+        unawaited(ref.read(photoProvider(saved.id).notifier).syncPending());
       }
       await _local.upsert(saved.toFullJson());
       final entity = saved.toEntity();
