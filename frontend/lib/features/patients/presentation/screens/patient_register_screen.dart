@@ -166,117 +166,136 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     if (_saving || _savedPatient != null) return;
     setState(() => _saving = true);
 
-    final patient = await ref.read(patientsProvider.notifier).createPatient(
-      firstName:           _firstCtrl.text.trim(),
-      lastName:            _lastCtrl.text.trim(),
-      age:                 _ageCtrl.text.isNotEmpty ? int.tryParse(_ageCtrl.text.trim()) : null,
-      sex:                 _sex?.toLowerCase(),
-      phone:               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-      address:             _fullAddress,
-      altPhone:            _altCtrl.text.trim().isEmpty ? null : _altCtrl.text.trim(),
-      email:               _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-      idProofType:         _idProofType,
-      idProofNumber:       _idProofCtrl.text.trim().isEmpty ? null : _idProofCtrl.text.trim(),
-      weight:              _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
-      bloodPressure:       _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
-      temperature:         _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
-      allergies:           _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
-      medicalHistory:      _historyCtrl.text.trim().isEmpty ? null : _historyCtrl.text.trim(),
-      previousHistory:     _prevHistoryCtrl.text.trim().isEmpty ? null : _prevHistoryCtrl.text.trim(),
-      chiefComplaint:      _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
-      examGeneral:         _examGeneralCtrl.text.trim().isEmpty ? null : _examGeneralCtrl.text.trim(),
-      examNeurological:    _examNeurologicalCtrl.text.trim().isEmpty ? null : _examNeurologicalCtrl.text.trim(),
-      clinicalDiagnosis:   _clinicalDiagnosisCtrl.text.trim().isEmpty ? null : _clinicalDiagnosisCtrl.text.trim(),
-      imaging:             _imagingCtrl.text.trim().isEmpty ? null : _imagingCtrl.text.trim(),
-      otherInvestigations: _otherInvestCtrl.text.trim().isEmpty ? null : _otherInvestCtrl.text.trim(),
-      impression:          _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
-      plan:                _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
-      treatment:           _medicationsCtrl.text.trim().isEmpty ? null : _medicationsCtrl.text.trim(),
-      treatmentNotes:      _treatNotesCtrl.text.trim().isEmpty ? null : _treatNotesCtrl.text.trim(),
-      advice:              _adviceCtrl.text.trim().isEmpty ? null : _adviceCtrl.text.trim(),
-    );
+    try {
+      // Timeout guards against a SQLite deadlock leaving the spinner frozen.
+      final patient = await ref.read(patientsProvider.notifier).createPatient(
+        firstName:           _firstCtrl.text.trim(),
+        lastName:            _lastCtrl.text.trim(),
+        age:                 _ageCtrl.text.isNotEmpty ? int.tryParse(_ageCtrl.text.trim()) : null,
+        sex:                 _sex?.toLowerCase(),
+        phone:               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        address:             _fullAddress,
+        altPhone:            _altCtrl.text.trim().isEmpty ? null : _altCtrl.text.trim(),
+        email:               _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+        idProofType:         _idProofType,
+        idProofNumber:       _idProofCtrl.text.trim().isEmpty ? null : _idProofCtrl.text.trim(),
+        weight:              _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
+        bloodPressure:       _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
+        temperature:         _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
+        allergies:           _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
+        medicalHistory:      _historyCtrl.text.trim().isEmpty ? null : _historyCtrl.text.trim(),
+        previousHistory:     _prevHistoryCtrl.text.trim().isEmpty ? null : _prevHistoryCtrl.text.trim(),
+        chiefComplaint:      _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
+        examGeneral:         _examGeneralCtrl.text.trim().isEmpty ? null : _examGeneralCtrl.text.trim(),
+        examNeurological:    _examNeurologicalCtrl.text.trim().isEmpty ? null : _examNeurologicalCtrl.text.trim(),
+        clinicalDiagnosis:   _clinicalDiagnosisCtrl.text.trim().isEmpty ? null : _clinicalDiagnosisCtrl.text.trim(),
+        imaging:             _imagingCtrl.text.trim().isEmpty ? null : _imagingCtrl.text.trim(),
+        otherInvestigations: _otherInvestCtrl.text.trim().isEmpty ? null : _otherInvestCtrl.text.trim(),
+        impression:          _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
+        plan:                _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
+        treatment:           _medicationsCtrl.text.trim().isEmpty ? null : _medicationsCtrl.text.trim(),
+        treatmentNotes:      _treatNotesCtrl.text.trim().isEmpty ? null : _treatNotesCtrl.text.trim(),
+        advice:              _adviceCtrl.text.trim().isEmpty ? null : _adviceCtrl.text.trim(),
+      ).timeout(const Duration(seconds: 12), onTimeout: () => null);
 
-    setState(() { _saving = false; _savedPatient = patient; });
-    if (!mounted) return;
+      if (!mounted) return;
+      setState(() { _saving = false; _savedPatient = patient; });
 
-    if (patient != null) {
-      // ── Auto-create first OPD visit if any treatment fields were filled ──
-      String? firstVisitId;
-      if (_hasAnyTreatmentData()) {
-        final visit = await ref
-            .read(visitsProvider(patient.id).notifier)
-            .createFullVisit(
-              patientId:          patient.id,
-              type:               VisitType.opd,
-              visitDate:          DateTime.now(),
-              complaints:         _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
-              examination:        _buildExaminationJson(),
-              clinicalImpression: _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
-              plan:               _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
-              notes:              _treatNotesCtrl.text.trim().isEmpty ? null : _treatNotesCtrl.text.trim(),
+      if (patient != null) {
+        // ── Always create first OPD visit so it's visible on patient profile ──
+        String? firstVisitId;
+        {
+          final visit = await ref
+              .read(visitsProvider(patient.id).notifier)
+              .createFullVisit(
+                patientId:          patient.id,
+                type:               VisitType.opd,
+                visitDate:          DateTime.now(),
+                complaints:         _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
+                examination:        _buildExaminationJson(),
+                clinicalImpression: _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
+                plan:               _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
+                // Default note ensures the visit is created even if clinical fields are blank.
+                notes:              _treatNotesCtrl.text.trim().isNotEmpty
+                                      ? _treatNotesCtrl.text.trim()
+                                      : 'Patient registration',
+              )
+              .timeout(const Duration(seconds: 12), onTimeout: () => null);
+          firstVisitId = visit?.id;
+        }
+
+        // Always persist medications to prescriptions cache so future visits can
+        // suggest them. Use the auto-created visit ID if available; fall back to a
+        // registration-scoped key so prescription is saved even when the API is
+        // unreachable (visit returns null despite being stored locally).
+        if (_medicationsCtrl.text.trim().isNotEmpty) {
+          final presVisitId = firstVisitId ?? 'reg_${patient.id}';
+          unawaited(ref.read(medicineServiceProvider).savePrescription(
+            visitId: presVisitId,
+            patientId: patient.id,
+            visitDate: DateTime.now(),
+            medicationsText: _medicationsCtrl.text.trim(),
+          ));
+        }
+
+        // Upload all per-field files (link to first visit if created)
+        final allFieldFiles = <({String name, Uint8List bytes, String caption, PhotoCategory cat})>[
+          ..._prevHistoryFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Previous History', cat: PhotoCategory.visit)),
+          ..._chiefComplaintFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Chief Complaint', cat: PhotoCategory.visit)),
+          ..._examGeneralFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'General Examination', cat: PhotoCategory.examination)),
+          ..._examNeurologicalFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Neurological Examination', cat: PhotoCategory.examination)),
+          ..._clinicalDiagnosisFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Clinical Diagnosis', cat: PhotoCategory.visit)),
+          ..._imagingFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Imaging', cat: PhotoCategory.radiology)),
+          ..._otherInvestFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Other Investigations', cat: PhotoCategory.visit)),
+          ..._impressionFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Impression', cat: PhotoCategory.treatment)),
+          ..._planFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Plan', cat: PhotoCategory.treatment)),
+          ..._treatmentMedFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Treatment', cat: PhotoCategory.treatment)),
+        ];
+        if (allFieldFiles.isNotEmpty) {
+          final photoNotifier = ref.read(photoProvider(patient.id).notifier);
+          for (final f in allFieldFiles) {
+            await photoNotifier.upload(
+              bytes:    f.bytes,
+              filename: f.name,
+              category: f.cat,
+              visitId:  firstVisitId,
+              caption:  f.caption,
             );
-        firstVisitId = visit?.id;
-      }
+          }
+        }
 
-      // Always persist medications to prescriptions cache so future visits can
-      // suggest them. Use the auto-created visit ID if available; fall back to a
-      // registration-scoped key so prescription is saved even when the API is
-      // unreachable (visit returns null despite being stored locally).
-      if (_medicationsCtrl.text.trim().isNotEmpty) {
-        final presVisitId = firstVisitId ?? 'reg_${patient.id}';
-        unawaited(ref.read(medicineServiceProvider).savePrescription(
-          visitId: presVisitId,
-          patientId: patient.id,
-          visitDate: DateTime.now(),
-          medicationsText: _medicationsCtrl.text.trim(),
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Row(children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(child: Text('Patient registered  ·  UHID: ${patient.prn}',
+                style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+          backgroundColor: _kGreen,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 3),
+        ));
+        context.go('/patients/${patient.id}');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Registration failed. Please try again.'),
+          backgroundColor: _kRed,
+          behavior: SnackBarBehavior.floating,
         ));
       }
-
-      // Upload all per-field files (link to first visit if created)
-      final allFieldFiles = <({String name, Uint8List bytes, String caption, PhotoCategory cat})>[
-        ..._prevHistoryFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Previous History', cat: PhotoCategory.visit)),
-        ..._chiefComplaintFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Chief Complaint', cat: PhotoCategory.visit)),
-        ..._examGeneralFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'General Examination', cat: PhotoCategory.examination)),
-        ..._examNeurologicalFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Neurological Examination', cat: PhotoCategory.examination)),
-        ..._clinicalDiagnosisFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Clinical Diagnosis', cat: PhotoCategory.visit)),
-        ..._imagingFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Imaging', cat: PhotoCategory.radiology)),
-        ..._otherInvestFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Other Investigations', cat: PhotoCategory.visit)),
-        ..._impressionFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Impression', cat: PhotoCategory.treatment)),
-        ..._planFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Plan', cat: PhotoCategory.treatment)),
-        ..._treatmentMedFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Treatment', cat: PhotoCategory.treatment)),
-      ];
-      if (allFieldFiles.isNotEmpty) {
-        final photoNotifier = ref.read(photoProvider(patient.id).notifier);
-        for (final f in allFieldFiles) {
-          await photoNotifier.upload(
-            bytes:    f.bytes,
-            filename: f.name,
-            category: f.cat,
-            visitId:  firstVisitId,
-            caption:  f.caption,
-          );
-        }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Registration failed. Please try again.'),
+          backgroundColor: _kRed,
+          behavior: SnackBarBehavior.floating,
+        ));
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Row(children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-          const SizedBox(width: 10),
-          Expanded(child: Text('Patient registered  ·  UHID: ${patient.prn}',
-              style: const TextStyle(fontWeight: FontWeight.w600))),
-        ]),
-        backgroundColor: _kGreen,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
-      ));
-      context.go('/patients/${patient.id}');
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Registration failed. Please try again.'),
-        backgroundColor: _kRed,
-        behavior: SnackBarBehavior.floating,
-      ));
+    } finally {
+      // Always clear the spinner — no exception can leave it stuck forever.
+      if (mounted && _saving) setState(() => _saving = false);
     }
   }
 

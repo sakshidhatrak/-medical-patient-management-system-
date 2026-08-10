@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -73,11 +74,17 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
       for (final m in models) {
         await _local.upsert(m.toFullJson());
       }
-      state = models.map((m) => m.toEntity()).toList();
+      // Preserve locally-saved pending visits not yet returned by the API
+      // (e.g. saved while Render was cold-starting, still in the sync queue).
+      final apiIds = models.map((m) => m.id).toSet();
+      final pendingLocal = state
+          .where((v) => !apiIds.contains(v.id) && v.syncStatus == 'pending')
+          .toList();
+      state = [...models.map((m) => m.toEntity()), ...pendingLocal];
     } catch (_) {}
   }
 
-  void refresh() => Future.microtask(() => _syncFromApi(arg));
+  Future<void> refresh() => _syncFromApi(arg);
 
   Future<VisitEntity?> createVisit({
     required String patientId,
@@ -109,11 +116,6 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
     String? plan,
     String? notes,
   }) async {
-    // Reject blank visits — all meaningful fields are empty.
-    final hasData = [complaints, examination, clinicalImpression, plan, notes]
-        .any((f) => f != null && f.trim().isNotEmpty);
-    if (!hasData) return null;
-
     try {
       final now = DateTime.now().toUtc();
       final model = VisitModel(
@@ -143,47 +145,90 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
 
   Future<VisitEntity?> _saveVisit(VisitModel model,
       {required bool isNew}) async {
-    // Always cache locally first (works on both web and mobile)
+    // 1. Save to SQLite immediately — always instant, works offline.
     await _local.upsert(model.toFullJson());
-
-    if (_online) {
-      try {
-        final saved = isNew
-            ? await _ds.createVisit(model)
-            : await _ds.updateVisit(model);
-        // Remove the temp client-UUID entry; server assigned a different (Long) ID.
-        if (isNew && saved.id != model.id) {
-          await _local.purge(model.id);
-        }
-        await _local.upsert(saved.toFullJson());
-        final entity = saved.toEntity();
-        if (isNew) {
-          state = [entity, ...state];
-        } else {
-          state = state.map((v) => v.id == entity.id ? entity : v).toList();
-        }
-        return entity;
-      } catch (e) {
-        debugPrint('[VisitProvider] API error (will sync later): $e');
-        // Fall through to offline path — visit is already cached locally.
-      }
-    }
-
-    // Offline or API-unreachable: enqueue for sync when connection restores
-    await _queue.enqueue(
-      entityType: 'visits',
-      entityId: model.id,
-      operation: isNew ? 'insert' : 'update',
-      payload: {...model.toFullJson(), 'patientId': model.patientId},
-    );
+    // Mark pending so on app-restart _loadLocal sees it as pending and
+    // _syncFromApi preserves it until the API confirms.
     await _local.markPending(model.id);
+
+    // 2. Return the local entity right away so the UI never blocks on network.
     final pendingEntity = model.toEntity().copyWith(syncStatus: 'pending');
     if (isNew) {
       state = [pendingEntity, ...state];
     } else {
       state = state.map((v) => v.id == model.id ? pendingEntity : v).toList();
     }
+
+    // 3. Sync to backend in background — fire-and-forget.
+    if (_online) {
+      unawaited(_syncToApi(model, isNew: isNew));
+    } else {
+      await _queue.enqueue(
+        entityType: 'visits',
+        entityId: model.id,
+        operation: isNew ? 'insert' : 'update',
+        payload: {...model.toFullJson(), 'patientId': model.patientId},
+      );
+      await _local.markPending(model.id);
+    }
+
     return pendingEntity;
+  }
+
+  Future<void> _syncToApi(VisitModel model, {required bool isNew}) async {
+    // Re-read the cached row to pick up any patient_id remapping that may have
+    // happened after the parent patient was assigned a new server-side numeric ID.
+    VisitModel syncModel = model;
+    try {
+      final row = await _local.getById(model.id);
+      if (row != null) {
+        final storedPid = row['patient_id'] as String?;
+        if (storedPid != null && storedPid != model.patientId) {
+          final js = row['data_json'] as String?;
+          if (js != null) {
+            syncModel = VisitModel.fromJson(
+                jsonDecode(js) as Map<String, dynamic>);
+          }
+        }
+      }
+    } catch (_) {}
+
+    try {
+      final saved = isNew
+          ? await _ds.createVisit(syncModel)
+          : await _ds.updateVisit(syncModel);
+      if (isNew && saved.id != model.id) {
+        await _local.purge(model.id);
+      }
+      await _local.upsert(saved.toFullJson());
+      final entity = saved.toEntity();
+      if (isNew) {
+        // Remove both the pending client-UUID entry AND any existing server-UUID
+        // entry that may have been added concurrently by _syncFromApi().
+        state = [entity, ...state.where((v) => v.id != model.id && v.id != entity.id).toList()];
+      } else {
+        state = state.map((v) => v.id == entity.id ? entity : v).toList();
+      }
+    } catch (e) {
+      debugPrint('[VisitProvider] Background sync failed, queuing: $e');
+      // Re-read patient_id from SQLite a final time in case the remap arrived
+      // after we began but before the network call was made.
+      String queuePatientId = syncModel.patientId;
+      try {
+        final row = await _local.getById(model.id);
+        if (row != null) {
+          queuePatientId =
+              (row['patient_id'] as String?) ?? syncModel.patientId;
+        }
+      } catch (_) {}
+      await _queue.enqueue(
+        entityType: 'visits',
+        entityId: model.id,
+        operation: isNew ? 'insert' : 'update',
+        payload: {...syncModel.toFullJson(), 'patientId': queuePatientId},
+      );
+      await _local.markPending(model.id);
+    }
   }
 
   Future<void> deleteVisit(String id) async {
@@ -214,6 +259,7 @@ final visitsProvider =
 class VisitEditNotifier extends FamilyNotifier<VisitEntity?, String> {
   VisitSupabaseDataSource get _ds => ref.read(visitDataSourceProvider);
   LocalVisitCache get _local => ref.read(localVisitCacheProvider);
+  OfflineQueue get _queue => ref.read(offlineQueueProvider);
   bool get _online => ref.read(isOnlineProvider);
 
   @override
@@ -252,27 +298,35 @@ class VisitEditNotifier extends FamilyNotifier<VisitEntity?, String> {
   Future<bool> save() async {
     if (state == null) return false;
     final model = VisitModel.fromEntity(state!);
+    // Save locally first — always instant, never blocks UI.
     await _local.upsert(model.toFullJson());
-
-    if (ref.read(isOnlineProvider)) {
-      try {
-        final saved = await _ds.updateVisit(model);
-        await _local.upsert(saved.toFullJson());
-        state = saved.toEntity();
-        return true;
-      } catch (e) {
-        debugPrint('[VisitEditProvider] API error: $e');
-        return false;
-      }
+    if (_online) {
+      unawaited(_syncEditToApi(model));
+    } else {
+      await _queue.enqueue(
+        entityType: 'visits',
+        entityId: model.id,
+        operation: 'update',
+        payload: {...model.toFullJson(), 'patientId': model.patientId},
+      );
     }
-
-    await ref.read(offlineQueueProvider).enqueue(
-      entityType: 'visits',
-      entityId: model.id,
-      operation: 'update',
-      payload: {...model.toFullJson(), 'patientId': model.patientId},
-    );
     return true;
+  }
+
+  Future<void> _syncEditToApi(VisitModel model) async {
+    try {
+      final saved = await _ds.updateVisit(model);
+      await _local.upsert(saved.toFullJson());
+      state = saved.toEntity();
+    } catch (e) {
+      debugPrint('[VisitEditProvider] Background sync failed: $e');
+      await _queue.enqueue(
+        entityType: 'visits',
+        entityId: model.id,
+        operation: 'update',
+        payload: {...model.toFullJson(), 'patientId': model.patientId},
+      );
+    }
   }
 }
 

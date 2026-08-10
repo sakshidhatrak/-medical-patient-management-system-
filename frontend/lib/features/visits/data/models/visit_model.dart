@@ -108,6 +108,7 @@ class VisitModel {
 
   Map<String, dynamic> toFullJson() => {
         ...toApiJson(),
+        'id': id, // toApiJson uses 'clientId'; local cache needs 'id'
         'patientId': patientId,
         'isActive': isActive,
         'createdAt': createdAt,

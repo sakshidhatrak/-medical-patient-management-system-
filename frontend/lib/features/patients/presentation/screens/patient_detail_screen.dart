@@ -158,9 +158,18 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
             ),
 
             Expanded(
-              child: timeline.isEmpty
-                  ? _EmptyTimeline()
+              child: RefreshIndicator(
+                onRefresh: () => Future.wait([
+                  ref.read(visitsProvider(patientId).notifier).refresh(),
+                  ref.read(surgeriesProvider(patientId).notifier).refresh(),
+                ]),
+                child: timeline.isEmpty
+                  ? LayoutBuilder(builder: (ctx, c) => SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: SizedBox(height: c.maxHeight, child: _EmptyTimeline()),
+                    ))
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                       itemCount: timeline.length,
                       itemBuilder: (ctx, i) => _TimelineRow(
@@ -198,6 +207,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                             : null,
                       ),
                     ),
+              ),
             ),
           ]),
 

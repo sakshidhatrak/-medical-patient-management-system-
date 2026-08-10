@@ -74,6 +74,8 @@ class MedicineService {
             'defaultDuration': (d['defaultDuration'] ?? '') as String,
             'category': (d['category'] ?? '') as String,
           }).toList();
+      // Clear first so hardcoded-seed IDs don't cause duplicates.
+      await _drugs.clearAll();
       await _drugs.upsertAll(drugs);
     } catch (_) {
       // Silent — keep using hardcoded / previously cached list
@@ -187,12 +189,7 @@ class MedicineService {
         if (result.length >= limit) break;
         final name = (m['genericName'] ?? m['generic_name'] ?? '') as String;
         if (name.isEmpty) continue;
-        final brands = (m['brandNames'] ?? m['brand_names'] ?? '') as String;
-        // Match on generic name OR brand names.
-        final matchBrand = brands
-            .split(',')
-            .any((b) => b.trim().toLowerCase().contains(q));
-        if (!name.toLowerCase().contains(q) && !matchBrand) continue;
+        if (!name.toLowerCase().contains(q)) continue;
         if (exclude.contains(name.toLowerCase())) continue;
         result.add(MedicineSuggestion(
           name: name,
@@ -214,10 +211,7 @@ class MedicineService {
     for (final m in kMedicineMasterList) {
       if (result.length >= limit) break;
       final name = m['genericName'] ?? '';
-      final brands = m['brandNames'] ?? '';
-      final matchBrand =
-          brands.split(',').any((b) => b.trim().toLowerCase().contains(q));
-      if (!name.toLowerCase().contains(q) && !matchBrand) continue;
+      if (!name.toLowerCase().contains(q)) continue;
       if (exclude.contains(name.toLowerCase())) continue;
       result.add(MedicineSuggestion(
         name: name,

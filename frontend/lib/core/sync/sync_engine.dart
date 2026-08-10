@@ -115,6 +115,34 @@ class OfflineQueue {
       [error, id],
     );
   }
+
+  // When the backend assigns a new ID to a patient, update all queued visit/surgery
+  // payloads that referenced the old patient UUID so the SyncEngine posts to the
+  // correct /patients/{newId}/... path on its next attempt.
+  Future<void> remapPatientIdInQueue(
+      String oldPatientId, String newPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    final rows = await db.query('sync_queue',
+        where: 'entity_type IN (?, ?)', whereArgs: ['visits', 'surgeries']);
+    for (final row in rows) {
+      final payload =
+          jsonDecode(row['payload'] as String) as Map<String, dynamic>;
+      bool changed = false;
+      if (payload['patientId'] == oldPatientId) {
+        payload['patientId'] = newPatientId;
+        changed = true;
+      }
+      if (payload['patient_id'] == oldPatientId) {
+        payload['patient_id'] = newPatientId;
+        changed = true;
+      }
+      if (changed) {
+        await db.update('sync_queue', {'payload': jsonEncode(payload)},
+            where: 'id = ?', whereArgs: [row['id']]);
+      }
+    }
+  }
 }
 
 // ── Sync engine (push: local → API) ──────────────────────────────
@@ -272,6 +300,13 @@ class LocalPatientCache {
     await db.update('patients', {'is_active': 0, 'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
   }
+
+  // Hard-delete a temp local entry (e.g., client UUID after server returned a different ID).
+  Future<void> purge(String id) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.delete('patients', where: 'id = ?', whereArgs: [id]);
+  }
 }
 
 // ── Local visit cache ─────────────────────────────────────────────
@@ -288,7 +323,8 @@ class LocalVisitCache {
       return;
     }
     final db = await _db.database;
-    final id = (apiJson['id'] as Object).toString();
+    // 'clientId' is the API key; 'id' is added by toFullJson() for local use.
+    final id = ((apiJson['id'] ?? apiJson['clientId']) as Object).toString();
     final now = DateTime.now().toIso8601String();
     await db.insert(
         'visits',
@@ -362,6 +398,30 @@ class LocalVisitCache {
     final db = await _db.database;
     await db.update('visits', {'is_active': 0, 'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  // When the backend assigns a new numeric ID to a patient, update all local
+  // visits that referenced the old client UUID so they can be found by the
+  // new server-assigned ID on subsequent loads.
+  Future<void> remapPatientId(
+      String oldPatientId, String newPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    final rows = await db.query('visits',
+        where: 'patient_id = ?', whereArgs: [oldPatientId]);
+    for (final row in rows) {
+      final updates = <String, Object?>{'patient_id': newPatientId};
+      final js = row['data_json'] as String?;
+      if (js != null) {
+        try {
+          final decoded = jsonDecode(js) as Map<String, dynamic>;
+          decoded['patientId'] = newPatientId;
+          updates['data_json'] = jsonEncode(decoded);
+        } catch (_) {}
+      }
+      await db.update('visits', updates,
+          where: 'id = ?', whereArgs: [row['id']]);
+    }
   }
 }
 
@@ -454,6 +514,27 @@ class LocalSurgeryCache {
     final db = await _db.database;
     await db.update('surgeries', {'is_active': 0, 'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> remapPatientId(
+      String oldPatientId, String newPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    final rows = await db.query('surgeries',
+        where: 'patient_id = ?', whereArgs: [oldPatientId]);
+    for (final row in rows) {
+      final updates = <String, Object?>{'patient_id': newPatientId};
+      final js = row['data_json'] as String?;
+      if (js != null) {
+        try {
+          final decoded = jsonDecode(js) as Map<String, dynamic>;
+          decoded['patientId'] = newPatientId;
+          updates['data_json'] = jsonEncode(decoded);
+        } catch (_) {}
+      }
+      await db.update('surgeries', updates,
+          where: 'id = ?', whereArgs: [row['id']]);
+    }
   }
 }
 
@@ -661,6 +742,12 @@ class LocalDrugCache {
     final count =
         Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM drugs_cache'));
     return (count ?? 0) > 0;
+  }
+
+  Future<void> clearAll() async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.delete('drugs_cache');
   }
 }
 
