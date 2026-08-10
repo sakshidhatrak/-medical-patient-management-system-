@@ -751,6 +751,33 @@ class LocalDrugCache {
   }
 }
 
+// ── Patient ID map (client UUID → server-assigned numeric ID) ────
+
+class PatientIdMap {
+  final OfflineDatabase _db;
+  PatientIdMap(this._db);
+
+  Future<void> insert(String clientId, String serverId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.insert(
+      'patient_id_map',
+      {'client_id': clientId, 'server_id': serverId},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  // Returns the server-assigned ID if one was recorded for this clientId,
+  // otherwise returns the input unchanged.
+  Future<String> resolve(String id) async {
+    if (kIsWeb) return id;
+    final db = await _db.database;
+    final rows = await db.query('patient_id_map',
+        where: 'client_id = ?', whereArgs: [id]);
+    return rows.isEmpty ? id : rows.first['server_id'] as String;
+  }
+}
+
 // ── Providers ─────────────────────────────────────────────────────
 
 final offlineDatabaseProvider =
@@ -806,6 +833,9 @@ final localDrugCacheProvider = Provider<LocalDrugCache>(
 
 final localPhotoStoreProvider = Provider<LocalPhotoStore>(
     (ref) => LocalPhotoStore(ref.watch(offlineDatabaseProvider)));
+
+final patientIdMapProvider = Provider<PatientIdMap>(
+    (ref) => PatientIdMap(ref.watch(offlineDatabaseProvider)));
 
 // ── Auto-sync on connectivity restore ────────────────────────────
 

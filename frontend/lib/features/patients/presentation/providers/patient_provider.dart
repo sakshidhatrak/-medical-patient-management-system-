@@ -303,10 +303,11 @@ class PatientsNotifier extends Notifier<PatientsState> {
           ? await _ds.createPatient(model)
           : await _ds.updatePatient(model);
       if (isNew && saved.id != model.id) {
+        // Record the UUID→serverID mapping BEFORE purging so photo uploads
+        // happening in the same session can resolve the correct server ID.
+        await ref.read(patientIdMapProvider).insert(model.id, saved.id);
         await _local.purge(model.id);
-        // The backend assigned a new numeric ID. Remap all local visits and
-        // surgeries that still reference the old client UUID so they remain
-        // visible on subsequent loads and sync correctly.
+        // Remap all local visits/surgeries that still reference the old UUID.
         await ref.read(localVisitCacheProvider).remapPatientId(model.id, saved.id);
         await ref.read(localSurgeryCacheProvider).remapPatientId(model.id, saved.id);
         await ref.read(offlineQueueProvider).remapPatientIdInQueue(model.id, saved.id);

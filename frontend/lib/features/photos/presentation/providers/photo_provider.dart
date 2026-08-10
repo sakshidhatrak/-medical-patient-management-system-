@@ -92,7 +92,11 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
     if (ref.read(isOnlineProvider)) {
       try {
         final ds = await _buildDs();
-        final photos = await ds.getPhotos(patientId: patientId);
+        // Resolve UUID → server numeric ID in case this session registered
+        // the patient and the backend assigned a different (numeric) ID.
+        final resolvedId =
+            await ref.read(patientIdMapProvider).resolve(patientId);
+        final photos = await ds.getPhotos(patientId: resolvedId);
         if (!kIsWeb) {
           final pending = state.photos.where((p) => !p.isUploaded).toList();
           final serverIds = photos.map((p) => p.id).toSet();
@@ -135,8 +139,10 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
 
       if (online) {
         final ds = await _buildDs();
+        final resolvedPatientId =
+            await ref.read(patientIdMapProvider).resolve(arg);
         final photo = await ds.uploadPhoto(
-          patientId: arg,
+          patientId: resolvedPatientId,
           bytes: bytes,
           filename: filename,
           category: category,
@@ -251,8 +257,11 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
       }
       try {
         final bytes = await file.readAsBytes();
+        final storedPid = row['patient_id'] as String;
+        final resolvedPid =
+            await ref.read(patientIdMapProvider).resolve(storedPid);
         final photo = await ds.uploadPhoto(
-          patientId: row['patient_id'] as String,
+          patientId: resolvedPid,
           bytes: bytes,
           filename: '${row['id']}.jpg',
           category: PhotoCategoryX.fromValue(row['category'] as String),
