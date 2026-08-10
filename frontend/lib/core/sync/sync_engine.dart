@@ -439,6 +439,60 @@ class LocalVisitCache {
     }
   }
 
+  // Fallback repair: scans ALL visits with a UUID patient_id (non-numeric)
+  // and remaps any that were created within 24 h of [numericPatientId].
+  // Used in _loadLocal when no visits are found and remapFromIdMap also finds
+  // nothing — covers patients created before the patient_id_map table existed.
+  Future<void> repairOrphanedVisitsForPatient(String numericPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    // Get this patient's creation time.
+    final patRows = await db.query('patients',
+        columns: ['created_at'], where: 'id = ? AND is_active = 1',
+        whereArgs: [numericPatientId]);
+    if (patRows.isEmpty) return;
+    final patCreatedStr = patRows.first['created_at'] as String?;
+    if (patCreatedStr == null) return;
+    DateTime patTime;
+    try { patTime = DateTime.parse(patCreatedStr).toUtc(); } catch (_) { return; }
+
+    // Find active visits whose patient_id looks like a UUID (non-numeric).
+    final orphans = await db.rawQuery('''
+      SELECT id, patient_id, created_at, data_json FROM visits
+      WHERE is_active = 1
+        AND patient_id NOT IN (SELECT id FROM patients WHERE is_active = 1)
+        AND patient_id GLOB '*-*'
+    ''');
+    for (final row in orphans) {
+      final visitCreatedStr = row['created_at'] as String?;
+      if (visitCreatedStr == null) continue;
+      DateTime visitTime;
+      try { visitTime = DateTime.parse(visitCreatedStr).toUtc(); } catch (_) { continue; }
+      final diffSec = (visitTime.millisecondsSinceEpoch -
+              patTime.millisecondsSinceEpoch).abs() ~/ 1000;
+      if (diffSec > 86400) continue; // outside 24-h window
+
+      final visitId = row['id'] as String;
+      final oldPid  = row['patient_id'] as String;
+      final updates = <String, Object?>{'patient_id': numericPatientId};
+      final js = row['data_json'] as String?;
+      if (js != null) {
+        try {
+          final decoded = jsonDecode(js) as Map<String, dynamic>;
+          decoded['patientId'] = numericPatientId;
+          updates['data_json'] = jsonEncode(decoded);
+        } catch (_) {}
+      }
+      await db.update('visits', updates, where: 'id = ?', whereArgs: [visitId]);
+      // Cache the mapping so this repair is not needed again.
+      try {
+        await db.insert('patient_id_map',
+            {'client_id': oldPid, 'server_id': numericPatientId},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+      } catch (_) {}
+    }
+  }
+
   // When the backend assigns a new numeric ID to a visit (UUID → numeric),
   // remap all prescriptions, examinations, and photos so they remain linked.
   Future<void> remapVisitId(String oldVisitId, String newVisitId) async {

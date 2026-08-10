@@ -126,6 +126,19 @@ class OfflineDatabase {
 
         if (bestId == null) continue;
         newPatientId = bestId;
+
+        // Cache this UUID→numeric mapping so remapFromIdMap works in future
+        // sessions without needing another timestamp scan (covers patients
+        // created before the patient_id_map table existed in v41).
+        if (oldPid != null) {
+          try {
+            await db.insert(
+              'patient_id_map',
+              {'client_id': oldPid, 'server_id': newPatientId},
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+          } catch (_) {}
+        }
       }
 
       final updates = <String, Object?>{'patient_id': newPatientId};
