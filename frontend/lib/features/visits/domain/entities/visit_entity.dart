@@ -4,18 +4,19 @@ enum VisitType { opd, emergency, followUp }
 
 extension VisitTypeX on VisitType {
   String get label => switch (this) {
-        VisitType.opd      => 'OPD',
+        VisitType.opd       => 'OPD',
         VisitType.emergency => 'Emergency',
         VisitType.followUp  => 'Follow-up',
       };
   String get value => switch (this) {
-        VisitType.opd      => 'opd',
-        VisitType.emergency => 'emergency',
-        VisitType.followUp  => 'follow_up',
+        VisitType.opd       => 'OPD',
+        VisitType.emergency => 'EMERGENCY',
+        VisitType.followUp  => 'FOLLOW_UP',
       };
-  static VisitType fromValue(String v) => switch (v) {
-        'emergency' => VisitType.emergency,
-        'follow_up' => VisitType.followUp,
+  // Handles both old lowercase ('opd', 'follow_up') and new uppercase ('OPD', 'FOLLOW_UP')
+  static VisitType fromValue(String v) => switch (v.toUpperCase()) {
+        'EMERGENCY' => VisitType.emergency,
+        'FOLLOW_UP' => VisitType.followUp,
         _           => VisitType.opd,
       };
 }

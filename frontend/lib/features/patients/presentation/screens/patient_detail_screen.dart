@@ -1118,10 +1118,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
   bool get _hasAnyData =>
       _nonEmpty(p.weight) || _nonEmpty(p.bloodPressure) || _nonEmpty(p.temperature) ||
       _nonEmpty(p.allergies) || _nonEmpty(p.medicalHistory) || _nonEmpty(p.previousHistory) ||
-      _nonEmpty(p.chiefComplaint) || _nonEmpty(p.examGeneral) || _nonEmpty(p.examNeurological) ||
-      _nonEmpty(p.clinicalDiagnosis) || _nonEmpty(p.imaging) || _nonEmpty(p.otherInvestigations) ||
-      _nonEmpty(p.impression) || _nonEmpty(p.plan) || _nonEmpty(p.treatment) ||
-      _nonEmpty(p.treatmentNotes) || _nonEmpty(p.advice) ||
       _nonEmpty(p.altPhone) || _nonEmpty(p.email) || _nonEmpty(p.address) ||
       _nonEmpty(p.idProofType) || _nonEmpty(p.idProofNumber) ||
       widget.photos.isNotEmpty;
@@ -1215,45 +1211,6 @@ class _PatientDetailsCardState extends State<_PatientDetailsCard> {
                         if (_nonEmpty(p.allergies)) _Row('Allergies', p.allergies!),
                         if (_nonEmpty(p.medicalHistory)) _Row('Medical History', p.medicalHistory!),
                         if (_nonEmpty(p.previousHistory)) _Row('Previous History', p.previousHistory!),
-                      ],
-                    ),
-
-                  if (_nonEmpty(p.chiefComplaint) || _nonEmpty(p.examGeneral) || _nonEmpty(p.examNeurological))
-                    _Section(
-                      title: 'Clinical Findings',
-                      icon: Icons.person_search_outlined,
-                      color: const Color(0xFF6366F1),
-                      rows: [
-                        if (_nonEmpty(p.chiefComplaint)) _Row('Chief Complaint', p.chiefComplaint!),
-                        if (_nonEmpty(p.examGeneral)) _Row('General Exam', p.examGeneral!),
-                        if (_nonEmpty(p.examNeurological)) _Row('Neurological Exam', p.examNeurological!),
-                      ],
-                    ),
-
-                  if (_nonEmpty(p.clinicalDiagnosis) || _nonEmpty(p.imaging) || _nonEmpty(p.otherInvestigations))
-                    _Section(
-                      title: 'Investigation',
-                      icon: Icons.science_outlined,
-                      color: const Color(0xFF10B981),
-                      rows: [
-                        if (_nonEmpty(p.clinicalDiagnosis)) _Row('Diagnosis', p.clinicalDiagnosis!),
-                        if (_nonEmpty(p.imaging)) _Row('Imaging', p.imaging!),
-                        if (_nonEmpty(p.otherInvestigations)) _Row('Other Investigations', p.otherInvestigations!),
-                      ],
-                    ),
-
-                  if (_nonEmpty(p.impression) || _nonEmpty(p.plan) || _nonEmpty(p.treatment) ||
-                      _nonEmpty(p.treatmentNotes) || _nonEmpty(p.advice))
-                    _Section(
-                      title: 'Clinical Plan',
-                      icon: Icons.assignment_outlined,
-                      color: _kAccent,
-                      rows: [
-                        if (_nonEmpty(p.impression)) _Row('Impression', p.impression!),
-                        if (_nonEmpty(p.plan)) _Row('Plan', p.plan!),
-                        if (_nonEmpty(p.treatment)) _Row('Treatment', p.treatment!),
-                        if (_nonEmpty(p.treatmentNotes)) _Row('Notes', p.treatmentNotes!),
-                        if (_nonEmpty(p.advice)) _Row('Advice', p.advice!),
                       ],
                     ),
 

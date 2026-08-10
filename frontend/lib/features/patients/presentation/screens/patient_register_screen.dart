@@ -168,34 +168,25 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
 
     try {
       // Timeout guards against a SQLite deadlock leaving the spinner frozen.
+      // Patient stores only static demographic/contact/history info.
+      // All treatment/clinical data is stored in the auto-created first OPD visit below.
       final patient = await ref.read(patientsProvider.notifier).createPatient(
-        firstName:           _firstCtrl.text.trim(),
-        lastName:            _lastCtrl.text.trim(),
-        age:                 _ageCtrl.text.isNotEmpty ? int.tryParse(_ageCtrl.text.trim()) : null,
-        sex:                 _sex?.toLowerCase(),
-        phone:               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-        address:             _fullAddress,
-        altPhone:            _altCtrl.text.trim().isEmpty ? null : _altCtrl.text.trim(),
-        email:               _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-        idProofType:         _idProofType,
-        idProofNumber:       _idProofCtrl.text.trim().isEmpty ? null : _idProofCtrl.text.trim(),
-        weight:              _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
-        bloodPressure:       _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
-        temperature:         _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
-        allergies:           _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
-        medicalHistory:      _historyCtrl.text.trim().isEmpty ? null : _historyCtrl.text.trim(),
-        previousHistory:     _prevHistoryCtrl.text.trim().isEmpty ? null : _prevHistoryCtrl.text.trim(),
-        chiefComplaint:      _complaintCtrl.text.trim().isEmpty ? null : _complaintCtrl.text.trim(),
-        examGeneral:         _examGeneralCtrl.text.trim().isEmpty ? null : _examGeneralCtrl.text.trim(),
-        examNeurological:    _examNeurologicalCtrl.text.trim().isEmpty ? null : _examNeurologicalCtrl.text.trim(),
-        clinicalDiagnosis:   _clinicalDiagnosisCtrl.text.trim().isEmpty ? null : _clinicalDiagnosisCtrl.text.trim(),
-        imaging:             _imagingCtrl.text.trim().isEmpty ? null : _imagingCtrl.text.trim(),
-        otherInvestigations: _otherInvestCtrl.text.trim().isEmpty ? null : _otherInvestCtrl.text.trim(),
-        impression:          _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
-        plan:                _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
-        treatment:           _medicationsCtrl.text.trim().isEmpty ? null : _medicationsCtrl.text.trim(),
-        treatmentNotes:      _treatNotesCtrl.text.trim().isEmpty ? null : _treatNotesCtrl.text.trim(),
-        advice:              _adviceCtrl.text.trim().isEmpty ? null : _adviceCtrl.text.trim(),
+        firstName:       _firstCtrl.text.trim(),
+        lastName:        _lastCtrl.text.trim(),
+        age:             _ageCtrl.text.isNotEmpty ? int.tryParse(_ageCtrl.text.trim()) : null,
+        sex:             _sex?.toLowerCase(),
+        phone:           _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        address:         _fullAddress,
+        altPhone:        _altCtrl.text.trim().isEmpty ? null : _altCtrl.text.trim(),
+        email:           _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+        idProofType:     _idProofType,
+        idProofNumber:   _idProofCtrl.text.trim().isEmpty ? null : _idProofCtrl.text.trim(),
+        weight:          _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
+        bloodPressure:   _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
+        temperature:     _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
+        allergies:       _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
+        medicalHistory:  _historyCtrl.text.trim().isEmpty ? null : _historyCtrl.text.trim(),
+        previousHistory: _prevHistoryCtrl.text.trim().isEmpty ? null : _prevHistoryCtrl.text.trim(),
       ).timeout(const Duration(seconds: 12), onTimeout: () => null);
 
       if (!mounted) return;

@@ -10,4 +10,6 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     List<Visit> findAllByPatientIdAndIsActiveTrue(Long patientId, Sort sort);
     Optional<Visit> findByIdAndPatientIdAndIsActiveTrue(Long id, Long patientId);
     Optional<Visit> findByClientIdAndPatientId(String clientId, Long patientId);
+
+    long countByPatientIdAndIsActiveTrue(Long patientId);
 }

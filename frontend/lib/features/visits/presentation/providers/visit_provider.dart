@@ -99,12 +99,11 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
 
   Future<void> refresh() => _syncFromApi(arg);
 
-  Future<VisitEntity?> createVisit({
-    required String patientId,
-    VisitType type = VisitType.opd,
-  }) async {
+  Future<VisitEntity?> createVisit({required String patientId}) async {
     try {
       final now = DateTime.now().toUtc();
+      // Auto-determine type locally to match backend logic
+      final type = state.isEmpty ? VisitType.opd : VisitType.followUp;
       final model = VisitModel(
         id: const Uuid().v4(),
         patientId: patientId,
@@ -121,21 +120,24 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
 
   Future<VisitEntity?> createFullVisit({
     required String patientId,
-    VisitType type = VisitType.opd,
     DateTime? visitDate,
     String? complaints,
     String? examination,
     String? clinicalImpression,
     String? plan,
     String? notes,
+    // Legacy param kept for callers that still pass it; backend always overrides.
+    VisitType? type,
   }) async {
     try {
       final now = DateTime.now().toUtc();
+      // Auto-determine: first visit → OPD, subsequent → FOLLOW_UP
+      final autoType = type ?? (state.isEmpty ? VisitType.opd : VisitType.followUp);
       final model = VisitModel(
         id: const Uuid().v4(),
         patientId: patientId,
-        visitDate: (visitDate?.toUtc() ?? now).toIso8601String(),
-        visitType: type.value,
+        visitDate: now.toIso8601String(),
+        visitType: autoType.value,
         complaints: complaints,
         examination: examination,
         clinicalImpression: clinicalImpression,

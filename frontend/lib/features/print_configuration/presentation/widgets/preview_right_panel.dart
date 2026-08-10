@@ -1,12 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_dimensions.dart';
-import '../../../../core/theme/theme_extensions.dart';
-import '../../domain/models/print_field.dart';
+import '../../services/pdf_export_service.dart';
 import '../providers/print_config_provider.dart';
+
+// ── Palette ───────────────────────────────────────────────────────────────────
+
+const _kNavy   = Color(0xFF1A2D5A);
+const _kMaroon = Color(0xFF7B1F2E);
+const _kCream  = Color(0xFFF0EDE6);
+const _kDot    = Color(0xFFBBBBBB);
+const _kBorder = Color(0xFFDDDDDD);
+const _kSub    = Color(0xFF888888);
+
+// ── Section specification model ───────────────────────────────────────────────
+
+class _S {
+  final String title;
+  final IconData icon;
+  final List<(String, String)> fields; // (label, dataKey)
+  final bool rxIcon;
+  const _S(this.title, this.icon, this.fields, {this.rxIcon = false});
+}
+
+final _kSectionDefs = <_S>[
+  _S('PATIENT CONTACT & ID', Icons.contact_phone_outlined, [
+    ('Phone', 'phone'),
+    ('Alt Phone', 'altPhone'),
+    ('Email', 'email'),
+    ('Address', 'address'),
+    ('ID Type', 'idProofType'),
+    ('ID No.', 'idProofNumber'),
+  ]),
+  _S('VITALS', Icons.monitor_heart_outlined, [
+    ('Weight', 'weight'),
+    ('Blood Pressure', 'bloodPressure'),
+    ('Temperature', 'temperature'),
+  ]),
+  _S('KNOWN ALLERGIES', Icons.warning_amber_rounded, [
+    ('Allergies', 'allergies'),
+  ]),
+  _S('PAST MEDICAL HISTORY', Icons.history_outlined, [
+    ('Medical History', 'medicalHistory'),
+  ]),
+  _S('PRESENTING COMPLAINTS & CLINICAL HISTORY', Icons.assignment_outlined, [
+    ('Chief Complaint', 'chiefComplaint'),
+    ('Previous History', 'previousHistory'),
+  ]),
+  _S('EXAMINATION FINDINGS', Icons.search_outlined, [
+    ('General Examination', 'examGeneral'),
+    ('Neurological Examination', 'examNeurological'),
+  ]),
+  _S('REPORTS', Icons.description_outlined, [
+    ('Imaging', 'imaging'),
+    ('Other Investigation', 'otherInvestigation'),
+  ]),
+  _S('ADVICE', Icons.health_and_safety_outlined, [
+    ('Advice', 'advice'),
+  ]),
+  _S('TREATMENT (MEDICINES)', Icons.medication_outlined, [
+    ('Medications', 'medications'),
+  ], rxIcon: true),
+  _S('INVESTIGATIONS', Icons.science_outlined, [
+    ('Clinical Diagnosis', 'clinicalDiagnosis'),
+    ('Impression', 'diagnosis'),
+    ('Treatment Plan', 'treatmentPlan'),
+  ]),
+  _S('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', Icons.people_outline, [
+    ('Notes', 'notes'),
+  ]),
+];
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 
@@ -15,103 +79,319 @@ class PreviewRightPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Container(
-      color: context.surfaceVar,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _PreviewHeader(),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(AppDimensions.lg),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 794),
-                  child: const _ReportDocument(),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return const _ReportScreen();
   }
 }
 
-// ── Top bar ───────────────────────────────────────────────────────────────────
+// ── Main scrollable report screen ─────────────────────────────────────────────
 
-class _PreviewHeader extends StatelessWidget {
+class _ReportScreen extends ConsumerStatefulWidget {
+  const _ReportScreen();
+
+  @override
+  ConsumerState<_ReportScreen> createState() => _ReportScreenState();
+}
+
+class _ReportScreenState extends ConsumerState<_ReportScreen> {
+  bool _saving = false;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.md, vertical: 10),
-      decoration: BoxDecoration(
-        color: context.cardColor,
-        border: Border(bottom: BorderSide(color: context.borderColor)),
+    final data   = ref.watch(effectivePatientDataProvider);
+    final config = ref.watch(printConfigProvider);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF2F4F8),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Clinic header ────────────────────────────────────────────
+            _ClinicHeader(data: data),
+            const SizedBox(height: 10),
+            // ── Patient info bar ─────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: _PatientBar(data: data),
+            ),
+            const SizedBox(height: 8),
+            // ── Customize fields bar ─────────────────────────────────────
+            _CustomizeBar(data: data, config: config),
+            const SizedBox(height: 8),
+            // ── Report sections (hidden when no data) ─────────────────────
+            ..._buildSections(config, data),
+            const SizedBox(height: 10),
+            // ── Footer ───────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: _FooterCard(data: data),
+            ),
+            const SizedBox(height: 14),
+            // ── Save Report Button ────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: _SaveButton(
+                saving: _saving,
+                onTap: () => _export(config),
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Row(
+    );
+  }
+
+  Widget _fieldListWidget(
+      PrintConfigState c, Map<String, String> d,
+      List<(String, String)> pairs) {
+    final filled = pairs
+        .where((p) =>
+            c.enabledFieldIds.contains(p.$2) &&
+            (d[p.$2] ?? '').isNotEmpty &&
+            d[p.$2] != '—')
+        .toList();
+    if (filled.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: context.primarySurf,
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusMd),
-            ),
-            child: const Icon(Icons.visibility_outlined,
-                size: 14, color: AppColors.primary),
-          ),
-          const SizedBox(width: AppDimensions.sm),
+          _dot(),
+          const SizedBox(height: 8),
+          _dot(),
+          const SizedBox(height: 8),
+          _dot(),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < filled.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
           Text(
-            'Live Report Preview',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: context.textPrimary),
-          ),
-          const SizedBox(width: AppDimensions.sm),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: AppColors.successSurface,
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.radiusRound),
+            filled[i].$1,
+            style: const TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: _kSub,
+              letterSpacing: 0.2,
             ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            d[filled[i].$2]!,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.black87,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  bool _sectionHasData(PrintConfigState c, Map<String, String> d,
+      List<(String, String)> fields) {
+    return fields.any((f) =>
+        c.enabledFieldIds.contains(f.$2) &&
+        (d[f.$2] ?? '').isNotEmpty &&
+        d[f.$2] != '—');
+  }
+
+  List<Widget> _buildSections(PrintConfigState c, Map<String, String> d) {
+    final result = <Widget>[];
+
+    void addFull(_S s) {
+      if (!_sectionHasData(c, d, s.fields)) return;
+      if (result.isNotEmpty) result.add(const SizedBox(height: 8));
+      result.add(_SectionCard(
+        icon: s.icon,
+        title: s.title,
+        rxIcon: s.rxIcon,
+        contentWidget: _fieldListWidget(c, d, s.fields),
+      ));
+    }
+
+    void addPaired(_S left, _S right) {
+      final hasL = _sectionHasData(c, d, left.fields);
+      final hasR = _sectionHasData(c, d, right.fields);
+      if (!hasL && !hasR) return;
+      if (result.isNotEmpty) result.add(const SizedBox(height: 8));
+      if (hasL && hasR) {
+        result.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  width: 6,
-                  height: 6,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                        color: AppColors.success, shape: BoxShape.circle),
+                Expanded(
+                  child: _SectionCard(
+                    icon: left.icon,
+                    title: left.title,
+                    rxIcon: left.rxIcon,
+                    contentWidget: _fieldListWidget(c, d, left.fields),
+                    noPadding: true,
                   ),
                 ),
-                SizedBox(width: 4),
-                Text('Live',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.success)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SectionCard(
+                    icon: right.icon,
+                    title: right.title,
+                    contentWidget: _fieldListWidget(c, d, right.fields),
+                    noPadding: true,
+                  ),
+                ),
               ],
             ),
           ),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: context.surfaceVar,
-              borderRadius: BorderRadius.circular(4),
+        ));
+      } else if (hasL) {
+        result.add(_SectionCard(
+          icon: left.icon,
+          title: left.title,
+          rxIcon: left.rxIcon,
+          contentWidget: _fieldListWidget(c, d, left.fields),
+        ));
+      } else {
+        result.add(_SectionCard(
+          icon: right.icon,
+          title: right.title,
+          contentWidget: _fieldListWidget(c, d, right.fields),
+        ));
+      }
+    }
+
+    // Indices match _kSectionDefs order
+    addFull(_kSectionDefs[0]);              // Patient Contact & ID
+    addPaired(_kSectionDefs[1], _kSectionDefs[2]); // Vitals | Allergies
+    addFull(_kSectionDefs[3]);              // Medical History
+    addFull(_kSectionDefs[4]);              // Presenting Complaints
+    addFull(_kSectionDefs[5]);              // Examination Findings
+    addPaired(_kSectionDefs[6], _kSectionDefs[7]); // Reports | Advice
+    addPaired(_kSectionDefs[8], _kSectionDefs[9]); // Treatment | Investigations
+    addFull(_kSectionDefs[10]);             // Cross Reference
+
+    return result;
+  }
+
+  Future<void> _export(PrintConfigState config) async {
+    setState(() => _saving = true);
+    try {
+      await PdfExportService.exportPdf(
+        config,
+        patientData: ref.read(activePatientDataProvider),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
+// ── Clinic header ─────────────────────────────────────────────────────────────
+
+class _ClinicHeader extends StatelessWidget {
+  final Map<String, String> data;
+  const _ClinicHeader({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: _kCream,
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Logo — compact
+          SizedBox(
+            width: 46,
+            height: 56,
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) =>
+                  const Icon(Icons.local_hospital, color: _kNavy, size: 28),
             ),
-            child: Text(
-              'A4 · Portrait (fixed)',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: context.textSecondary),
+          ),
+          const SizedBox(width: 8),
+          // Clinic name + tagline
+          Expanded(
+            flex: 5,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'The Brain & Spine Clinic',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: _kMaroon,
+                    letterSpacing: 0.1,
+                    height: 1.25,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Excellence, Ethics, Efficiency',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontStyle: FontStyle.italic,
+                    color: _kMaroon,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Doctor credentials — compact right column
+          Expanded(
+            flex: 6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: const [
+                Text(
+                  'Dr. Harshal S. Chaudhari',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: _kNavy,
+                  ),
+                  textAlign: TextAlign.end,
+                ),
+                SizedBox(height: 2),
+                Text('Neurosurgeon (Brain & Spine)',
+                    style: TextStyle(fontSize: 7.5, color: _kNavy),
+                    textAlign: TextAlign.end),
+                Text('MBBS, MS Gen Surg (KEM, Mumbai)',
+                    style: TextStyle(fontSize: 6.5, color: _kSub),
+                    textAlign: TextAlign.end),
+                Text('MCh Neurosurgery (GMC, Goa)',
+                    style: TextStyle(fontSize: 6.5, color: _kSub),
+                    textAlign: TextAlign.end),
+                Text('Fellow Neuro-Oncology (TMH)',
+                    style: TextStyle(fontSize: 6.5, color: _kSub),
+                    textAlign: TextAlign.end),
+                SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.language, size: 8, color: _kNavy),
+                    SizedBox(width: 2),
+                    Text('drharshalchaudhari.com',
+                        style: TextStyle(fontSize: 7, color: _kNavy)),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -120,848 +400,685 @@ class _PreviewHeader extends StatelessWidget {
   }
 }
 
-// ── A4 Report document ────────────────────────────────────────────────────────
+// ── Patient info bar ──────────────────────────────────────────────────────────
 
-class _ReportDocument extends ConsumerWidget {
-  const _ReportDocument();
+class _PatientBar extends StatelessWidget {
+  final Map<String, String> data;
+  const _PatientBar({required this.data});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(printConfigProvider);
-    final activeData = ref.watch(activePatientDataProvider);
-    final isRealPatient = activeData != null;
-    final inOrder = state.sectionOrder.toSet();
+  Widget build(BuildContext context) {
+    final fn     = data['firstName'] ?? '';
+    final ln     = data['lastName'] ?? '';
+    final name   = [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
+    final age    = data['age'] ?? '';
+    final gender = data['gender'] ?? '';
+    final ageSex = [age, gender].where((s) => s.isNotEmpty && s != '—').join(' / ');
+    final uhid   = data['uhid'] ?? data['prn'] ?? data['idProofNumber'] ?? '';
+    final date   = data['date'] ?? '';
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(4),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 24,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kBorder),
       ),
-      padding: const EdgeInsets.all(40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Warning when using mock data
-          if (!isRealPatient)
-            Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFBBF24)),
-              ),
-              child: const Row(children: [
-                Icon(Icons.info_outline_rounded,
-                    size: 14, color: Color(0xFFD97706)),
-                SizedBox(width: 8),
-                Text(
-                  'No patient selected — showing sample data',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFD97706),
-                      fontWeight: FontWeight.w500),
-                ),
-              ]),
-            ),
-
-          // Letterhead
-          const _DocumentHeader(),
-          const SizedBox(height: 14),
-
-          // Patient Summary
-          if (inOrder.contains(kSectionBasicInfo)) ...[
-            const _PatientSummaryBox(),
-            const SizedBox(height: 12),
-          ],
-
-          // Vitals
-          if (inOrder.contains(kSectionVitals))
-            const _VitalsSection(),
-
-          // Clinical info + Prescription + Doctor notes
-          if (inOrder.contains(kSectionTreatment)) ...[
-            const _ClinicalInfoSection(),
-            const _PrescriptionSection(),
-            const _DoctorNotesRow(),
-          ],
-
-          const SizedBox(height: 20),
-          const _DocumentFooter(),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Letterhead ────────────────────────────────────────────────────────────────
-
-class _DocumentHeader extends StatelessWidget {
-  const _DocumentHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Logo row
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Medical cross box
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 2),
-              ),
-              child: const Center(
-                child: Text(
-                  '+',
-                  style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MEDIMANAGE MEDICAL CENTER',
-                    style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.black,
-                        letterSpacing: 0.3),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'General Hospital & Healthcare Services',
-                    style: TextStyle(
-                        fontSize: 11, color: const Color(0xFF6E6A63)),
-                  ),
-                ],
-              ),
-            ),
-            // QR code placeholder
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFE0DDD7))),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.qr_code_2_rounded,
-                      size: 22, color: const Color(0xFF6E6A63)),
-                  const Text('Scan to Verify',
-                      style: TextStyle(
-                          fontSize: 6,
-                          color: const Color(0xFF6E6A63))),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const Divider(color: const Color(0xFFECEAE4)),
-        const SizedBox(height: 4),
-        // Address bar
-        Row(
-          children: [
-            const Icon(Icons.location_on_outlined,
-                size: 12, color: const Color(0xFF6E6A63)),
-            const SizedBox(width: 4),
-            const Text('123 Medical Drive, Healthcare City, HC 560001',
-                style: TextStyle(
-                    fontSize: 9, color: const Color(0xFF6E6A63))),
-            const SizedBox(width: 16),
-            const Icon(Icons.phone_outlined,
-                size: 12, color: const Color(0xFF6E6A63)),
-            const SizedBox(width: 4),
-            const Text('+1 (555) 000-1234',
-                style: TextStyle(
-                    fontSize: 9, color: const Color(0xFF6E6A63))),
-            const SizedBox(width: 16),
-            const Icon(Icons.email_outlined,
-                size: 12, color: const Color(0xFF6E6A63)),
-            const SizedBox(width: 4),
-            const Text('info@medimanage.com',
-                style: TextStyle(
-                    fontSize: 9, color: const Color(0xFF6E6A63))),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Container(height: 2, color: Colors.black),
-        const SizedBox(height: 12),
-        // Report title
-        const Center(
-          child: Text(
-            'PATIENT MEDICAL REPORT',
-            style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Colors.black,
-                letterSpacing: 1.5),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Center(
-          child: Text(
-            'Generated: ${DateFormat('dd MMMM yyyy').format(now)}'
-            '    |    ${DateFormat('HH:mm').format(now)}'
-            '    |    Report ID: RPT-${DateFormat('ddMMyyyy').format(now)}-${DateFormat('HHmmss').format(now)}',
-            style: const TextStyle(
-                fontSize: 10, color: const Color(0xFF6E6A63)),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Patient Summary box ───────────────────────────────────────────────────────
-
-class _PatientSummaryBox extends ConsumerWidget {
-  const _PatientSummaryBox();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(effectivePatientDataProvider);
-
-    final fn = data['firstName'] ?? '';
-    final ln = data['lastName'] ?? '';
-    final fullName =
-        [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
-    final age = data['age'] ?? '';
-    final gender = data['gender'] ?? '';
-    final ageGender =
-        [age, gender].where((s) => s.isNotEmpty && s != '—').join(' / ');
-
-    return _BorderedSection(
-      header: Row(children: [
-        _BlackIconBox(icon: Icons.person_rounded),
-        const SizedBox(width: 8),
-        const Text('PATIENT SUMMARY',
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w800)),
-      ]),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _summaryCol('Patient Name',
-                fullName.isEmpty ? '—' : fullName),
-            const _VertDivider(),
-            _summaryCol('Age / Gender',
-                ageGender.isEmpty ? '—' : ageGender),
-            const _VertDivider(),
-            _summaryCol('Phone', data['phone'] ?? '—'),
-            const _VertDivider(),
-            _summaryCol('Address', data['address'] ?? '—'),
+            _cell(Icons.person_outline_rounded, 'Patient Name', name,
+                flex: 3),
+            _vd(),
+            _cell(Icons.calendar_today_outlined, 'Age / Gender', ageSex,
+                flex: 2),
+            _vd(),
+            _cell(Icons.badge_outlined, 'UHID / Reg. No.', uhid,
+                flex: 2),
+            _vd(),
+            _cell(Icons.date_range_outlined, 'Date', date, flex: 2),
           ],
         ),
       ),
     );
   }
 
-  Widget _summaryCol(String label, String value) => Expanded(
+  Widget _cell(IconData icon, String label, String value, {int flex = 1}) =>
+      Expanded(
+        flex: flex,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 9,
-                      color: const Color(0xFF6E6A63))),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w800),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-              ),
+              Row(children: [
+                Icon(icon, size: 14, color: _kNavy),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(label,
+                      style: const TextStyle(
+                          fontSize: 8.5,
+                          color: _kNavy,
+                          fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis),
+                ),
+              ]),
+              const SizedBox(height: 5),
+              if (value.isNotEmpty)
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: _kNavy),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis)
+              else
+                _dot(),
             ],
           ),
         ),
       );
+
+  Widget _vd() => Container(width: 1, color: _kBorder);
 }
 
-// ── Vitals ────────────────────────────────────────────────────────────────────
+// ── Section card ──────────────────────────────────────────────────────────────
 
-class _VitalsSection extends ConsumerWidget {
-  const _VitalsSection();
+class _SectionCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final Widget? contentWidget;
+  final bool rxIcon;
+  final bool noPadding;
+
+  const _SectionCard({
+    required this.icon,
+    required this.title,
+    this.contentWidget,
+    this.rxIcon = false,
+    this.noPadding = false,
+  });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(effectivePatientDataProvider);
-    final config = ref.watch(printConfigProvider);
-    final isReal = ref.watch(activePatientDataProvider) != null;
+  State<_SectionCard> createState() => _SectionCardState();
+}
 
-    final vitals = <Map<String, String>>[];
-    void add(String id, String label) {
-      if (!config.enabledFieldIds.contains(id)) return;
-      final v = data[id] ?? '';
-      if (isReal && v.isEmpty) return;
-      vitals.add({'label': label, 'value': v.isEmpty ? '—' : v});
-    }
+class _SectionCardState extends State<_SectionCard> {
+  bool _expanded = true;
 
-    add('weight', 'Weight');
-    add('bloodPressure', 'Blood Pressure');
-    add('temperature', 'Temperature');
-
-    if (vitals.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+  @override
+  Widget build(BuildContext context) {
+    final card = Container(
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kBorder),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Title row
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(8)),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  // Navy circle icon
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: const BoxDecoration(
+                      color: _kNavy,
+                      shape: BoxShape.circle,
+                    ),
+                    child: widget.rxIcon
+                        ? const Center(
+                            child: Text(
+                              'Rx',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                fontStyle: FontStyle.italic,
+                                color: Colors.white,
+                              ),
+                            ),
+                          )
+                        : Icon(widget.icon,
+                            size: 18, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: _kNavy,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: _kNavy,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Content
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: widget.contentWidget ??
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _dot(),
+                      const SizedBox(height: 8),
+                      _dot(),
+                      const SizedBox(height: 8),
+                      _dot(),
+                    ],
+                  ),
+            ),
+        ],
+      ),
+    );
+
+    if (widget.noPadding) return card;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: card,
+    );
+  }
+}
+
+// ── Footer card ───────────────────────────────────────────────────────────────
+
+class _FooterCard extends StatelessWidget {
+  final Map<String, String> data;
+  const _FooterCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kBorder),
+      ),
+      padding: const EdgeInsets.all(12),
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Black left panel
-            Container(
-              width: 88,
-              decoration: const BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(7),
-                  bottomLeft: Radius.circular(7),
-                ),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.favorite_rounded,
-                      color: Colors.white, size: 22),
-                  SizedBox(height: 4),
-                  Text('VITALS',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800)),
-                  SizedBox(height: 2),
-                  Text('(Latest)',
-                      style: TextStyle(
-                          color: Colors.grey, fontSize: 9)),
-                ],
-              ),
-            ),
-            // Vital cells
-            ...vitals.map((v) => Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        left: BorderSide(color: const Color(0xFFE0DDD7)),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(v['label']!,
-                            style: const TextStyle(
-                                fontSize: 9,
-                                color: const Color(0xFF6E6A63))),
-                        const SizedBox(height: 4),
-                        Text(v['value']!,
-                            style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                  ),
-                )),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Clinical Information ──────────────────────────────────────────────────────
-
-class _ClinicalInfoSection extends ConsumerWidget {
-  const _ClinicalInfoSection();
-
-  static const _clinicalIds = {
-    'previousHistory',
-    'chiefComplaint',
-    'examGeneral',
-    'examNeurological',
-    'clinicalDiagnosis',
-    'imaging',
-    'otherInvestigation',
-    'diagnosis',
-    'treatmentPlan',
-  };
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(effectivePatientDataProvider);
-    final config = ref.watch(printConfigProvider);
-    final isReal = ref.watch(activePatientDataProvider) != null;
-
-    var fields = kAllPrintFields
-        .where((f) =>
-            f.sectionId == kSectionTreatment &&
-            _clinicalIds.contains(f.id) &&
-            config.enabledFieldIds.contains(f.id))
-        .toList();
-    if (isReal) {
-      fields = fields
-          .where((f) => (data[f.id] ?? '').isNotEmpty)
-          .toList();
-    }
-    if (fields.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
-            child: Row(children: [
-              _BlackIconBox(icon: Icons.assignment_outlined),
-              const SizedBox(width: 8),
-              const Text('CLINICAL INFORMATION',
-                  style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w800)),
-            ]),
-          ),
-          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
-          // Field rows
-          ...fields.asMap().entries.map((entry) {
-            final isLast = entry.key == fields.length - 1;
-            final f = entry.value;
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                          width: 14,
-                          child: Text('-',
-                              style: TextStyle(
-                                  color:
-                                      const Color(0xFF6E6A63)))),
-                      SizedBox(
-                        width: 160,
-                        child: Text(f.label,
-                            style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(':  ',
-                          style: TextStyle(
-                              color: const Color(0xFF6E6A63))),
-                      Expanded(
-                        child: Text(
-                          data[f.id] ?? '—',
-                          style: const TextStyle(
-                              fontSize: 11, height: 1.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isLast)
-                  const Divider(
-                      height: 1, color: const Color(0xFFECEAE4)),
-              ],
-            );
-          }),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Prescription / Medication ─────────────────────────────────────────────────
-
-class _PrescriptionSection extends ConsumerWidget {
-  const _PrescriptionSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(effectivePatientDataProvider);
-    final config = ref.watch(printConfigProvider);
-    final isReal = ref.watch(activePatientDataProvider) != null;
-
-    if (!config.enabledFieldIds.contains('medications')) {
-      return const SizedBox.shrink();
-    }
-    final meds = data['medications'] ?? '';
-    if (isReal && meds.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
-            child: Row(children: [
-              const Text('Rx',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic)),
-              const SizedBox(width: 8),
-              const Text('PRESCRIPTION / MEDICATION',
-                  style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w800)),
-            ]),
-          ),
-          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
-          // Table with black header
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(7),
-              bottomRight: Radius.circular(7),
-            ),
-            child: Table(
-              border: TableBorder.all(
-                  color: const Color(0xFFE0DDD7), width: 0.5),
-              columnWidths: const {
-                0: FlexColumnWidth(2.5),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(1.2),
-                3: FlexColumnWidth(1),
-                4: FlexColumnWidth(1.5),
-              },
-              children: [
-                // Black header
-                TableRow(
-                  decoration:
-                      const BoxDecoration(color: Colors.black),
-                  children: [
-                    'Medication',
-                    'Dose',
-                    'Frequency',
-                    'Duration',
-                    'Instructions',
-                  ]
-                      .map((h) => Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 8),
-                            child: Text(h,
-                                style: const TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white)),
-                          ))
-                      .toList(),
-                ),
-                // Data row
-                TableRow(children: [
-                  meds.isEmpty ? '—' : meds,
-                  '—',
-                  '—',
-                  '—',
-                  '—',
-                ]
-                    .map((v) => Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 8),
-                          child: Text(v,
-                              style:
-                                  const TextStyle(fontSize: 10)),
-                        ))
-                    .toList()),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Doctor Notes + Follow Up ──────────────────────────────────────────────────
-
-class _DoctorNotesRow extends ConsumerWidget {
-  const _DoctorNotesRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final data = ref.watch(effectivePatientDataProvider);
-    final config = ref.watch(printConfigProvider);
-    final isReal = ref.watch(activePatientDataProvider) != null;
-
-    final notesOn = config.enabledFieldIds.contains('notes');
-    final adviceOn = config.enabledFieldIds.contains('advice');
-    final notes = notesOn ? (data['notes'] ?? '') : '';
-    final advice = adviceOn ? (data['advice'] ?? '') : '';
-
-    final showNotes = notesOn && (!isReal || notes.isNotEmpty);
-    final showAdvice = adviceOn && (!isReal || advice.isNotEmpty);
-
-    if (!showNotes && !showAdvice) return const SizedBox.shrink();
-
-    Widget notesBox = Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            _BlackIconBox(icon: Icons.notes_rounded),
-            const SizedBox(width: 8),
-            const Text('DOCTOR NOTES',
-                style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w800)),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            notes.isEmpty ? '- No additional notes' : '- $notes',
-            style: const TextStyle(fontSize: 11, height: 1.5),
-          ),
-        ],
-      ),
-    );
-
-    Widget adviceBox = Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            _BlackIconBox(icon: Icons.calendar_month_outlined),
-            const SizedBox(width: 8),
-            const Text('FOLLOW UP',
-                style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w800)),
-          ]),
-          const SizedBox(height: 8),
-          Text(
-            advice.isEmpty ? '—' : advice,
-            style: const TextStyle(fontSize: 11, height: 1.5),
-          ),
-        ],
-      ),
-    );
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: (showNotes && showAdvice)
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: notesBox),
-                const SizedBox(width: 10),
-                Expanded(child: adviceBox),
-              ],
-            )
-          : (showNotes ? notesBox : adviceBox),
-    );
-  }
-}
-
-// ── Document Footer ───────────────────────────────────────────────────────────
-
-class _DocumentFooter extends ConsumerWidget {
-  const _DocumentFooter();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Column(
-      children: [
-        const Divider(color: const Color(0xFFECEAE4)),
-        const SizedBox(height: 14),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Doctor signature
+            // Signature + credentials
             Expanded(
+              flex: 4,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
-                  Container(height: 1, width: 150, color: Colors.black),
-                  const SizedBox(height: 5),
+                  const Text(
+                    'Harshal',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w700,
+                      color: _kNavy,
+                    ),
+                  ),
+                  Container(
+                      height: 0.8, width: 90, color: Colors.black38),
+                  const SizedBox(height: 4),
                   const Text('Dr. Harshal S. Chaudhari',
                       style: TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.w800)),
-                  const Text('Consultant Neurosurgeon (Brain and Spine)',
-                      style: TextStyle(fontSize: 10)),
-                  const SizedBox(height: 4),
-                  const Text(
-                      'MBBS, MS Gen. Surg. (KEM Hospital, Mumbai)',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: const Color(0xFF6E6A63))),
+                          fontSize: 10, fontWeight: FontWeight.w800)),
+                  const Text('Neurosurgeon (Brain & Spine)',
+                      style: TextStyle(fontSize: 8)),
+                  const Text('MBBS, MS Gen Surg (KEM)',
+                      style: TextStyle(fontSize: 7.5, color: _kSub)),
                   const Text('MCh Neurosurgery (GMC, Goa)',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: const Color(0xFF6E6A63))),
-                  const Text(
-                      'Fellow in NeuroSurgical Oncology (Tata Memorial Hospital, Mumbai)',
-                      style: TextStyle(
-                          fontSize: 9,
-                          color: const Color(0xFF6E6A63))),
-                  const SizedBox(height: 4),
-                  const Text('MMC Reg. No: 2009031020',
-                      style: TextStyle(
-                          fontSize: 9, fontWeight: FontWeight.w700)),
+                      style: TextStyle(fontSize: 7.5, color: _kSub)),
+                  const Text('Fellow Neuro-Oncology (TMH)',
+                      style: TextStyle(fontSize: 7.5, color: _kSub)),
                 ],
               ),
             ),
-            // Circular hospital stamp
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black, width: 1.5),
-                shape: BoxShape.circle,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.local_hospital_rounded,
-                      size: 18),
-                  const Text('MEDIMANAGE',
-                      style: TextStyle(fontSize: 6)),
-                  const Text('MEDICAL CENTER',
-                      style: TextStyle(fontSize: 6)),
-                ],
-              ),
-            ),
-            // System generated note
+            const SizedBox(width: 10),
+            // Logo
             Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFFE0DDD7)),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.security_outlined,
-                          size: 16,
-                          color: const Color(0xFF6E6A63)),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'This is a system generated report.\nNo signature required.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontSize: 9,
-                            color: const Color(0xFF6E6A63),
-                            height: 1.4),
-                      ),
-                    ],
+              flex: 3,
+              child: Center(
+                child: SizedBox(
+                  width: 80,
+                  height: 90,
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(
+                        Icons.local_hospital,
+                        size: 50,
+                        color: _kNavy),
                   ),
                 ),
               ),
             ),
+            const SizedBox(width: 10),
+            // Follow up
+            Expanded(
+              flex: 4,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'FOLLOW UP / REVIEW',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      color: _kNavy,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    const Icon(Icons.calendar_today_outlined,
+                        size: 14, color: _kNavy),
+                    const SizedBox(width: 6),
+                    const Text('Next Visit on : ',
+                        style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: _kNavy)),
+                    Expanded(
+                        child:
+                            Container(height: 0.8, color: _kNavy)),
+                  ]),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'NOTES',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: _kNavy,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _dot(),
+                  const SizedBox(height: 8),
+                  _dot(),
+                ],
+              ),
+            ),
           ],
         ),
-      ],
+      ),
+    );
+  }
+}
+
+// ── Save Report button ────────────────────────────────────────────────────────
+
+class _SaveButton extends StatelessWidget {
+  final bool saving;
+  final VoidCallback onTap;
+  const _SaveButton({required this.saving, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _kNavy,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: saving ? null : onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          child: saving
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white),
+                )
+              : const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.save_rounded,
+                        color: Colors.white, size: 20),
+                    SizedBox(width: 10),
+                    Text(
+                      'SAVE REPORT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Customize bar ─────────────────────────────────────────────────────────────
+
+class _CustomizeBar extends StatelessWidget {
+  final Map<String, String> data;
+  final PrintConfigState config;
+  const _CustomizeBar({required this.data, required this.config});
+
+  @override
+  Widget build(BuildContext context) {
+    final total   = _kSectionDefs.fold<int>(0, (s, e) => s + e.fields.length);
+    final enabled = config.enabledFieldIds.length.clamp(0, total);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: InkWell(
+        onTap: () => showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (_) => _FieldConfigSheet(data: data),
+        ),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: _kNavy,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.tune_rounded, size: 14, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Customize Report Fields',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _kNavy,
+                  ),
+                ),
+              ),
+              Text(
+                '$enabled / $total selected',
+                style: const TextStyle(fontSize: 11, color: _kSub),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right_rounded, size: 18, color: _kSub),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Field configuration bottom sheet ─────────────────────────────────────────
+
+class _FieldConfigSheet extends ConsumerWidget {
+  final Map<String, String> data;
+  const _FieldConfigSheet({required this.data});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled  = ref.watch(printConfigProvider).enabledFieldIds;
+    final notifier = ref.read(printConfigProvider.notifier);
+
+    return Material(
+      color: Colors.transparent,
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.82,
+        maxChildSize: 0.95,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (ctx, scrollCtrl) => ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          child: Column(
+            children: [
+              // ── Header ──────────────────────────────────────────────────
+              Container(
+                color: _kNavy,
+                padding: const EdgeInsets.fromLTRB(16, 10, 12, 14),
+                child: Column(
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.tune_rounded,
+                            color: Colors.white, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Customize Report Fields',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => notifier.reset(),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            foregroundColor: Colors.white70,
+                          ),
+                          child: const Text('Reset All',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // ── Section list ─────────────────────────────────────────────
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final s in _kSectionDefs) ...[
+                      _SectionHeader(section: s, enabled: enabled, notifier: notifier),
+                      for (final f in s.fields)
+                        _FieldTile(
+                          field: f,
+                          data: data,
+                          enabled: enabled,
+                          notifier: notifier,
+                        ),
+                      const Divider(height: 1, thickness: 0.5),
+                    ],
+                    const SizedBox(height: 80),
+                  ],
+                ),
+              ),
+              // ── Done button ──────────────────────────────────────────────
+              Container(
+                color: Colors.white,
+                padding: EdgeInsets.fromLTRB(
+                    16, 10, 16,
+                    16 + MediaQuery.of(context).padding.bottom),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _kNavy,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('DONE',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1,
+                            fontSize: 14)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final _S section;
+  final Set<String> enabled;
+  final PrintConfigNotifier notifier;
+  const _SectionHeader(
+      {required this.section,
+      required this.enabled,
+      required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final allOn = section.fields.every((f) => enabled.contains(f.$2));
+    return Container(
+      color: _kCream,
+      padding: const EdgeInsets.fromLTRB(16, 9, 8, 9),
+      child: Row(
+        children: [
+          Icon(section.icon, size: 15, color: _kNavy),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              section.title,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: _kNavy,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          Transform.scale(
+            scale: 0.82,
+            child: Switch(
+              value: allOn,
+              onChanged: (val) {
+                for (final f in section.fields) {
+                  final isOn = enabled.contains(f.$2);
+                  if (val && !isOn) notifier.toggleField(f.$2);
+                  if (!val && isOn) notifier.toggleField(f.$2);
+                }
+              },
+              activeColor: _kNavy,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FieldTile extends StatelessWidget {
+  final (String, String) field;
+  final Map<String, String> data;
+  final Set<String> enabled;
+  final PrintConfigNotifier notifier;
+  const _FieldTile(
+      {required this.field,
+      required this.data,
+      required this.enabled,
+      required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final isOn   = enabled.contains(field.$2);
+    final value  = data[field.$2] ?? '';
+    final filled = value.isNotEmpty && value != '—';
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.fromLTRB(32, 0, 8, 0),
+      title: Text(
+        field.$1,
+        style: TextStyle(
+          fontSize: 13,
+          color: isOn ? Colors.black87 : _kSub,
+          fontWeight: isOn ? FontWeight.w500 : FontWeight.w400,
+        ),
+      ),
+      subtitle: filled
+          ? Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: isOn ? _kSub : const Color(0xFFCCCCCC)),
+            )
+          : const Text(
+              'No data entered',
+              style: TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFFBBBBBB),
+                  fontStyle: FontStyle.italic),
+            ),
+      trailing: Checkbox(
+        value: isOn,
+        onChanged: (_) => notifier.toggleField(field.$2),
+        activeColor: _kNavy,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onTap: () => notifier.toggleField(field.$2),
     );
   }
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-class _BorderedSection extends StatelessWidget {
-  final Widget header;
-  final Widget child;
-
-  const _BorderedSection({required this.header, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFE0DDD7)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
-            child: header,
-          ),
-          const Divider(height: 1, color: const Color(0xFFE0DDD7)),
-          child,
-        ],
+Widget _dot() {
+  return LayoutBuilder(builder: (_, c) {
+    final n = (c.maxWidth / 7).floor();
+    return Row(
+      children: List.generate(
+        n,
+        (i) => Container(
+          width: 4,
+          height: 0.9,
+          margin: const EdgeInsets.only(right: 3),
+          color: _kDot,
+        ),
       ),
     );
-  }
-}
-
-class _BlackIconBox extends StatelessWidget {
-  final IconData icon;
-
-  const _BlackIconBox({required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Icon(icon, color: Colors.white, size: 13),
-    );
-  }
-}
-
-class _VertDivider extends StatelessWidget {
-  const _VertDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(width: 1, color: const Color(0xFFE0DDD7));
-  }
+  });
 }
