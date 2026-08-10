@@ -31,4 +31,6 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     List<Patient> findDuplicatesByName(@Param("name") String name, Pageable pageable);
 
     Optional<Patient> findByIdAndIsActiveTrue(Long id);
+
+    long countByPrnStartingWith(String prefix);
 }

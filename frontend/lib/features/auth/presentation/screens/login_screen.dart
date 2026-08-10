@@ -110,13 +110,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       clipBehavior: Clip.none,
                       alignment: Alignment.bottomCenter,
                       children: [
-                        Positioned.fill(
+                        Positioned(
+                          top: 0,
+                          bottom: 0,
+                          left: -20,
+                          right: -20,
                           child: ClipPath(
                             clipper: _OvalBottomClipper(),
-                            child: Container(
-                              margin: const EdgeInsets.symmetric(horizontal: -20),
-                              color: _kNavy,
-                            ),
+                            child: Container(color: _kNavy),
                           ),
                         ),
                         Positioned(

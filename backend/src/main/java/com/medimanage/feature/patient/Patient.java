@@ -71,40 +71,6 @@ public class Patient {
     @Column(name = "previous_history")
     private String previousHistory;
 
-    // ── Clinical snapshot ────────────────────────────────────────────
-    @Column(name = "chief_complaint")
-    private String chiefComplaint;
-
-    @Column(name = "exam_general", columnDefinition = "TEXT")
-    private String examGeneral;
-
-    @Column(name = "exam_neurological", columnDefinition = "TEXT")
-    private String examNeurological;
-
-    @Column(name = "clinical_diagnosis", columnDefinition = "TEXT")
-    private String clinicalDiagnosis;
-
-    @Column(columnDefinition = "TEXT")
-    private String imaging;
-
-    @Column(name = "other_investigations", columnDefinition = "TEXT")
-    private String otherInvestigations;
-
-    @Column(columnDefinition = "TEXT")
-    private String impression;
-
-    @Column(columnDefinition = "TEXT")
-    private String plan;
-
-    @Column(columnDefinition = "TEXT")
-    private String treatment;
-
-    @Column(name = "treatment_notes", columnDefinition = "TEXT")
-    private String treatmentNotes;
-
-    @Column(columnDefinition = "TEXT")
-    private String advice;
-
     // ── Admin ────────────────────────────────────────────────────────
     @Column(columnDefinition = "TEXT")
     private String notes;

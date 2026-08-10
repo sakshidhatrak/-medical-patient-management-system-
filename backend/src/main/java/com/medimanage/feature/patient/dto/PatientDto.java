@@ -13,11 +13,6 @@ public record PatientDto(
         String idProofType, String idProofNumber,
         String weight, String bloodPressure, String temperature,
         String allergies, String medicalHistory, String previousHistory,
-        String chiefComplaint,
-        String examGeneral, String examNeurological,
-        String clinicalDiagnosis, String imaging, String otherInvestigations,
-        String impression, String plan, String treatment,
-        String treatmentNotes, String advice,
         String notes,
         boolean isActive,
         Instant createdAt, Instant updatedAt
@@ -34,11 +29,6 @@ public record PatientDto(
                 p.getIdProofType(), p.getIdProofNumber(),
                 p.getWeight(), p.getBloodPressure(), p.getTemperature(),
                 p.getAllergies(), p.getMedicalHistory(), p.getPreviousHistory(),
-                p.getChiefComplaint(),
-                p.getExamGeneral(), p.getExamNeurological(),
-                p.getClinicalDiagnosis(), p.getImaging(), p.getOtherInvestigations(),
-                p.getImpression(), p.getPlan(), p.getTreatment(),
-                p.getTreatmentNotes(), p.getAdvice(),
                 p.getNotes(),
                 p.isActive(),
                 p.getCreatedAt(), p.getUpdatedAt()

@@ -22,16 +22,5 @@ public record PatientRequest(
         String allergies,
         String medicalHistory,
         String previousHistory,
-        String chiefComplaint,
-        String examGeneral,
-        String examNeurological,
-        String clinicalDiagnosis,
-        String imaging,
-        String otherInvestigations,
-        String impression,
-        String plan,
-        String treatment,
-        String treatmentNotes,
-        String advice,
         String notes
 ) {}

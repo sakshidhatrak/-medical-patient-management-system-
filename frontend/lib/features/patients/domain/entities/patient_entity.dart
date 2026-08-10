@@ -19,28 +19,15 @@ class PatientEntity extends Equatable {
   final String? idProofType;
   final String? idProofNumber;
 
-  // ── Registration Vitals ──────────────────────────────────────────
+  // ── Registration Vitals (baseline at registration) ───────────────
   final String? weight;
   final String? bloodPressure;
   final String? temperature;
 
-  // ── History ──────────────────────────────────────────────────────
+  // ── History (static, non-changing) ──────────────────────────────
   final String? allergies;
   final String? medicalHistory;
   final String? previousHistory;
-
-  // ── Clinical (registration snapshot) ────────────────────────────
-  final String? chiefComplaint;
-  final String? examGeneral;
-  final String? examNeurological;
-  final String? clinicalDiagnosis;
-  final String? imaging;
-  final String? otherInvestigations;
-  final String? impression;
-  final String? plan;
-  final String? treatment;
-  final String? treatmentNotes;
-  final String? advice;
 
   // ── Admin ────────────────────────────────────────────────────────
   final String? notes;
@@ -71,17 +58,6 @@ class PatientEntity extends Equatable {
     this.allergies,
     this.medicalHistory,
     this.previousHistory,
-    this.chiefComplaint,
-    this.examGeneral,
-    this.examNeurological,
-    this.clinicalDiagnosis,
-    this.imaging,
-    this.otherInvestigations,
-    this.impression,
-    this.plan,
-    this.treatment,
-    this.treatmentNotes,
-    this.advice,
     this.notes,
     this.isActive = true,
     required this.createdAt,
@@ -141,17 +117,6 @@ class PatientEntity extends Equatable {
     String? allergies,
     String? medicalHistory,
     String? previousHistory,
-    String? chiefComplaint,
-    String? examGeneral,
-    String? examNeurological,
-    String? clinicalDiagnosis,
-    String? imaging,
-    String? otherInvestigations,
-    String? impression,
-    String? plan,
-    String? treatment,
-    String? treatmentNotes,
-    String? advice,
     String? notes,
     String? syncStatus,
   }) =>
@@ -175,17 +140,6 @@ class PatientEntity extends Equatable {
         allergies: allergies ?? this.allergies,
         medicalHistory: medicalHistory ?? this.medicalHistory,
         previousHistory: previousHistory ?? this.previousHistory,
-        chiefComplaint: chiefComplaint ?? this.chiefComplaint,
-        examGeneral: examGeneral ?? this.examGeneral,
-        examNeurological: examNeurological ?? this.examNeurological,
-        clinicalDiagnosis: clinicalDiagnosis ?? this.clinicalDiagnosis,
-        imaging: imaging ?? this.imaging,
-        otherInvestigations: otherInvestigations ?? this.otherInvestigations,
-        impression: impression ?? this.impression,
-        plan: plan ?? this.plan,
-        treatment: treatment ?? this.treatment,
-        treatmentNotes: treatmentNotes ?? this.treatmentNotes,
-        advice: advice ?? this.advice,
         notes: notes ?? this.notes,
         isActive: isActive,
         createdAt: createdAt,
@@ -200,11 +154,14 @@ class PatientEntity extends Equatable {
       [id, prn, firstName, lastName, age, dateOfBirth, sex, phone];
 }
 
-/// Generates PRN: ddmmyyHHmmss
-String generatePrn() {
+/// Generates offline PRN: DD-MM-YYYY-NNN (first 3 letters of firstName).
+/// Uniqueness is guaranteed by the server; offline PRN is temporary.
+String generatePrn(String firstName) {
   final n = DateTime.now();
-  return '${_p(n.day)}${_p(n.month)}${_p(n.year % 100)}'
-      '${_p(n.hour)}${_p(n.minute)}${_p(n.second)}';
+  final initials = firstName.length >= 3
+      ? firstName.substring(0, 3).toUpperCase()
+      : firstName.toUpperCase();
+  return '${_p(n.day)}-${_p(n.month)}-${n.year}-$initials';
 }
 
 String _p(int v) => v.toString().padLeft(2, '0');

@@ -13,8 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -45,7 +44,7 @@ public class PatientService {
     public PatientDto create(PatientRequest req, Long actorId) {
         User actor = userRepo.findById(actorId).orElse(null);
         Patient p = Patient.builder()
-                .prn(generatePrn())
+                .prn(generatePrn(req.firstName()))
                 .firstName(req.firstName())
                 .lastName(req.lastName() != null ? req.lastName() : "")
                 .age(req.age())
@@ -63,17 +62,6 @@ public class PatientService {
                 .allergies(req.allergies())
                 .medicalHistory(req.medicalHistory())
                 .previousHistory(req.previousHistory())
-                .chiefComplaint(req.chiefComplaint())
-                .examGeneral(req.examGeneral())
-                .examNeurological(req.examNeurological())
-                .clinicalDiagnosis(req.clinicalDiagnosis())
-                .imaging(req.imaging())
-                .otherInvestigations(req.otherInvestigations())
-                .impression(req.impression())
-                .plan(req.plan())
-                .treatment(req.treatment())
-                .treatmentNotes(req.treatmentNotes())
-                .advice(req.advice())
                 .notes(req.notes())
                 .isActive(true)
                 .createdBy(actor)
@@ -103,17 +91,6 @@ public class PatientService {
         p.setAllergies(req.allergies() != null ? req.allergies() : p.getAllergies());
         p.setMedicalHistory(req.medicalHistory() != null ? req.medicalHistory() : p.getMedicalHistory());
         p.setPreviousHistory(req.previousHistory() != null ? req.previousHistory() : p.getPreviousHistory());
-        p.setChiefComplaint(req.chiefComplaint() != null ? req.chiefComplaint() : p.getChiefComplaint());
-        p.setExamGeneral(req.examGeneral() != null ? req.examGeneral() : p.getExamGeneral());
-        p.setExamNeurological(req.examNeurological() != null ? req.examNeurological() : p.getExamNeurological());
-        p.setClinicalDiagnosis(req.clinicalDiagnosis() != null ? req.clinicalDiagnosis() : p.getClinicalDiagnosis());
-        p.setImaging(req.imaging() != null ? req.imaging() : p.getImaging());
-        p.setOtherInvestigations(req.otherInvestigations() != null ? req.otherInvestigations() : p.getOtherInvestigations());
-        p.setImpression(req.impression() != null ? req.impression() : p.getImpression());
-        p.setPlan(req.plan() != null ? req.plan() : p.getPlan());
-        p.setTreatment(req.treatment() != null ? req.treatment() : p.getTreatment());
-        p.setTreatmentNotes(req.treatmentNotes() != null ? req.treatmentNotes() : p.getTreatmentNotes());
-        p.setAdvice(req.advice() != null ? req.advice() : p.getAdvice());
         p.setNotes(req.notes() != null ? req.notes() : p.getNotes());
         p.setUpdatedBy(actor);
         return PatientDto.from(repo.save(p));
@@ -132,8 +109,19 @@ public class PatientService {
                 .orElseThrow(() -> new ResourceNotFoundException("Patient", id));
     }
 
-    private String generatePrn() {
-        var f = DateTimeFormatter.ofPattern("ddMMyyHHmmss");
-        return LocalDateTime.now().format(f);
+    /**
+     * PRN format: DD-MM-YYYY-NNN where NNN = first 3 letters of firstName (uppercase).
+     * Appends -2, -3 … when the prefix already exists (same day, same initials).
+     */
+    private String generatePrn(String firstName) {
+        LocalDate today = LocalDate.now();
+        String initials = firstName.length() >= 3
+                ? firstName.substring(0, 3).toUpperCase()
+                : firstName.toUpperCase();
+        String base = String.format("%02d-%02d-%04d-%s",
+                today.getDayOfMonth(), today.getMonthValue(), today.getYear(), initials);
+
+        long existing = repo.countByPrnStartingWith(base);
+        return existing == 0 ? base : base + "-" + (existing + 1);
     }
 }
