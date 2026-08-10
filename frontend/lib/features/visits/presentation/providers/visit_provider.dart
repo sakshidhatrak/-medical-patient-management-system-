@@ -42,7 +42,14 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
       if (!kIsWeb && RegExp(r'^\d+$').hasMatch(patientId)) {
         await _local.remapFromIdMap(patientId);
       }
-      final rows = await _local.getForPatient(patientId);
+      var rows = await _local.getForPatient(patientId);
+      // Fallback: scan for UUID-patient-id visits created within 24 h of this
+      // patient. Covers devices that registered before patient_id_map existed
+      // (pre-v41) so neither remapFromIdMap nor onOpen repair had the mapping.
+      if (rows.isEmpty && !kIsWeb && RegExp(r'^\d+$').hasMatch(patientId)) {
+        await _local.repairOrphanedVisitsForPatient(patientId);
+        rows = await _local.getForPatient(patientId);
+      }
       if (rows.isNotEmpty) {
         state = rows.map((r) {
           final syncStatus = r['sync_status'] as String? ?? 'synced';
