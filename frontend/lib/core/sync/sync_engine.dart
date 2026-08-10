@@ -203,16 +203,22 @@ class SyncEngine {
   // Returns true when patient IDs were remapped (caller should reload queue).
   Future<bool> _processItem(SyncItem item) async {
     try {
-      final path = _buildPath(item);
+      // Resolve a UUID patientId to a numeric one via the id map if possible.
+      // This covers offline-created visits whose patient already synced outside
+      // the SyncEngine (e.g., via patient_provider._syncPatientToApi).
+      final payload = await _resolveUuidPatientId(item.payload);
+      final path = _buildPath(item, payload: payload);
       bool remapped = false;
       switch (item.operation) {
         case 'insert':
           if (item.entityType == 'patients') {
-            // Parse the response to extract the server-assigned numeric ID,
-            // then remap all queued visits/surgeries that used the client UUID.
+            // Parse response to get server-assigned numeric ID, then remap all
+            // queued visits/surgeries that referenced this patient's client UUID.
+            // Backend wraps all responses in ApiResponse.data, so use body['data'].
             final body =
-                await _api.post<Map<String, dynamic>>(path, data: item.payload);
-            final newId = body['id']?.toString();
+                await _api.post<Map<String, dynamic>>(path, data: payload);
+            final dataMap = body['data'] as Map<String, dynamic>?;
+            final newId = dataMap?['id']?.toString();
             if (newId != null && newId != item.entityId) {
               await _idMap.insert(item.entityId, newId);
               await _localVisit.remapPatientId(item.entityId, newId);
@@ -221,11 +227,24 @@ class SyncEngine {
               await _queue.remapPatientIdInQueue(item.entityId, newId);
               remapped = true;
             }
+          } else if (item.entityType == 'visits') {
+            // Parse response to get server visit ID, then replace the local
+            // UUID visit row with the server-confirmed entry.
+            final body =
+                await _api.post<Map<String, dynamic>>(path, data: payload);
+            final dataMap = body['data'] as Map<String, dynamic>?;
+            if (dataMap == null) throw Exception('empty visit response');
+            final newVisitId = dataMap['id']?.toString();
+            if (newVisitId != null && newVisitId != item.entityId) {
+              await _localVisit.remapVisitId(item.entityId, newVisitId);
+              await _localVisit.purge(item.entityId);
+            }
+            await _localVisit.upsert(dataMap);
           } else {
-            await _api.post<void>(path, data: item.payload);
+            await _api.post<void>(path, data: payload);
           }
         case 'update':
-          await _api.put<void>(path, data: item.payload);
+          await _api.put<void>(path, data: payload);
         case 'delete':
           await _api.delete<void>(path);
       }
@@ -239,10 +258,27 @@ class SyncEngine {
     }
   }
 
-  String _buildPath(SyncItem item) {
+  // If the payload's patientId is a client UUID that's now in the id map,
+  // return a copy of the payload with the numeric server ID substituted.
+  Future<Map<String, dynamic>> _resolveUuidPatientId(
+      Map<String, dynamic> payload) async {
+    final pid =
+        (payload['patientId'] ?? payload['patient_id']) as Object?;
+    if (pid == null) return payload;
+    final pidStr = pid.toString();
+    if (RegExp(r'^\d+$').hasMatch(pidStr)) return payload; // already numeric
+    final resolved = await _idMap.resolve(pidStr);
+    if (resolved == pidStr) return payload; // no mapping found
+    final updated = Map<String, dynamic>.from(payload);
+    if (payload.containsKey('patientId')) updated['patientId'] = resolved;
+    if (payload.containsKey('patient_id')) updated['patient_id'] = resolved;
+    return updated;
+  }
+
+  String _buildPath(SyncItem item, {Map<String, dynamic>? payload}) {
     final id = item.entityId;
-    final patientId =
-        item.payload['patientId'] ?? item.payload['patient_id'];
+    final p = payload ?? item.payload;
+    final patientId = p['patientId'] ?? p['patient_id'];
     switch (item.entityType) {
       case 'patients':
         return item.operation == 'insert' ? '/patients' : '/patients/$id';
@@ -255,12 +291,12 @@ class SyncEngine {
             ? '/patients/$patientId/surgeries'
             : '/patients/$patientId/surgeries/$id';
       case 'examinations':
-        return '/patients/$patientId/visits/${item.payload['visitId']}/examination';
+        return '/patients/$patientId/visits/${p['visitId']}/examination';
       case 'prescriptions':
-        final rxId = item.payload['id'];
+        final rxId = p['id'];
         return rxId != null && (rxId as String).isNotEmpty
             ? '/prescriptions/$rxId'
-            : '/patients/$patientId/visits/${item.payload['visitId']}/prescriptions';
+            : '/patients/$patientId/visits/${p['visitId']}/prescriptions';
       default:
         return '/${item.entityType}/$id';
     }
@@ -987,6 +1023,14 @@ final patientIdMapProvider = Provider<PatientIdMap>(
 class SyncCoordinator extends Notifier<void> {
   @override
   void build() {
+    // Flush pending queue on startup if already online (covers stuck items
+    // from previous sessions that never got a connectivity-change event).
+    Future.microtask(() {
+      if (ref.read(isOnlineProvider) == true) {
+        ref.read(syncEngineProvider).syncAll();
+      }
+    });
+
     ref.listen<bool?>(isOnlineProvider, (prev, isOnline) {
       if (isOnline == true && prev == false) {
         ref.read(syncEngineProvider).syncAll();
