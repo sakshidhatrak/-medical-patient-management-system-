@@ -95,6 +95,16 @@ class OfflineQueue {
     return rows.map(SyncItem.fromRow).toList();
   }
 
+  // Resets the attempt counter for ALL failed items so they get a fresh retry
+  // when syncAll() runs next. Called at app startup / reconnect so items that
+  // exhausted their retries due to a transient error (e.g. UUID patientId) are
+  // not abandoned forever.
+  Future<void> resetAllFailed() async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('sync_queue', {'attempts': 0}, where: 'attempts >= 5');
+  }
+
   Future<void> markDone(String id) async {
     if (kIsWeb) {
       await _web?.markDone(id);
@@ -166,6 +176,11 @@ class SyncEngine {
     if (_running) return;
     _running = true;
     try {
+      // Give items that exhausted retries a fresh chance — they may have been
+      // stuck due to a UUID patientId that is now resolved, or a transient
+      // network failure. This runs once per sync session, not per item.
+      await _queue.resetAllFailed();
+
       // Process items one at a time, reloading the queue after any patient-ID
       // remap so subsequent visit/surgery items use the updated numeric patientId.
       List<SyncItem> items = await _queue.pending();
