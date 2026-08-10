@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,15 +8,14 @@ import '../../../../core/router/route_names.dart';
 import '../providers/auth_provider.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-const _kPrimary  = Color(0xFF4B55CC);
-const _kPrimSurf = Color(0xFFE8EBF8);
-const _kPrimText = Color(0xFF3D47B4);
-const _kBg       = Color(0xFFF8F6F2);
-const _kBorder   = Color(0xFFE0DDD7);
-const _kNavy     = Color(0xFF302D28);
-const _kSlate    = Color(0xFF6E6A63);
-const _kMuted    = Color(0xFF979088);
-const _kRed      = Color(0xFFEF4444);
+const _kNavy    = Color(0xFF1A237E);
+const _kBlue    = Color(0xFF283593);
+const _kBg      = Color(0xFFE8EEF8);
+const _kCardBg  = Colors.white;
+const _kRed     = Color(0xFFEF4444);
+const _kMuted   = Color(0xFF9E9E9E);
+const _kLabel   = Color(0xFF212121);
+const _kBorder  = Color(0xFFE0E0E0);
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -23,11 +24,11 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  final _formKey    = GlobalKey<FormState>();
-  final _emailCtrl  = TextEditingController();
-  final _passCtrl   = TextEditingController();
-  bool _obscure     = true;
-  int  _roleIndex   = 0; // 0=Doctor, 1=Front Desk (visual only)
+  final _formKey   = GlobalKey<FormState>();
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
+  bool _obscure    = true;
+  int  _roleIndex  = 0; // 0=Doctor, 1=Front Desk
 
   @override
   void dispose() {
@@ -53,77 +54,160 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     final isLoading = ref.watch(authProvider) is AuthLoading;
-    final vp = MediaQuery.of(context).viewPadding;
+    final mq        = MediaQuery.of(context);
+    final topPad    = mq.viewPadding.top;
 
     return Scaffold(
       backgroundColor: _kBg,
       resizeToAvoidBottomInset: true,
-      body: Column(children: [
-        // ── Primary colored header ──────────────────────────────────
-        _Header(topPadding: vp.top),
+      body: Stack(
+        children: [
+          // ── Decorative anatomy illustrations ───────────────────────
+          Positioned(
+            left: -10, top: topPad + 80,
+            child: Opacity(
+              opacity: 0.18,
+              child: _SpineIllustration(),
+            ),
+          ),
+          Positioned(
+            right: -8, top: topPad + 110,
+            child: Opacity(
+              opacity: 0.15,
+              child: _BrainIllustration(),
+            ),
+          ),
 
-        // ── Scrollable form area ────────────────────────────────────
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+          // ── Main scrollable content ────────────────────────────────
+          SingleChildScrollView(
             child: Column(children: [
-              // Role tabs card
-              Container(
-                margin: const EdgeInsets.only(top: 0),
-                transform: Matrix4.translationValues(0, -20, 0),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
+              // ── Dark blue top oval with logo ────────────────────────
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.bottomCenter,
+                children: [
+                  ClipPath(
+                    clipper: _OvalBottomClipper(),
+                    child: Container(
+                      width: double.infinity,
+                      height: topPad + 180,
+                      color: _kNavy,
                     ),
-                  ],
+                  ),
+                  // Logo badge — overlaps the oval
+                  Positioned(
+                    bottom: -90,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      width: 155,
+                      height: 195,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ],
+              ),
+
+              // Space for logo overlap
+              const SizedBox(height: 100),
+
+              // ── Clinic name ─────────────────────────────────────────
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  'The Brain &\nSpine Clinic',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    color: _kNavy,
+                    height: 1.15,
+                    letterSpacing: -0.5,
+                  ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── ECG heartbeat line + tagline ────────────────────────
+              const _EcgDivider(),
+              const SizedBox(height: 8),
+              const Text(
+                'Excellence. Ethics. Efficiency',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF616161),
+                  fontStyle: FontStyle.italic,
+                  letterSpacing: 0.1,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // ── Login card ─────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: _kCardBg,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _kNavy.withValues(alpha: 0.10),
+                        blurRadius: 32,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
                   child: Form(
                     key: _formKey,
                     child: Column(children: [
-                      // Role selector
+                      // Role toggle
                       Container(
-                        height: 42,
+                        height: 52,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFECEAE4),
-                          borderRadius: BorderRadius.circular(12),
+                          color: const Color(0xFFF0F0F0),
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Row(children: [
-                          _RoleTab(label: 'Doctor', active: _roleIndex == 0,
-                              onTap: () => setState(() => _roleIndex = 0)),
-                          _RoleTab(label: 'Front Desk', active: _roleIndex == 1,
-                              onTap: () => setState(() => _roleIndex = 1)),
+                          _RoleTab(
+                            label: 'Doctor',
+                            icon: Icons.medical_services_outlined,
+                            active: _roleIndex == 0,
+                            onTap: () => setState(() => _roleIndex = 0),
+                          ),
+                          _RoleTab(
+                            label: 'Front Desk',
+                            icon: Icons.support_agent_outlined,
+                            active: _roleIndex == 1,
+                            onTap: () => setState(() => _roleIndex = 1),
+                          ),
                         ]),
                       ),
 
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 20),
 
                       // Email
-                      _FieldLabel(label: 'Email'),
+                      _FieldLabel('Email'),
                       const SizedBox(height: 6),
                       _InputField(
                         controller: _emailCtrl,
-                        hint: 'you@clinic.com',
+                        hint: 'admin@medimanage.com',
                         icon: Icons.mail_outline_rounded,
                         keyboardType: TextInputType.emailAddress,
                         textInputAction: TextInputAction.next,
-                        validator: (v) => v?.trim().isEmpty == true ? 'Email is required' : null,
+                        validator: (v) =>
+                            v?.trim().isEmpty == true ? 'Email is required' : null,
                       ),
 
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
 
                       // Password
-                      _FieldLabel(label: 'Password'),
+                      _FieldLabel('Password'),
                       const SizedBox(height: 6),
                       _InputField(
                         controller: _passCtrl,
-                        hint: '••••••••',
+                        hint: '••••••••••••',
                         icon: Icons.lock_outline_rounded,
                         obscure: _obscure,
                         textInputAction: TextInputAction.done,
@@ -132,12 +216,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           onTap: () => setState(() => _obscure = !_obscure),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: Text(
-                              _obscure ? 'Show' : 'Hide',
-                              style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w700,
-                                color: _kPrimary,
-                              ),
+                            child: Icon(
+                              _obscure
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 20,
+                              color: _kMuted,
                             ),
                           ),
                         ),
@@ -148,45 +232,79 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         },
                       ),
 
+                      // Forgot password
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
                           onPressed: () {},
                           style: TextButton.styleFrom(
-                            foregroundColor: _kPrimary,
-                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            foregroundColor: _kBlue,
+                            padding: const EdgeInsets.symmetric(vertical: 6),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                          child: const Text('Forgot password?',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          child: const Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
 
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
 
-                      // Sign In button
+                      // Login button
                       SizedBox(
                         width: double.infinity,
-                        height: 52,
+                        height: 54,
                         child: ElevatedButton(
                           onPressed: isLoading ? null : _submit,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: _kPrimary,
+                            backgroundColor: _kNavy,
                             foregroundColor: Colors.white,
                             elevation: 0,
-                            shadowColor: _kPrimary.withValues(alpha: 0.4),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(13)),
-                            textStyle: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w700),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
                           ),
                           child: isLoading
                               ? const SizedBox(
-                                  width: 20, height: 20,
+                                  width: 22,
+                                  height: 22,
                                   child: CircularProgressIndicator(
-                                      color: Colors.white, strokeWidth: 2))
-                              : const Text('Sign In'),
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Login',
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                    Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.2),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.arrow_forward_rounded,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
                     ]),
@@ -194,90 +312,100 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ),
 
-              // Secure badge
-              const SizedBox(height: 4),
-              Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
-                Icon(Icons.shield_outlined, size: 13, color: _kMuted),
-                SizedBox(width: 5),
-                Text('Secure clinical access',
-                    style: TextStyle(fontSize: 11, color: _kMuted)),
+              // ── Secure badge ────────────────────────────────────────
+              const SizedBox(height: 20),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Icon(Icons.shield_outlined, size: 14, color: _kMuted),
+                const SizedBox(width: 5),
+                const Text(
+                  'Secure clinical access',
+                  style: TextStyle(fontSize: 12, color: _kMuted),
+                ),
               ]),
+
+              const SizedBox(height: 16),
+
+              // ── Bottom wave ─────────────────────────────────────────
+              _BottomWave(),
             ]),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
 
-// ── Header ─────────────────────────────────────────────────────────────────────
-class _Header extends StatelessWidget {
-  final double topPadding;
-  const _Header({required this.topPadding});
+// ── Oval top clipper ───────────────────────────────────────────────────────────
+class _OvalBottomClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    final path = Path();
+    path.lineTo(0, size.height - 60);
+    path.quadraticBezierTo(
+      size.width / 2, size.height + 60,
+      size.width, size.height - 60,
+    );
+    path.lineTo(size.width, 0);
+    path.close();
+    return path;
+  }
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    decoration: const BoxDecoration(
-      color: _kPrimary,
-      borderRadius: BorderRadius.only(
-        bottomLeft: Radius.circular(32),
-        bottomRight: Radius.circular(32),
-      ),
-    ),
-    padding: EdgeInsets.fromLTRB(26, topPadding + 36, 26, 48),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      // Logo icon
-      Container(
-        width: 56, height: 56,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: const Icon(Icons.monitor_heart_outlined, color: Colors.white, size: 28),
-      ),
-      const SizedBox(height: 14),
-      const Text('MediCare',
-          style: TextStyle(
-              fontSize: 22, fontWeight: FontWeight.w700,
-              color: Colors.white, letterSpacing: -0.3)),
-      const SizedBox(height: 3),
-      Text('Neurosurgery Care Platform',
-          style: TextStyle(
-              fontSize: 12.5, color: Colors.white.withValues(alpha: 0.75))),
-    ]),
-  );
+  bool shouldReclip(_) => false;
 }
 
 // ── Role tab ───────────────────────────────────────────────────────────────────
 class _RoleTab extends StatelessWidget {
   final String label;
+  final IconData icon;
   final bool active;
   final VoidCallback onTap;
-  const _RoleTab({required this.label, required this.active, required this.onTap});
+  const _RoleTab({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) => Expanded(
     child: GestureDetector(
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.all(3),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: active ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(9),
+          color: active ? _kNavy : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
           boxShadow: active
-              ? [BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4, offset: const Offset(0, 1))]
+              ? [
+                  BoxShadow(
+                    color: _kNavy.withValues(alpha: 0.30),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  )
+                ]
               : null,
         ),
-        alignment: Alignment.center,
-        child: Text(label,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: active ? _kNavy : _kSlate,
-            )),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 17,
+              color: active ? Colors.white : _kMuted,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : _kMuted,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -286,14 +414,19 @@ class _RoleTab extends StatelessWidget {
 // ── Field label ────────────────────────────────────────────────────────────────
 class _FieldLabel extends StatelessWidget {
   final String label;
-  const _FieldLabel({required this.label});
+  const _FieldLabel(this.label);
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.centerLeft,
-    child: Text(label,
-        style: const TextStyle(
-            fontSize: 11.5, fontWeight: FontWeight.w600, color: _kSlate)),
+    child: Text(
+      label,
+      style: const TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w700,
+        color: _kLabel,
+      ),
+    ),
   );
 }
 
@@ -329,19 +462,19 @@ class _InputField extends StatelessWidget {
     textInputAction: textInputAction,
     validator: validator,
     onFieldSubmitted: onSubmit != null ? (_) => onSubmit!() : null,
-    style: const TextStyle(fontSize: 14, color: _kNavy),
+    style: const TextStyle(fontSize: 14, color: _kLabel),
     decoration: InputDecoration(
       hintText: hint,
       hintStyle: const TextStyle(color: _kMuted, fontSize: 14),
       prefixIcon: Padding(
-        padding: const EdgeInsets.only(left: 14, right: 8),
-        child: Icon(icon, color: _kMuted, size: 16),
+        padding: const EdgeInsets.only(left: 14, right: 10),
+        child: Icon(icon, color: _kMuted, size: 18),
       ),
       prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
       suffixIcon: suffix,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: const Color(0xFFF7F7F7),
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _kBorder)),
@@ -350,7 +483,7 @@ class _InputField extends StatelessWidget {
           borderSide: const BorderSide(color: _kBorder)),
       focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _kPrimary, width: 1.5)),
+          borderSide: const BorderSide(color: _kNavy, width: 1.5)),
       errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: _kRed)),
@@ -359,4 +492,194 @@ class _InputField extends StatelessWidget {
           borderSide: const BorderSide(color: _kRed, width: 1.5)),
     ),
   );
+}
+
+// ── ECG divider ────────────────────────────────────────────────────────────────
+class _EcgDivider extends StatelessWidget {
+  const _EcgDivider();
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 120,
+    height: 24,
+    child: CustomPaint(painter: _EcgPainter()),
+  );
+}
+
+class _EcgPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _kNavy.withValues(alpha: 0.6)
+      ..strokeWidth = 1.8
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final h = size.height / 2;
+    final path = Path();
+    path.moveTo(0, h);
+    path.lineTo(size.width * 0.28, h);
+    path.lineTo(size.width * 0.35, h - size.height * 0.45);
+    path.lineTo(size.width * 0.42, h + size.height * 0.45);
+    path.lineTo(size.width * 0.50, h - size.height * 0.35);
+    path.lineTo(size.width * 0.55, h);
+    path.lineTo(size.width, h);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
+// ── Bottom wave ────────────────────────────────────────────────────────────────
+class _BottomWave extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    height: 60,
+    child: CustomPaint(painter: _WavePainter()),
+  );
+}
+
+class _WavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint1 = Paint()
+      ..color = const Color(0xFFBBCEEC).withValues(alpha: 0.5)
+      ..style = PaintingStyle.fill;
+    final paint2 = Paint()
+      ..color = const Color(0xFF90AEE0).withValues(alpha: 0.35)
+      ..style = PaintingStyle.fill;
+
+    final path1 = Path();
+    path1.moveTo(0, size.height * 0.5);
+    path1.quadraticBezierTo(
+        size.width * 0.25, size.height * 0.1,
+        size.width * 0.5, size.height * 0.5);
+    path1.quadraticBezierTo(
+        size.width * 0.75, size.height * 0.9,
+        size.width, size.height * 0.5);
+    path1.lineTo(size.width, size.height);
+    path1.lineTo(0, size.height);
+    path1.close();
+
+    final path2 = Path();
+    path2.moveTo(0, size.height * 0.65);
+    path2.quadraticBezierTo(
+        size.width * 0.3, size.height * 0.2,
+        size.width * 0.6, size.height * 0.65);
+    path2.quadraticBezierTo(
+        size.width * 0.8, size.height * 0.95,
+        size.width, size.height * 0.7);
+    path2.lineTo(size.width, size.height);
+    path2.lineTo(0, size.height);
+    path2.close();
+
+    canvas.drawPath(path1, paint1);
+    canvas.drawPath(path2, paint2);
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
+// ── Spine illustration (decorative) ───────────────────────────────────────────
+class _SpineIllustration extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 52,
+    height: 280,
+    child: CustomPaint(painter: _SpinePainter()),
+  );
+}
+
+class _SpinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _kNavy
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    final cx = size.width / 2;
+    // Central canal line
+    canvas.drawLine(Offset(cx, 0), Offset(cx, size.height), paint);
+
+    // Vertebrae segments
+    const segments = 10;
+    final segH = size.height / segments;
+    for (int i = 0; i < segments; i++) {
+      final y = i * segH + segH * 0.3;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(cx, y + segH * 0.2),
+          width: size.width * 0.85,
+          height: segH * 0.38,
+        ),
+        const Radius.circular(3),
+      );
+      canvas.drawRRect(rect, paint);
+      // Transverse processes
+      canvas.drawLine(Offset(cx - size.width * 0.42, y + segH * 0.2),
+          Offset(0, y + segH * 0.2 - 6), paint);
+      canvas.drawLine(Offset(cx + size.width * 0.42, y + segH * 0.2),
+          Offset(size.width, y + segH * 0.2 - 6), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
+}
+
+// ── Brain illustration (decorative) ───────────────────────────────────────────
+class _BrainIllustration extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: 90,
+    height: 110,
+    child: CustomPaint(painter: _BrainPainter()),
+  );
+}
+
+class _BrainPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = _kNavy
+      ..strokeWidth = 1.2
+      ..style = PaintingStyle.stroke;
+
+    final cx = size.width * 0.5;
+    final cy = size.height * 0.45;
+
+    // Outer brain outline (two hemispheres)
+    canvas.drawArc(
+      Rect.fromCenter(center: Offset(cx - 10, cy), width: 68, height: 70),
+      math.pi * 0.9, math.pi * 1.2, false, paint,
+    );
+    canvas.drawArc(
+      Rect.fromCenter(center: Offset(cx + 10, cy), width: 64, height: 68),
+      math.pi * 1.85, math.pi * 1.2, false, paint,
+    );
+    // Central fissure
+    canvas.drawLine(Offset(cx, cy - 33), Offset(cx, cy + 5), paint);
+    // Brain stem
+    canvas.drawLine(Offset(cx, cy + 32), Offset(cx, size.height), paint);
+    // Gyri (folds) - simple curved lines
+    for (int i = 0; i < 3; i++) {
+      final y0 = cy - 18 + i * 14.0;
+      final path = Path();
+      path.moveTo(cx - 24, y0);
+      path.cubicTo(cx - 16, y0 - 8, cx - 8, y0 + 8, cx, y0);
+      canvas.drawPath(path, paint);
+      final path2 = Path();
+      path2.moveTo(cx, y0);
+      path2.cubicTo(cx + 8, y0 - 8, cx + 16, y0 + 8, cx + 24, y0);
+      canvas.drawPath(path2, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_) => false;
 }
