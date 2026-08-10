@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -40,10 +42,11 @@ class MedicineSuggestion {
 
 class MedicineService {
   final LocalPrescriptionCache _prescriptions;
+  final LocalPatientCache _patients;
   final LocalDrugCache _drugs;
   final ApiClient _api;
 
-  MedicineService(this._prescriptions, this._drugs, this._api);
+  MedicineService(this._prescriptions, this._patients, this._drugs, this._api);
 
   // Seed master list into drugs_cache on first run.
   Future<void> seedMasterIfEmpty() async {
@@ -125,17 +128,17 @@ class MedicineService {
       String patientId, String q) async {
     if (kIsWeb) return [];
     try {
-      final rows = await _prescriptions.getAllForPatient(patientId);
       final seen = <String>{};
       final result = <MedicineSuggestion>[];
 
+      // ── 1. Medicines from past visit prescriptions ────────────────
+      final rows = await _prescriptions.getAllForPatient(patientId);
       for (final row in rows) {
         final text = row['text'] as String? ?? '';
         final visitDate = row['visitDate'] as String? ??
             row['_updatedAt'] as String? ?? '';
         final dateLabel = _formatDateLabel(visitDate);
 
-        // Parse medicines: one per line, also try splitting by common delimiters.
         final medicines = _parseMedicineText(text);
         for (final med in medicines) {
           final nameLower = med.toLowerCase();
@@ -148,7 +151,6 @@ class MedicineService {
           }
         }
 
-        // Also check structured drugs list if present.
         final drugsRaw = row['drugs'];
         if (drugsRaw is List) {
           for (final d in drugsRaw) {
@@ -169,6 +171,43 @@ class MedicineService {
           }
         }
       }
+
+      // ── 2. Medicines from OPD registration treatment fields ───────
+      // These are stored as plain text in the patient record (treatment,
+      // treatmentNotes fields) and never pass through savePrescription(),
+      // so they won't appear in the prescriptions table above.
+      try {
+        final patientRow = await _patients.getById(patientId);
+        if (patientRow != null) {
+          final js = patientRow['data_json'] as String?;
+          if (js != null) {
+            final data = jsonDecode(js) as Map<String, dynamic>;
+            final registrationDate = (data['createdAt'] as String? ?? '');
+            final dateLabel = registrationDate.isNotEmpty
+                ? _formatDateLabel(registrationDate)
+                : 'Registration';
+            // Collect text from all treatment-related fields.
+            final textSources = <String>[
+              data['treatment'] as String? ?? '',
+              data['treatmentNotes'] as String? ?? '',
+              data['plan'] as String? ?? '',
+            ];
+            for (final src in textSources) {
+              for (final med in _parseMedicineText(src)) {
+                final nl = med.toLowerCase();
+                if (nl.contains(q) && seen.add(nl)) {
+                  result.add(MedicineSuggestion(
+                    name: med,
+                    visitDateLabel: dateLabel,
+                    isHistory: true,
+                  ));
+                }
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
       return result;
     } catch (_) {
       return [];
@@ -254,6 +293,7 @@ class MedicineService {
 final medicineServiceProvider = Provider<MedicineService>((ref) {
   final svc = MedicineService(
     ref.watch(localPrescriptionCacheProvider),
+    ref.watch(localPatientCacheProvider),
     ref.watch(localDrugCacheProvider),
     ref.watch(apiClientProvider),
   );
