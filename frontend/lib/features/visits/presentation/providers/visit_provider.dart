@@ -11,6 +11,7 @@ import '../../../../core/sync/sync_engine.dart';
 import '../../data/datasources/visit_supabase_datasource.dart';
 import '../../data/models/visit_model.dart';
 import '../../domain/entities/visit_entity.dart';
+import '../../../photos/presentation/providers/photo_provider.dart';
 
 final visitDataSourceProvider = Provider<VisitSupabaseDataSource>((ref) =>
     VisitApiDataSourceImpl(ref.watch(apiClientProvider)));
@@ -202,6 +203,9 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         // numeric ID BEFORE purging the UUID visit so nothing is orphaned.
         await _local.remapVisitId(model.id, saved.id);
         await _local.purge(model.id);
+        // Now that photos have visit_id = numeric server id, upload any that
+        // were saved locally during the wizard (visitId was UUID at upload time).
+        unawaited(ref.read(photoProvider(saved.patientId).notifier).syncPending());
       }
       await _local.upsert(saved.toFullJson());
       final entity = saved.toEntity();

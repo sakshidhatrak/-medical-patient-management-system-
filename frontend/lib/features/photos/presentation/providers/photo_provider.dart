@@ -110,8 +110,28 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
           }
           final pendingStillLocal =
               pending.where((p) => !serverIds.contains(p.id)).toList();
+
+          // Also include local SQLite photos that have a visit/surgery linkage
+          // but are NOT represented in the server response.  This covers photos
+          // that were uploaded when the visit still had a UUID id — the backend
+          // stored them with visitId = null (different server id), but locally
+          // they have the correct numeric visit_id after remapVisitId ran.
+          final allLocalRows = await _store.getForPatient(patientId);
+          final linkedLocal = allLocalRows
+              .where((r) {
+                final id  = r['id'] as String;
+                final vid = r['visit_id'] as String?;
+                final sid = r['surgery_id'] as String?;
+                final uploaded = (r['is_uploaded'] as int? ?? 0) == 1;
+                return !serverIds.contains(id) &&
+                    uploaded &&
+                    (vid != null || sid != null);
+              })
+              .map(_rowToEntity)
+              .toList();
+
           state = state.copyWith(
-            photos: [...pendingStillLocal, ...photos],
+            photos: [...linkedLocal, ...pendingStillLocal, ...photos],
             isLoading: false,
           );
         } else {
@@ -147,7 +167,14 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
       // Only upload immediately if we have the server numeric ID.
       final patientSynced = isNumeric || resolvedPatientId != arg;
 
-      if (online && patientSynced) {
+      // If visitId / surgeryId is a UUID (non-numeric), uploading now would
+      // cause the backend to store the photo with visitId = null (it ignores
+      // non-numeric IDs). Save locally instead; the upload is triggered
+      // automatically by visit_provider once the visit gets its numeric server ID.
+      final visitIdReady  = visitId  == null || RegExp(r'^\d+$').hasMatch(visitId);
+      final surgIdReady   = surgeryId == null || RegExp(r'^\d+$').hasMatch(surgeryId);
+
+      if (online && patientSynced && visitIdReady && surgIdReady) {
         final ds = await _buildDs();
         final photo = await ds.uploadPhoto(
           patientId: resolvedPatientId,
@@ -289,7 +316,9 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
           caption: row['caption'] as String?,
           clientId: row['id'] as String,
         );
-        await _store.markUploaded(photo.id, photo.url ?? '', photo.storagePath);
+        // Use the local client id (row['id']) — not the server-returned numeric
+        // id (photo.id) — so the correct local SQLite row is marked as uploaded.
+        await _store.markUploaded(row['id'] as String, photo.url ?? '', photo.storagePath);
         try { await file.delete(); } catch (_) {}
         state = state.copyWith(
           photos: state.photos.map((p) => p.id == photo.id ? photo : p).toList(),
