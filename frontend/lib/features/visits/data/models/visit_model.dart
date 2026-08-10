@@ -134,7 +134,7 @@ class VisitModel {
   VisitEntity toEntity() => VisitEntity(
         id: id,
         patientId: patientId,
-        visitDate: DateTime.parse(visitDate),
+        visitDate: DateTime.parse(visitDate).toLocal(),
         visitType: VisitTypeX.fromValue(visitType),
         complaints: complaints,
         examination: examination,

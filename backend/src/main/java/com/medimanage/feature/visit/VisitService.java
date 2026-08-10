@@ -45,15 +45,17 @@ public class VisitService {
                 .orElseThrow(() -> new ResourceNotFoundException("Patient", patientId));
         User actor = userRepo.findById(actorId).orElse(null);
 
-        // Auto-determine type: first visit → OPD, subsequent → FOLLOW_UP
+        // Use client-supplied visitType when present; fall back to auto-detection.
         long priorVisits = visitRepo.countByPatientIdAndIsActiveTrue(patientId);
-        String autoType = priorVisits == 0 ? "OPD" : "FOLLOW_UP";
+        String resolvedType = (req.visitType() != null && !req.visitType().isBlank())
+                ? req.visitType()
+                : (priorVisits == 0 ? "OPD" : "FOLLOW_UP");
 
         Visit v = Visit.builder()
                 .patient(patient)
                 .clientId(req.clientId())
                 .visitDate(Instant.now())   // always server-set IST timestamp
-                .visitType(autoType)
+                .visitType(resolvedType)
                 .complaints(req.complaints())
                 .notes(req.notes())
                 .bp(req.bp()).pulse(req.pulse())

@@ -16,18 +16,25 @@ class SyncStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _isSynced ? const Color(0xFF2E7D32) : const Color(0xFFE65100);
-    final bg = _isSynced
-        ? const Color(0xFFE8F5E9)
-        : const Color(0xFFFFF3E0);
-    final icon = _isSynced ? Icons.cloud_done_rounded : Icons.cloud_upload_rounded;
-    final label = _isSynced ? 'Synced' : 'Pending';
-
+    if (_isSynced) {
+      return Container(
+        width: 22,
+        height: 22,
+        decoration: const BoxDecoration(
+          color: Color(0xFFE8F5E9),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.cloud_done_rounded, size: 13, color: Color(0xFF2E7D32)),
+      );
+    }
+    // Pending: simple grey dot — no distracting orange icon
     return Container(
-      width: 22,
-      height: 22,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Icon(icon, size: 13, color: color),
+      width: 10,
+      height: 10,
+      decoration: const BoxDecoration(
+        color: Color(0xFFBDBDBD),
+        shape: BoxShape.circle,
+      ),
     );
   }
 }
