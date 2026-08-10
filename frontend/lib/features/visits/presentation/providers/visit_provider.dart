@@ -37,6 +37,11 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
 
   Future<void> _loadLocal(String patientId) async {
     try {
+      // For numeric patient IDs: remap any visits still stored under the
+      // old UUID patient_id (race: patient synced before visit was created).
+      if (!kIsWeb && RegExp(r'^\d+$').hasMatch(patientId)) {
+        await _local.remapFromIdMap(patientId);
+      }
       final rows = await _local.getForPatient(patientId);
       if (rows.isNotEmpty) {
         state = rows.map((r) {
@@ -151,6 +156,20 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
     // Mark pending so on app-restart _loadLocal sees it as pending and
     // _syncFromApi preserves it until the API confirms.
     await _local.markPending(model.id);
+
+    // Resolve patient UUID → server numeric ID before proceeding.
+    // Race condition: if the patient sync completed between patient creation
+    // and this visit save (common when Render is already warm), the mapping
+    // already exists but this visit was just saved with the old UUID.
+    // Remap immediately so the visit is visible under the numeric patient_id
+    // without waiting for the next app restart to trigger repairOrphanedVisits.
+    if (!kIsWeb) {
+      final resolvedPid =
+          await ref.read(patientIdMapProvider).resolve(model.patientId);
+      if (resolvedPid != model.patientId) {
+        await _local.remapPatientId(model.patientId, resolvedPid);
+      }
+    }
 
     // 2. Return the local entity right away so the UI never blocks on network.
     final pendingEntity = model.toEntity().copyWith(syncStatus: 'pending');
