@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../../core/offline/offline_database.dart';
 import '../../../../core/providers/connectivity_provider.dart';
 import '../../../../core/sync/sync_engine.dart';
 import '../../data/datasources/patient_supabase_datasource.dart';
@@ -172,6 +173,10 @@ class PatientsNotifier extends Notifier<PatientsState> {
               await _local.purge(p.id); // Orphan — remove from SQLite
             }
           }
+          // Repair visits that became orphaned because their UUID patient was
+          // just purged above. The onOpen repair ran before this purge, so it
+          // needs a second pass now that the UUID patients are gone.
+          await ref.read(offlineDatabaseProvider).repairOrphanedVisits();
           merged = [...entities, ...keepPending];
         } else {
           merged = [...entities];

@@ -198,6 +198,9 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
           ? await _ds.createVisit(syncModel)
           : await _ds.updateVisit(syncModel);
       if (isNew && saved.id != model.id) {
+        // Remap prescriptions, examinations, and photos to the server-assigned
+        // numeric ID BEFORE purging the UUID visit so nothing is orphaned.
+        await _local.remapVisitId(model.id, saved.id);
         await _local.purge(model.id);
       }
       await _local.upsert(saved.toFullJson());
