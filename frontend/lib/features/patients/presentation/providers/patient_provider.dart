@@ -155,6 +155,20 @@ class PatientsNotifier extends Notifier<PatientsState> {
             if (queuedIds.contains(p.id) || _inflightIds.contains(p.id)) {
               keepPending.add(p); // Genuinely pending — keep
             } else {
+              // Orphan: the backend already has this patient under a different
+              // (numeric) ID. This happens when the user logs out before
+              // _syncPatientToApi() completes. Match by PRN to find the
+              // server entity, then remap all local visits/surgeries/photos
+              // before purging so they remain visible after login.
+              final matches = entities.where((e) => e.prn == p.prn);
+              if (matches.isNotEmpty) {
+                final serverId = matches.first.id;
+                await ref.read(patientIdMapProvider).insert(p.id, serverId);
+                await ref.read(localVisitCacheProvider).remapPatientId(p.id, serverId);
+                await ref.read(localSurgeryCacheProvider).remapPatientId(p.id, serverId);
+                await ref.read(localPhotoStoreProvider).remapPatientId(p.id, serverId);
+                await ref.read(offlineQueueProvider).remapPatientIdInQueue(p.id, serverId);
+              }
               await _local.purge(p.id); // Orphan — remove from SQLite
             }
           }
