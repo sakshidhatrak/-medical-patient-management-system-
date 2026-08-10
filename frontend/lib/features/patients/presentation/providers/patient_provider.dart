@@ -10,6 +10,7 @@ import '../../../../core/sync/sync_engine.dart';
 import '../../data/datasources/patient_supabase_datasource.dart';
 import '../../data/models/patient_model.dart';
 import '../../domain/entities/patient_entity.dart';
+import '../../../photos/presentation/providers/photo_provider.dart';
 
 // ── Infrastructure ────────────────────────────────────────────────
 
@@ -303,14 +304,18 @@ class PatientsNotifier extends Notifier<PatientsState> {
           ? await _ds.createPatient(model)
           : await _ds.updatePatient(model);
       if (isNew && saved.id != model.id) {
-        // Record the UUID→serverID mapping BEFORE purging so photo uploads
-        // happening in the same session can resolve the correct server ID.
+        // Record mapping BEFORE purging — resolves UUID → numeric ID for any
+        // in-flight or pending photo uploads from the same session.
         await ref.read(patientIdMapProvider).insert(model.id, saved.id);
         await _local.purge(model.id);
-        // Remap all local visits/surgeries that still reference the old UUID.
+        // Remap all local records that still reference the old client UUID.
         await ref.read(localVisitCacheProvider).remapPatientId(model.id, saved.id);
         await ref.read(localSurgeryCacheProvider).remapPatientId(model.id, saved.id);
+        await ref.read(localPhotoStoreProvider).remapPatientId(model.id, saved.id);
         await ref.read(offlineQueueProvider).remapPatientIdInQueue(model.id, saved.id);
+        // Upload any photos that were saved locally while patient sync was
+        // pending (race condition: photo step reached before Render responded).
+        unawaited(ref.read(photoProvider(model.id).notifier).syncPending());
       }
       await _local.upsert(saved.toFullJson());
       final entity = saved.toEntity();

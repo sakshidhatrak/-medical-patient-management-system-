@@ -700,6 +700,14 @@ class LocalPhotoStore {
     final db = await _db.database;
     await db.delete('photos', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> remapPatientId(
+      String oldPatientId, String newPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('photos', {'patient_id': newPatientId},
+        where: 'patient_id = ?', whereArgs: [oldPatientId]);
+  }
 }
 
 // ── Local drugs cache ─────────────────────────────────────────────
