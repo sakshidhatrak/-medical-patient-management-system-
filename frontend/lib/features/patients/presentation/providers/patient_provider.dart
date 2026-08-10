@@ -169,6 +169,7 @@ class PatientsNotifier extends Notifier<PatientsState> {
                 await ref.read(localSurgeryCacheProvider).remapPatientId(p.id, serverId);
                 await ref.read(localPhotoStoreProvider).remapPatientId(p.id, serverId);
                 await ref.read(offlineQueueProvider).remapPatientIdInQueue(p.id, serverId);
+                unawaited(ref.read(syncEngineProvider).syncAll());
               }
               await _local.purge(p.id); // Orphan — remove from SQLite
             }
@@ -310,6 +311,9 @@ class PatientsNotifier extends Notifier<PatientsState> {
         await ref.read(localSurgeryCacheProvider).remapPatientId(model.id, saved.id);
         await ref.read(localPhotoStoreProvider).remapPatientId(model.id, saved.id);
         await ref.read(offlineQueueProvider).remapPatientIdInQueue(model.id, saved.id);
+        // Flush queued visits/surgeries that were saved with the old UUID
+        // patient ID — they now have the correct numeric ID in their payload.
+        unawaited(ref.read(syncEngineProvider).syncAll());
         // Upload any photos that were saved locally while patient sync was
         // pending (race condition: photo step reached before Render responded).
         // Use saved.id (numeric) — photos were remapped to new patient_id above.
