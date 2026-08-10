@@ -138,7 +138,9 @@ class OfflineQueue {
         changed = true;
       }
       if (changed) {
-        await db.update('sync_queue', {'payload': jsonEncode(payload)},
+        // Reset attempts so the item gets a clean retry with the correct patientId.
+        await db.update('sync_queue',
+            {'payload': jsonEncode(payload), 'attempts': 0},
             where: 'id = ?', whereArgs: [row['id']]);
       }
     }
@@ -150,8 +152,13 @@ class OfflineQueue {
 class SyncEngine {
   final OfflineQueue _queue;
   final ApiClient _api;
+  final LocalVisitCache _localVisit;
+  final LocalSurgeryCache _localSurgery;
+  final LocalPhotoStore _localPhoto;
+  final PatientIdMap _idMap;
 
-  SyncEngine(this._queue, this._api);
+  SyncEngine(this._queue, this._api, this._localVisit, this._localSurgery,
+      this._localPhoto, this._idMap);
 
   bool _running = false;
 
@@ -159,21 +166,49 @@ class SyncEngine {
     if (_running) return;
     _running = true;
     try {
-      final items = await _queue.pending();
-      for (final item in items) {
-        await _processItem(item);
+      // Process items one at a time, reloading the queue after any patient-ID
+      // remap so subsequent visit/surgery items use the updated numeric patientId.
+      List<SyncItem> items = await _queue.pending();
+      int i = 0;
+      while (i < items.length) {
+        final remapped = await _processItem(items[i]);
+        if (remapped) {
+          // Queue payloads were rewritten — reload to pick up new patientIds.
+          items = await _queue.pending();
+          i = 0;
+        } else {
+          i++;
+        }
       }
     } finally {
       _running = false;
     }
   }
 
-  Future<void> _processItem(SyncItem item) async {
+  // Returns true when patient IDs were remapped (caller should reload queue).
+  Future<bool> _processItem(SyncItem item) async {
     try {
       final path = _buildPath(item);
+      bool remapped = false;
       switch (item.operation) {
         case 'insert':
-          await _api.post<void>(path, data: item.payload);
+          if (item.entityType == 'patients') {
+            // Parse the response to extract the server-assigned numeric ID,
+            // then remap all queued visits/surgeries that used the client UUID.
+            final body =
+                await _api.post<Map<String, dynamic>>(path, data: item.payload);
+            final newId = body['id']?.toString();
+            if (newId != null && newId != item.entityId) {
+              await _idMap.insert(item.entityId, newId);
+              await _localVisit.remapPatientId(item.entityId, newId);
+              await _localSurgery.remapPatientId(item.entityId, newId);
+              await _localPhoto.remapPatientId(item.entityId, newId);
+              await _queue.remapPatientIdInQueue(item.entityId, newId);
+              remapped = true;
+            }
+          } else {
+            await _api.post<void>(path, data: item.payload);
+          }
         case 'update':
           await _api.put<void>(path, data: item.payload);
         case 'delete':
@@ -181,10 +216,11 @@ class SyncEngine {
       }
       await _queue.markDone(item.id);
       debugPrint('[SyncEngine] synced ${item.entityType}/${item.entityId}');
+      return remapped;
     } catch (e) {
       await _queue.incrementAttempt(item.id, e.toString());
-      debugPrint(
-          '[SyncEngine] failed ${item.entityType}/${item.entityId}: $e');
+      debugPrint('[SyncEngine] failed ${item.entityType}/${item.entityId}: $e');
+      return false;
     }
   }
 
@@ -886,6 +922,10 @@ final offlineQueueProvider = Provider<OfflineQueue>((ref) => OfflineQueue(
 final syncEngineProvider = Provider<SyncEngine>((ref) => SyncEngine(
       ref.watch(offlineQueueProvider),
       ref.watch(apiClientProvider),
+      ref.watch(localVisitCacheProvider),
+      ref.watch(localSurgeryCacheProvider),
+      ref.watch(localPhotoStoreProvider),
+      ref.watch(patientIdMapProvider),
     ));
 
 final localPatientCacheProvider = Provider<LocalPatientCache>((ref) =>

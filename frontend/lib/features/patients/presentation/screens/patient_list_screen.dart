@@ -9,6 +9,7 @@ import 'package:medical_patient_management/features/patients/domain/entities/pat
 import 'package:medical_patient_management/features/patients/presentation/providers/patient_provider.dart';
 import 'package:medical_patient_management/features/print_configuration/presentation/providers/print_config_provider.dart';
 import 'package:medical_patient_management/features/visits/presentation/providers/visit_provider.dart';
+import '../../../../core/sync/sync_engine.dart';
 
 // ── Palette (Image #15 design) ────────────────────────────────────────────────
 
@@ -102,7 +103,36 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
           // ── Clinic + user header ──────────────────────────────────────
           _ClinicHeader(
             user: user,
-            onLogout: () async => ref.read(authProvider.notifier).logout(),
+            onLogout: () async {
+              final pending = await ref.read(offlineQueueProvider).pending();
+              if (pending.isNotEmpty && context.mounted) {
+                final proceed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Pending Sync'),
+                    content: Text(
+                      '${pending.length} record(s) have not been synced to the server yet.\n\n'
+                      'Logging out now may cause data loss if this device is the only copy.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text(
+                          'Logout Anyway',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (proceed != true) return;
+              }
+              ref.read(authProvider.notifier).logout();
+            },
           ),
           // ── Patients title + search ───────────────────────────────────
           Container(
