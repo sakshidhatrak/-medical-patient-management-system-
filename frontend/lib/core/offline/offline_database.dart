@@ -45,10 +45,18 @@ class OfflineDatabase {
     );
   }
 
-  // Runs on every DB open. Finds visits whose patient_id no longer exists in
-  // the patients table (happens when the server assigned a numeric ID to a
-  // patient that was created offline with a UUID) and re-links them to the
-  // correct patient by matching on creation timestamp proximity.
+  // Finds visits whose patient_id no longer exists in the patients table
+  // (happens when the server assigned a numeric ID to a UUID patient) and
+  // re-links them to the correct patient.
+  //
+  // Two-pass strategy:
+  //   1. Fast path — look up patient_id_map for a known UUID→numeric mapping.
+  //   2. Slow path — find nearest active patient by creation time using Dart
+  //      DateTime parsing (timezone-aware; SQLite STRFTIME ignores tz offsets).
+  //      Window: 24 hours (generous to cover multi-step wizard fill time).
+  //
+  // Called at DB open AND after _syncFromApi purges orphan patients (the visit
+  // only becomes orphaned when the UUID patient is removed, not before).
   Future<void> _repairOrphanedVisits(Database db) async {
     final orphans = await db.rawQuery('''
       SELECT v.id, v.patient_id, v.created_at, v.data_json
@@ -59,27 +67,66 @@ class OfflineDatabase {
       AND v.is_active = 1
     ''');
 
+    if (orphans.isEmpty) return;
+
+    // Pre-fetch all active patients for Dart-side timestamp matching.
+    final allPatients = await db.query(
+      'patients',
+      columns: ['id', 'created_at'],
+      where: 'is_active = 1',
+    );
+
     for (final row in orphans) {
+      final visitId   = row['id'] as String;
+      final oldPid    = row['patient_id'] as String?;
       final createdAt = row['created_at'] as String?;
       if (createdAt == null) continue;
 
-      // A registration visit is created within seconds of the patient record.
-      // Find the patient whose created_at is closest to the visit's.
-      final candidates = await db.rawQuery('''
-        SELECT id,
-               ABS(CAST(STRFTIME('%s', ?) AS INTEGER) -
-                   CAST(STRFTIME('%s', created_at) AS INTEGER)) AS diff
-        FROM patients
-        WHERE is_active = 1
-        ORDER BY diff ASC
-        LIMIT 1
-      ''', [createdAt]);
+      String? newPatientId;
 
-      if (candidates.isEmpty) continue;
-      final diff = (candidates.first['diff'] as num?)?.toInt() ?? 99999;
-      if (diff > 300) continue; // >5 min apart → not a reliable match
+      // Pass 1: patient_id_map lookup (available for patients synced in v41+)
+      if (oldPid != null) {
+        final mapped = await db.query(
+          'patient_id_map',
+          where: 'client_id = ?',
+          whereArgs: [oldPid],
+        );
+        if (mapped.isNotEmpty) {
+          newPatientId = mapped.first['server_id'] as String?;
+        }
+      }
 
-      final newPatientId = candidates.first['id'] as String;
+      // Pass 2: nearest patient by creation time (handles timezone offsets)
+      if (newPatientId == null) {
+        DateTime? visitTime;
+        try {
+          visitTime = DateTime.parse(createdAt).toUtc();
+        } catch (_) {
+          continue;
+        }
+
+        String? bestId;
+        int bestDiff = 86401; // 1 s beyond 24-h window
+
+        for (final p in allPatients) {
+          final pStr = p['created_at'] as String?;
+          if (pStr == null) continue;
+          try {
+            final pTime = DateTime.parse(pStr).toUtc();
+            final diff = (visitTime.millisecondsSinceEpoch -
+                    pTime.millisecondsSinceEpoch)
+                .abs() ~/
+                1000;
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestId = p['id'] as String?;
+            }
+          } catch (_) {}
+        }
+
+        if (bestId == null) continue;
+        newPatientId = bestId;
+      }
 
       final updates = <String, Object?>{'patient_id': newPatientId};
       final js = row['data_json'] as String?;
@@ -91,14 +138,13 @@ class OfflineDatabase {
         } catch (_) {}
       }
       await db.update('visits', updates,
-          where: 'id = ?', whereArgs: [row['id']]);
-      debugPrint('[DB] Repaired orphaned visit ${row['id']} → patient $newPatientId');
+          where: 'id = ?', whereArgs: [visitId]);
+      debugPrint('[DB] Repaired orphaned visit $visitId → patient $newPatientId');
 
-      // Reset queued sync attempts with the corrected patient ID so the
-      // SyncEngine can POST to /patients/{newId}/visits successfully.
+      // Reset queued sync attempts with the corrected patient ID.
       final queued = await db.query('sync_queue',
           where: 'entity_type = ? AND entity_id = ?',
-          whereArgs: ['visits', row['id']]);
+          whereArgs: ['visits', visitId]);
       for (final q in queued) {
         try {
           final payload =
@@ -113,6 +159,15 @@ class OfflineDatabase {
         } catch (_) {}
       }
     }
+  }
+
+  /// Public entry point so patient_provider can trigger repair AFTER purging
+  /// orphaned patients (visits only become orphaned after the UUID patient is
+  /// removed, which is after the initial onOpen repair runs).
+  Future<void> repairOrphanedVisits() async {
+    if (kIsWeb) return;
+    final db = await database;
+    await _repairOrphanedVisits(db);
   }
 
   Future<void> _onCreate(Database db, int _) async {

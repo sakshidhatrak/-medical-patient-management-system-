@@ -423,6 +423,19 @@ class LocalVisitCache {
           where: 'id = ?', whereArgs: [row['id']]);
     }
   }
+
+  // When the backend assigns a new numeric ID to a visit (UUID → numeric),
+  // remap all prescriptions, examinations, and photos so they remain linked.
+  Future<void> remapVisitId(String oldVisitId, String newVisitId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('prescriptions', {'visit_id': newVisitId},
+        where: 'visit_id = ?', whereArgs: [oldVisitId]);
+    await db.update('examinations', {'visit_id': newVisitId},
+        where: 'visit_id = ?', whereArgs: [oldVisitId]);
+    await db.update('photos', {'visit_id': newVisitId},
+        where: 'visit_id = ?', whereArgs: [oldVisitId]);
+  }
 }
 
 // ── Local surgery cache ───────────────────────────────────────────
