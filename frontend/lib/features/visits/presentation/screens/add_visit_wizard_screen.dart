@@ -295,6 +295,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Save / Create visit ───────────────────────────────────────────────────
   Future<void> _save() async {
     if (_saving) return;
+    // For new visits: once saved, block re-entry even if the user navigates
+    // back to step 1 and taps the button again before _step updates.
+    if (widget.visitId == null && _savedVisit != null) return;
     _saving = true; // set synchronously before any await so rapid taps are blocked
     final isNew = widget.visitId == null;
 
@@ -315,7 +318,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       return;
     }
 
-    setState(() {});
+    setState(() {}); // trigger rebuild to show spinner
 
     try {
       String? nullIfEmpty(String s) => s.trim().isEmpty ? null : s.trim();
@@ -337,7 +340,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             .timeout(const Duration(seconds: 12), onTimeout: () => null);
 
         if (!mounted) return;
-        setState(() { _saving = false; _savedVisit = visit; _justSaved = true; });
+
         if (visit != null) {
           // Persist prescription for offline medicine history
           if (_medicationsCtrl.text.trim().isNotEmpty) {
@@ -348,7 +351,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               medicationsText: _medicationsCtrl.text.trim(),
             ));
           }
-          // Upload any files attached in the form
+          // Keep _saving = true (button disabled) during file upload so a
+          // second tap cannot create a duplicate visit while files are uploading.
           await _uploadVisitFiles(visit.id);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -365,10 +369,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 3),
           ));
-          setState(() => _step = 2);
+          // Atomically: reset spinner + record saved visit + advance to review.
+          // Doing this in one setState prevents any intermediate frame where the
+          // Save button is re-enabled while still on step 1.
+          setState(() {
+            _saving    = false;
+            _savedVisit = visit;
+            _justSaved  = true;
+            _step       = 2;
+          });
           unawaited(_pageCtrl.animateToPage(2,
               duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
         } else {
+          if (mounted) setState(() => _saving = false);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Failed to save visit. Please try again.'),
             backgroundColor: _kRed,
@@ -394,11 +407,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         final ok = await editNotifier.save()
             .timeout(const Duration(seconds: 12), onTimeout: () => false);
         if (!mounted) return;
-        setState(() {
-          _saving     = false;
-          _justSaved  = true;
-          _savedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
-        });
+
         if (ok) {
           if (_medicationsCtrl.text.trim().isNotEmpty) {
             unawaited(ref.read(medicineServiceProvider).savePrescription(
@@ -408,6 +417,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               medicationsText: _medicationsCtrl.text.trim(),
             ));
           }
+          // Keep _saving = true during file upload (same fix as new-visit path).
           await _uploadVisitFiles(widget.visitId!);
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -424,10 +434,16 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 3),
           ));
-          setState(() => _step = 2);
+          setState(() {
+            _saving    = false;
+            _justSaved  = true;
+            _savedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
+            _step       = 2;
+          });
           unawaited(_pageCtrl.animateToPage(2,
               duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
         } else {
+          if (mounted) setState(() => _saving = false);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Failed to update visit. Please try again.'),
             backgroundColor: _kRed,
