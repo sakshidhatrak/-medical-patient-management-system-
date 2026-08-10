@@ -137,10 +137,18 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
     try {
       final online = ref.read(isOnlineProvider);
 
-      if (online) {
+      // Resolve UUID → server numeric ID.
+      // If the patient sync is still in-flight (Render cold-start can take
+      // ~50 s), the map won't have an entry yet and resolvedId == arg.
+      final isNumeric = RegExp(r'^\d+$').hasMatch(arg);
+      final resolvedPatientId = (online && !kIsWeb && !isNumeric)
+          ? await ref.read(patientIdMapProvider).resolve(arg)
+          : arg;
+      // Only upload immediately if we have the server numeric ID.
+      final patientSynced = isNumeric || resolvedPatientId != arg;
+
+      if (online && patientSynced) {
         final ds = await _buildDs();
-        final resolvedPatientId =
-            await ref.read(patientIdMapProvider).resolve(arg);
         final photo = await ds.uploadPhoto(
           patientId: resolvedPatientId,
           bytes: bytes,
@@ -158,13 +166,19 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
         return photo;
       }
 
-      // Offline on web: cannot save without network
+      // Web can't save without network, and has no local store.
       if (kIsWeb) {
         state = state.copyWith(
             isUploading: false,
-            error: 'Photo upload requires internet connection.');
+            error: online
+                ? 'Patient is still syncing — please retry in a moment.'
+                : 'Photo upload requires internet connection.');
         return null;
       }
+
+      // Patient not yet synced (or offline): fall through to local save.
+      // syncPending() will be called by patient_provider once the server ID
+      // is known, completing the upload automatically.
 
       // Offline on mobile: save locally and mark pending
       final ext = _ext(filename);
@@ -215,6 +229,11 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
       return null;
     }
   }
+
+  /// Called by patient_provider after the patient's server ID is confirmed.
+  /// Uploads any locally-saved pending photos that were queued while the
+  /// patient sync was still in-flight.
+  Future<void> syncPending() => _syncPendingUploads(arg);
 
   Future<void> delete(PhotoEntity photo) async {
     state = state.copyWith(
