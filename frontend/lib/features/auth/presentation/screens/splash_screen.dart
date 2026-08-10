@@ -5,8 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/router/route_names.dart';
 import '../providers/auth_provider.dart';
 
-const _kPrimary = Color(0xFF4B55CC);
-const _kBg      = Color(0xFF1E1C19);
+const _kBg = Color(0xFFFDF6EC); // warm beige matching the logo background
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -29,7 +28,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       duration: const Duration(milliseconds: 900),
     );
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _scaleAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
     );
     _controller.forward();
@@ -61,43 +60,38 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 80, height: 80,
-                  decoration: BoxDecoration(
-                    color: _kPrimary.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: const Icon(
-                    Icons.monitor_heart_outlined,
-                    size: 40,
-                    color: _kPrimary,
-                  ),
+                Image.asset(
+                  'assets/images/app_logo.jpeg',
+                  width: 200,
+                  height: 240,
+                  fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 const Text(
-                  'MediCare',
+                  'The Brain & Spine Clinic',
                   style: TextStyle(
-                    fontSize: 30,
+                    fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    letterSpacing: -0.5,
+                    color: Color(0xFF2E7D32),
+                    letterSpacing: -0.3,
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(
+                const Text(
                   'Neurosurgery Care Platform',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: Color(0xFF6B7280),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 64),
-                SizedBox(
-                  width: 28, height: 28,
+                const SizedBox(height: 56),
+                const SizedBox(
+                  width: 26,
+                  height: 26,
                   child: CircularProgressIndicator(
-                    color: _kPrimary.withValues(alpha: 0.7),
-                    strokeWidth: 2,
+                    color: Color(0xFF2E7D32),
+                    strokeWidth: 2.5,
                   ),
                 ),
               ],
