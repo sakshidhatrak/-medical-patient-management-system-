@@ -26,6 +26,9 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
 
   @override
   List<VisitEntity> build(String arg) {
+    // When SyncEngine syncs a visit, reload from SQLite so the grey dot
+    // turns green immediately without the user navigating away.
+    ref.listen(visitSyncEventProvider, (_, __) => _loadLocal(arg));
     Future.microtask(() => _init(arg));
     return [];
   }
@@ -87,12 +90,25 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
       for (final m in models) {
         await _local.upsert(m.toFullJson());
       }
-      // Preserve locally-saved pending visits not yet returned by the API
-      // (e.g. saved while Render was cold-starting, still in the sync queue).
+      // Read genuinely-pending entries from SQLite directly (sync_status = 'pending').
+      // Reading from SQLite rather than in-memory state avoids the race where
+      // _syncToApi has already markSynced/purged the UUID but _syncFromApi still
+      // sees the stale UUID entry in state — that was the cause of the duplicate.
       final apiIds = models.map((m) => m.id).toSet();
-      final pendingLocal = state
-          .where((v) => !apiIds.contains(v.id) && v.syncStatus == 'pending')
-          .toList();
+      final pendingRows = await _local.getPendingForPatient(patientId);
+      final pendingLocal = <VisitEntity>[];
+      for (final row in pendingRows) {
+        final id = row['id'] as String;
+        if (apiIds.contains(id)) continue; // server already has this ID
+        final js = row['data_json'] as String?;
+        if (js != null) {
+          try {
+            final decoded = jsonDecode(js) as Map<String, dynamic>;
+            decoded['syncStatus'] = 'pending';
+            pendingLocal.add(VisitModel.fromJson(decoded).toEntity());
+          } catch (_) {}
+        }
+      }
       state = [...models.map((m) => m.toEntity()), ...pendingLocal];
     } catch (_) {}
   }
@@ -227,6 +243,10 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
           ? await _ds.createVisit(syncModel)
           : await _ds.updateVisit(syncModel);
       if (isNew && saved.id != model.id) {
+        // Mark UUID as synced BEFORE purging: _syncFromApi filters by
+        // sync_status='pending', so this closes the race window where both
+        // the UUID and the numeric entry appear simultaneously in state.
+        await _local.markSynced(model.id);
         // Remap prescriptions, examinations, and photos to the server-assigned
         // numeric ID BEFORE purging the UUID visit so nothing is orphaned.
         await _local.remapVisitId(model.id, saved.id);

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -45,6 +46,9 @@ Map<String, String> _buildVisitPrintMap(
   }
   String pn(String k) => pNotes[k]?.isNotEmpty == true ? pNotes[k]! : '';
   String ex(String k) => exam[k]?.isNotEmpty == true ? exam[k]! : '';
+  // Prefer visit entity field, fall back to examination blob, then patient notes.
+  String vex(String? visitField, String examKey) =>
+      (visitField?.isNotEmpty == true) ? visitField! : ex(examKey);
   final dob = patient.dateOfBirth != null
       ? DateFormat('dd MMMM yyyy').format(patient.dateOfBirth!) : '—';
   final gender = patient.sex?.isNotEmpty == true
@@ -56,6 +60,7 @@ Map<String, String> _buildVisitPrintMap(
     'age':             ageStr,
     'dob':             dob,
     'gender':          gender,
+    'prn':             patient.prn,
     'phone':           patient.phone ?? '—',
     'altPhone':        pn('altPhone'),
     'email':           pn('email'),
@@ -64,9 +69,9 @@ Map<String, String> _buildVisitPrintMap(
     'idProofNumber':   pn('idProofNumber'),
     'allergies':       pn('allergies'),
     'medicalHistory':  pn('medicalHistory'),
-    'weight':          _pick(ex('weight'),       pn('weight')),
-    'bloodPressure':   _pick(ex('bp'),           pn('bloodPressure')),
-    'temperature':     _pick(ex('temperature'),  pn('temperature')),
+    'weight':          _pick(vex(visit.weight, 'weight'),       pn('weight')),
+    'bloodPressure':   _pick(vex(visit.bp, 'bp'),               pn('bloodPressure')),
+    'temperature':     _pick(vex(visit.temperature, 'temperature'), pn('temperature')),
     'previousHistory':    _pick(ex('previousHistory'),    pn('previousHistory')),
     'chiefComplaint':     _pick(visit.complaints,          pn('chiefComplaint')),
     'examGeneral':        _pick(ex('examGeneral'),         pn('examGeneral')),
@@ -76,7 +81,7 @@ Map<String, String> _buildVisitPrintMap(
     'otherInvestigation': _pick(ex('otherInvestigation'),  pn('otherInvestigation')),
     'diagnosis':          _pick(visit.clinicalImpression,  pn('diagnosis')),
     'treatmentPlan':      _pick(visit.plan,                pn('treatmentPlan')),
-    'medications':        _pick(ex('medications'),         pn('medications')),
+    'medications':        _pick(vex(ex('medications'), 'medications'), pn('medications')),
     'notes':              _pick(visit.notes,               pn('notes')),
     'advice':             _pick(ex('advice'),              pn('advice')),
     'visitType':          visit.visitType.label,
@@ -323,7 +328,7 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Patient header card
+// Patient header card  (2-column layout: info left, age/phone right)
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientHeaderCard extends StatelessWidget {
   final PatientEntity patient;
@@ -331,13 +336,17 @@ class _PatientHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = patient.initials;
-    final genderText = patient.sex?.isNotEmpty == true
+    final initials  = patient.initials;
+    final ageStr    = patient.computedAge > 0 ? '${patient.computedAge} Years' : null;
+    final sex       = patient.sex?.isNotEmpty == true
         ? '${patient.sex![0].toUpperCase()}${patient.sex!.substring(1)}'
         : null;
+    final ageSexStr = [ageStr, sex].whereType<String>().join(' • ');
+    final phone     = patient.phone;
+    final hasRight  = ageSexStr.isNotEmpty || (phone != null && phone.isNotEmpty);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
@@ -351,9 +360,10 @@ class _PatientHeaderCard extends StatelessWidget {
         ],
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        // Avatar
         Container(
-          width: 56,
-          height: 56,
+          width: 52,
+          height: 52,
           decoration: BoxDecoration(
             color: context.primarySurf,
             shape: BoxShape.circle,
@@ -361,58 +371,28 @@ class _PatientHeaderCard extends StatelessWidget {
           alignment: Alignment.center,
           child: Text(initials,
               style: const TextStyle(
-                  color: _kAccent,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20)),
+                  color: _kAccent, fontWeight: FontWeight.w800, fontSize: 18)),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
 
+        // Left: name + phone + ID
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(patient.fullName,
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: context.textPrimary,
-                            letterSpacing: -0.3),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  if (genderText != null) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _kAccent.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: _kAccent.withValues(alpha: 0.3)),
-                      ),
-                      child: Text(genderText,
-                          style: const TextStyle(
-                              color: _kAccent,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                [
-                  if (patient.ageSex.isNotEmpty) patient.ageSex,
-                  if (patient.phone?.isNotEmpty == true) patient.phone!,
-                ].join(' • '),
-                style: TextStyle(
-                    fontSize: 12,
-                    color: context.textSecondary,
-                    fontWeight: FontWeight.w400),
-              ),
+              Text(patient.fullName,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: context.textPrimary,
+                      letterSpacing: -0.2),
+                  overflow: TextOverflow.ellipsis),
+              if (phone != null && phone.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(phone,
+                    style: TextStyle(
+                        fontSize: 12, color: context.textSecondary)),
+              ],
               const SizedBox(height: 6),
               Row(children: [
                 Text('ID: ',
@@ -440,20 +420,61 @@ class _PatientHeaderCard extends StatelessWidget {
                     );
                   },
                   child: Container(
-                    width: 26,
-                    height: 26,
+                    width: 24,
+                    height: 24,
                     decoration: BoxDecoration(
                       color: _kAccent.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Icon(Icons.copy_outlined,
-                        size: 13, color: _kAccent),
+                        size: 12, color: _kAccent),
                   ),
                 ),
               ]),
             ],
           ),
         ),
+
+        // Vertical divider + right info column (age/gender + phone)
+        if (hasRight) ...[
+          Container(
+            width: 1,
+            height: 56,
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            color: context.borderColor,
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (ageSexStr.isNotEmpty)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.calendar_today_outlined,
+                      size: 13, color: context.textSecondary),
+                  const SizedBox(width: 5),
+                  Text(ageSexStr,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimary)),
+                ]),
+              if (ageSexStr.isNotEmpty &&
+                  (phone != null && phone.isNotEmpty))
+                const SizedBox(height: 8),
+              if (phone != null && phone.isNotEmpty)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.phone_outlined,
+                      size: 13, color: context.textSecondary),
+                  const SizedBox(width: 5),
+                  Text(phone,
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimary)),
+                ]),
+            ],
+          ),
+        ],
       ]),
     );
   }
@@ -540,9 +561,16 @@ class _TimelineRowState extends State<_TimelineRow> {
       add('Pre-op Diagnosis', item.subtitle);
     }
 
-    final bp   = ex('bp');
-    final wt   = ex('weight');
-    final temp = ex('temperature');
+    // Vitals are dedicated visit fields — fall back to examination blob for old data
+    final bp   = (item.visit?.bp?.isNotEmpty == true)
+        ? item.visit!.bp!
+        : ex('bp');
+    final wt   = (item.visit?.weight?.isNotEmpty == true)
+        ? item.visit!.weight!
+        : ex('weight');
+    final temp = (item.visit?.temperature?.isNotEmpty == true)
+        ? item.visit!.temperature!
+        : ex('temperature');
     final hasVitals = bp.isNotEmpty || wt.isNotEmpty || temp.isNotEmpty;
 
     return IntrinsicHeight(
@@ -597,89 +625,82 @@ class _TimelineRowState extends State<_TimelineRow> {
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                      child: Row(children: [
-                        Container(
-                          width: 34, height: 34,
-                          decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Stacked date + time on the left
+                          _DateStack(date: item.date, accentColor: accentColor),
+                          // Vertical divider
+                          Container(
+                            width: 1,
+                            height: 64,
+                            margin: const EdgeInsets.symmetric(horizontal: 12),
+                            color: accentColor.withValues(alpha: 0.18),
                           ),
-                          child: Icon(Icons.calendar_month_outlined,
-                              size: 17, color: accentColor),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                Text(dateStr,
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: context.textPrimary)),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  child: Text('|',
-                                      style: TextStyle(
-                                          fontSize: 14,
-                                          color: context.textDisabled.withValues(alpha: 0.6),
-                                          fontWeight: FontWeight.w300)),
+                          // Title + chips
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.type == 'visit'
+                                      ? (item.visit?.visitType.label ?? 'Visit')
+                                      : item.title,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: context.textPrimary),
                                 ),
-                                Text(timeStr,
-                                    style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: context.textPrimary)),
-                              ]),
-                              const SizedBox(height: 4),
-                              Row(children: [
-                                if (item.visit != null) ...[
-                                  _Chip(
-                                    label: item.visit!.visitType.label,
-                                    color: accentColor,
-                                  ),
-                                  const SizedBox(width: 6),
-                                ],
-                                _Chip(
-                                  label: item.isDraft ? 'Draft' : 'Completed',
-                                  color: item.isDraft
-                                      ? const Color(0xFFD97706)
-                                      : const Color(0xFF059669),
+                                const SizedBox(height: 5),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: [
+                                    if (item.visit != null)
+                                      _Chip(
+                                          label: item.visit!.visitType.label,
+                                          color: accentColor),
+                                    _Chip(
+                                      label: item.isDraft ? 'Draft' : 'Completed',
+                                      color: item.isDraft
+                                          ? const Color(0xFFD97706)
+                                          : const Color(0xFF059669),
+                                    ),
+                                    SyncStatusBadge(syncStatus: item.syncStatus),
+                                  ],
                                 ),
-                                const SizedBox(width: 6),
-                                SyncStatusBadge(syncStatus: item.syncStatus),
-                              ]),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                        Row(mainAxisSize: MainAxisSize.min, children: [
-                          if (widget.onPrint != null) ...[
-                            Tooltip(
-                              message: 'Print & Export',
-                              child: GestureDetector(
-                                onTap: widget.onPrint,
-                                child: Container(
-                                  width: 34, height: 34,
-                                  decoration: BoxDecoration(
-                                    color: _kAccent.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(9),
+                          // Print + chevron
+                          Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (widget.onPrint != null) ...[
+                              Tooltip(
+                                message: 'Print & Export',
+                                child: GestureDetector(
+                                  onTap: widget.onPrint,
+                                  child: Container(
+                                    width: 32, height: 32,
+                                    decoration: BoxDecoration(
+                                      color: _kAccent.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.print_outlined,
+                                        size: 16, color: _kAccent),
                                   ),
-                                  child: const Icon(Icons.print_outlined,
-                                      size: 17, color: _kAccent),
                                 ),
                               ),
+                              const SizedBox(width: 6),
+                            ],
+                            AnimatedRotation(
+                              turns: _expanded ? 0.5 : 0,
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(Icons.keyboard_arrow_down_rounded,
+                                  size: 20, color: context.textDisabled),
                             ),
-                            const SizedBox(width: 6),
-                          ],
-                          AnimatedRotation(
-                            turns: _expanded ? 0.5 : 0,
-                            duration: const Duration(milliseconds: 200),
-                            child: Icon(Icons.keyboard_arrow_down_rounded,
-                                size: 20, color: context.textDisabled),
-                          ),
-                        ]),
-                      ]),
+                          ]),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -706,7 +727,7 @@ class _TimelineRowState extends State<_TimelineRow> {
                             if (dataRows.isNotEmpty || photos.isNotEmpty)
                               const SizedBox(height: 10),
                           ],
-                          ...dataRows.map((r) => _DataRow(label: r.label, value: r.value)),
+                          if (dataRows.isNotEmpty) _FieldGrid(rows: dataRows),
                           if (photos.isNotEmpty) ...[
                             if (dataRows.isNotEmpty) const SizedBox(height: 10),
                             _AttachmentsSection(photos: photos),
@@ -792,6 +813,97 @@ class _DataRow extends StatelessWidget {
       );
 }
 
+class _DateStack extends StatelessWidget {
+  final DateTime date;
+  final Color accentColor;
+  const _DateStack({required this.date, required this.accentColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final day   = date.day.toString().padLeft(2, '0');
+    final month = _monthAbbr(date.month);
+    final year  = date.year.toString();
+    final hour  = date.hour.toString().padLeft(2, '0');
+    final min   = date.minute.toString().padLeft(2, '0');
+    return Container(
+      width: 46,
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(day,
+              style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: accentColor,
+                  height: 1.0)),
+          Text(month,
+              style: TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w700,
+                  color: accentColor.withValues(alpha: 0.8), height: 1.2)),
+          Text(year,
+              style: TextStyle(
+                  fontSize: 9, fontWeight: FontWeight.w500,
+                  color: context.textDisabled, height: 1.2)),
+          const SizedBox(height: 3),
+          Container(width: 28, height: 1, color: accentColor.withValues(alpha: 0.2)),
+          const SizedBox(height: 3),
+          Text('$hour:$min',
+              style: TextStyle(
+                  fontSize: 9, fontWeight: FontWeight.w600,
+                  color: context.textDisabled, height: 1.0)),
+        ],
+      ),
+    );
+  }
+
+  static String _monthAbbr(int m) {
+    const abbrs = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return m >= 1 && m <= 12 ? abbrs[m] : '---';
+  }
+}
+
+class _FieldGrid extends StatelessWidget {
+  final List<({String label, String value})> rows;
+  const _FieldGrid({required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: rows.map((r) {
+        return Container(
+          width: (MediaQuery.of(context).size.width - 80) / 2,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: context.bgColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: context.borderColor),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(r.label,
+                style: TextStyle(
+                    fontSize: 9, fontWeight: FontWeight.w600,
+                    color: context.textDisabled,
+                    letterSpacing: 0.3)),
+            const SizedBox(height: 3),
+            Text(r.value,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700,
+                    color: context.textPrimary),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis),
+          ]),
+        );
+      }).toList(),
+    );
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared attachment helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -831,24 +943,34 @@ IconData _attachIconData(PhotoEntity p) {
 
 bool _isImageFile(PhotoEntity p) {
   final s = _attachFilename(p).toLowerCase();
-  return s.endsWith('.jpg') || s.endsWith('.jpeg') ||
-      s.endsWith('.png') || s.endsWith('.webp') || s.endsWith('.gif') ||
-      (p.url?.contains('res.cloudinary.com') == true &&
-          !s.endsWith('.pdf') && !s.endsWith('.doc') &&
-          !s.endsWith('.docx') && !s.endsWith('.xls') && !s.endsWith('.xlsx'));
+  if (s.endsWith('.jpg') || s.endsWith('.jpeg') ||
+      s.endsWith('.png') || s.endsWith('.webp') || s.endsWith('.gif')) {
+    return true;
+  }
+  if (p.localPath != null) {
+    final lp = p.localPath!.toLowerCase();
+    return lp.endsWith('.jpg') || lp.endsWith('.jpeg') ||
+        lp.endsWith('.png') || lp.endsWith('.webp') || lp.endsWith('.gif');
+  }
+  return p.url?.contains('res.cloudinary.com') == true &&
+      !s.endsWith('.pdf') && !s.endsWith('.doc') &&
+      !s.endsWith('.docx') && !s.endsWith('.xls') && !s.endsWith('.xlsx');
 }
 
 Future<void> _openAttachment(PhotoEntity p) async {
-  final url = p.url;
-  if (url == null || url.isEmpty) return;
-  try {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  } catch (_) {}
+  if (p.url != null && p.url!.isNotEmpty) {
+    try {
+      await launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  } else if (p.localPath != null) {
+    try {
+      await launchUrl(Uri.file(p.localPath!), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
 }
 
 void _viewImageInApp(BuildContext context, PhotoEntity p) {
-  final url = p.url;
-  if (url == null || url.isEmpty) return;
+  if (p.url == null && p.localPath == null) return;
   showDialog<void>(
     context: context,
     builder: (ctx) => _ImageViewerDialog(photo: p),
@@ -878,11 +1000,25 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
     final hiddenCount = widget.photos.length - widget.initialShow;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Text('Attachments (${widget.photos.length})',
-            style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: context.textPrimary)),
-      ]),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Attachments (${widget.photos.length})',
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: context.textPrimary)),
+          if (widget.photos.length > widget.initialShow)
+            GestureDetector(
+              onTap: () => setState(() => _showAll = !_showAll),
+              child: Text(
+                _showAll ? 'Show Less' : 'View All',
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _kAccent),
+              ),
+            ),
+        ],
+      ),
       const SizedBox(height: 8),
 
       // Table header row
@@ -1018,7 +1154,7 @@ class _AttachmentRow extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
               InkWell(
-                onTap: photo.url != null
+                onTap: (photo.url != null || photo.localPath != null)
                     ? () {
                         if (_isImageFile(photo)) {
                           _viewImageInApp(context, photo);
@@ -1033,25 +1169,25 @@ class _AttachmentRow extends StatelessWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
                     Icon(Icons.remove_red_eye_outlined,
                         size: 15,
-                        color: photo.url != null ? _kAccent : context.textDisabled),
+                        color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled),
                     const SizedBox(width: 3),
                     Text('View',
                         style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: photo.url != null ? _kAccent : context.textDisabled)),
+                            color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled)),
                   ]),
                 ),
               ),
               const SizedBox(width: 12),
               InkWell(
-                onTap: photo.url != null ? () => _openAttachment(photo) : null,
+                onTap: (photo.url != null || photo.localPath != null) ? () => _openAttachment(photo) : null,
                 borderRadius: BorderRadius.circular(6),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
                   child: Icon(Icons.download_rounded,
                       size: 18,
-                      color: photo.url != null ? _kAccent : context.textDisabled),
+                      color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled),
                 ),
               ),
             ],
@@ -1487,32 +1623,47 @@ class _ImageViewerDialog extends StatelessWidget {
         child: InteractiveViewer(
           minScale: 0.5,
           maxScale: 5,
-          child: Image.network(
-            photo.url!,
-            fit: BoxFit.contain,
-            loadingBuilder: (ctx, child, progress) {
-              if (progress == null) return child;
-              return const Center(
-                  child: CircularProgressIndicator(color: Colors.white));
-            },
-            errorBuilder: (ctx, _, __) => Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.broken_image_rounded,
-                    size: 64, color: Colors.white54),
-                const SizedBox(height: 12),
-                const Text('Could not load image',
-                    style: TextStyle(color: Colors.white54)),
-                const SizedBox(height: 16),
-                TextButton.icon(
-                  onPressed: () => _openAttachment(photo),
-                  icon: const Icon(Icons.open_in_new, color: Colors.white70),
-                  label: const Text('Open in browser',
-                      style: TextStyle(color: Colors.white70)),
+          child: photo.url != null
+              ? Image.network(
+                  photo.url!,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (ctx, child, progress) {
+                    if (progress == null) return child;
+                    return const Center(
+                        child: CircularProgressIndicator(color: Colors.white));
+                  },
+                  errorBuilder: (ctx, _, __) => Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.broken_image_rounded,
+                          size: 64, color: Colors.white54),
+                      const SizedBox(height: 12),
+                      const Text('Could not load image',
+                          style: TextStyle(color: Colors.white54)),
+                      const SizedBox(height: 16),
+                      TextButton.icon(
+                        onPressed: () => _openAttachment(photo),
+                        icon: const Icon(Icons.open_in_new, color: Colors.white70),
+                        label: const Text('Open in browser',
+                            style: TextStyle(color: Colors.white70)),
+                      ),
+                    ],
+                  ),
+                )
+              : Image.file(
+                  File(photo.localPath!),
+                  fit: BoxFit.contain,
+                  errorBuilder: (ctx, _, __) => Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.broken_image_rounded,
+                          size: 64, color: Colors.white54),
+                      const SizedBox(height: 12),
+                      const Text('Could not load image',
+                          style: TextStyle(color: Colors.white54)),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
         ),
       ),
     );

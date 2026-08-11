@@ -42,7 +42,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (_, next) {
       if (next is AuthAuthenticated) {
-        context.go(RouteNames.dashboard);
+        context.go(RouteNames.patients);
       } else if (next is AuthUnauthenticated || next is AuthError) {
         context.go(RouteNames.login);
       }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../sync/sync_engine.dart';
 import '../theme/app_dimensions.dart';
 
 // ── Sidebar design tokens ──────────────────────────────────────────────────
@@ -27,12 +28,6 @@ class NavItem {
 }
 
 final appNavItems = <NavItem>[
-  NavItem(
-    icon: Icons.grid_view_outlined,
-    activeIcon: Icons.grid_view_rounded,
-    label: 'Dashboard',
-    route: '/dashboard',
-  ),
   NavItem(
     icon: Icons.people_outline_rounded,
     activeIcon: Icons.people_rounded,
@@ -350,6 +345,38 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Show a floating snackbar whenever a background sync successfully pushes
+    // offline records to the server — works regardless of which screen is active.
+    ref.listen<({int count, DateTime at})?>(syncSuccessProvider, (_, result) {
+      if (result == null || !context.mounted) return;
+      final label = result.count == 1 ? '1 record' : '${result.count} records';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF1B5E20),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 4),
+          content: Row(
+            children: [
+              const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '$label synced to server successfully',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+
     final authState = ref.watch(authProvider);
     final currentUser = authState is AuthAuthenticated ? authState.user : null;
     final doctorName = currentUser != null

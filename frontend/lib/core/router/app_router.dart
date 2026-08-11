@@ -31,7 +31,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isAuthPage = loc == RouteNames.login || loc == RouteNames.splash;
 
       if (!isAuth && !isAuthPage) return RouteNames.login;
-      if (isAuth  && loc == RouteNames.login) return RouteNames.dashboard;
+      if (isAuth  && loc == RouteNames.login) return RouteNames.patients;
 
       // View-only guard: assistants cannot access write routes
       if (isAuth && authState.user.role == UserRole.assistant) {

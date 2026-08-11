@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../medicines/data/medicine_service.dart';
 import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
 import '../../../photos/domain/entities/photo_entity.dart';
@@ -62,6 +64,11 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
   final _adviceCtrl      = TextEditingController();
   final _notesCtrl       = TextEditingController();
 
+  // Vitals — stored per visit
+  final _bpCtrl      = TextEditingController();
+  final _tempCtrl    = TextEditingController();
+  final _weightCtrl  = TextEditingController();
+
   List<_Medicine> _medicines = [];
   final List<({String name, Uint8List bytes})> _pendingFiles = [];
 
@@ -77,6 +84,7 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
       _prevHistoryCtrl, _complaintCtrl, _examGeneralCtrl, _examNeuroCtrl,
       _clinDiagCtrl, _imagingCtrl, _otherInvestCtrl,
       _impressionCtrl, _planCtrl, _adviceCtrl, _notesCtrl,
+      _bpCtrl, _tempCtrl, _weightCtrl,
     ]) c.dispose();
     for (final m in _medicines) m.dispose();
     super.dispose();
@@ -94,6 +102,9 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
     set(_impressionCtrl, v.clinicalImpression);
     set(_planCtrl,       v.plan);
     set(_notesCtrl,      v.notes);
+    set(_bpCtrl,         v.bp);
+    set(_tempCtrl,       v.temperature);
+    set(_weightCtrl,     v.weight);
 
     if (v.examination?.isNotEmpty == true) {
       try {
@@ -186,19 +197,41 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
     final current = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}'));
     if (current == null) { setState(() => _saving = false); return; }
 
+    String? nonEmpty(String s) => s.trim().isNotEmpty ? s.trim() : null;
     final updated = current.copyWith(
       visitDate:          _visitDate,
       visitType:          _visitType,
-      complaints:         _complaintCtrl.text.trim().isNotEmpty ? _complaintCtrl.text.trim() : null,
-      clinicalImpression: _impressionCtrl.text.trim().isNotEmpty ? _impressionCtrl.text.trim() : null,
-      plan:               _planCtrl.text.trim().isNotEmpty ? _planCtrl.text.trim() : null,
-      notes:              _notesCtrl.text.trim().isNotEmpty ? _notesCtrl.text.trim() : null,
+      complaints:         nonEmpty(_complaintCtrl.text),
+      clinicalImpression: nonEmpty(_impressionCtrl.text),
+      plan:               nonEmpty(_planCtrl.text),
+      notes:              nonEmpty(_notesCtrl.text),
+      bp:                 nonEmpty(_bpCtrl.text),
+      temperature:        nonEmpty(_tempCtrl.text),
+      weight:             nonEmpty(_weightCtrl.text),
       examination:        _buildExamination(),
       status:             complete ? 'completed' : 'draft',
     );
 
     ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}').notifier).update(updated);
     final ok = await ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}').notifier).save();
+
+    if (ok) {
+      final medsStr = _medicines
+          .where((med) => med.name.text.trim().isNotEmpty)
+          .map((med) {
+            final d = med.dosage.text.trim();
+            return d.isNotEmpty ? '${med.name.text.trim()} ($d)' : med.name.text.trim();
+          })
+          .join(', ');
+      if (medsStr.isNotEmpty) {
+        unawaited(ref.read(medicineServiceProvider).savePrescription(
+          visitId: widget.visitId,
+          patientId: widget.patientId,
+          visitDate: _visitDate,
+          medicationsText: medsStr,
+        ));
+      }
+    }
 
     if (ok && _pendingFiles.isNotEmpty) {
       setState(() { _saving = false; _uploadingFiles = true; });
@@ -318,7 +351,45 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
                   ],
                 ),
 
-                // 2. Examination Finding
+                // 2. Vitals
+                _SectionCard(
+                  title: 'Vitals',
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: _InlineField(
+                          label: 'Blood Pressure',
+                          hint: 'e.g. 120/80',
+                          controller: _bpCtrl,
+                          icon: Icons.favorite_border_rounded,
+                          keyboardType: TextInputType.text,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _InlineField(
+                          label: 'Temperature',
+                          hint: 'e.g. 98.6 °F',
+                          controller: _tempCtrl,
+                          icon: Icons.thermostat_outlined,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _InlineField(
+                          label: 'Weight',
+                          hint: 'e.g. 65 kg',
+                          controller: _weightCtrl,
+                          icon: Icons.monitor_weight_outlined,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ]),
+                  ],
+                ),
+
+                // 3. Examination Finding
                 _SectionCard(
                   title: 'Examination Finding',
                   children: [
@@ -399,6 +470,7 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
                 // 5. Medicines
                 _MedicinesSection(
                   medicines: _medicines,
+                  patientId: widget.patientId,
                   onAdd: () => setState(() => _medicines.add(_Medicine())),
                   onRemove: (i) => setState(() {
                     _medicines[i].dispose();
@@ -728,15 +800,272 @@ class _ExpandField extends StatelessWidget {
   }
 }
 
+// ── Compact inline field (for vitals row) ────────────────────────────────────
+class _InlineField extends StatelessWidget {
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final IconData icon;
+  final TextInputType keyboardType;
+  const _InlineField({
+    required this.label,
+    required this.hint,
+    required this.controller,
+    required this.icon,
+    this.keyboardType = TextInputType.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          Icon(icon, size: 12, color: context.textDisabled),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w600,
+                    color: context.textDisabled),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          style: TextStyle(color: context.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: context.textDisabled, fontSize: 12),
+            filled: true,
+            fillColor: context.inputColor,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: BorderSide(color: context.borderColor),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: BorderSide(color: context.borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: const BorderSide(color: _kP1, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Medicine name field with autocomplete overlay ──────────────────────────────
+class _MedicineNameField extends ConsumerStatefulWidget {
+  final TextEditingController controller;
+  final String patientId;
+  const _MedicineNameField({required this.controller, required this.patientId});
+
+  @override
+  ConsumerState<_MedicineNameField> createState() => _MedicineNameFieldState();
+}
+
+class _MedicineNameFieldState extends ConsumerState<_MedicineNameField> {
+  final _focus      = FocusNode();
+  final _layerLink  = LayerLink();
+  OverlayEntry? _overlay;
+  List<MedicineSuggestion> _suggestions = [];
+  Timer? _debounce;
+
+  Color _cardColor    = const Color(0xFF2A2A3A);
+  Color _borderColor  = const Color(0xFF3A3A4A);
+  Color _textPrimary  = Colors.white;
+  Color _textDisabled = Colors.grey;
+  Color _inputColor   = const Color(0xFF1E1E2E);
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _removeOverlay();
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    if (!_focus.hasFocus) {
+      Future.delayed(const Duration(milliseconds: 150), _removeOverlay);
+    }
+  }
+
+  void _onTextChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final q = value.trim();
+      if (q.length < 2) {
+        _removeOverlay();
+        if (mounted) setState(() => _suggestions = []);
+        return;
+      }
+      final results = await ref.read(medicineServiceProvider).getSuggestions(
+        query: q,
+        patientId: widget.patientId,
+      );
+      if (!mounted) return;
+      setState(() => _suggestions = results);
+      results.isNotEmpty ? _showOverlay() : _removeOverlay();
+    });
+  }
+
+  void _select(String name) {
+    widget.controller.text = name;
+    widget.controller.selection = TextSelection.collapsed(offset: name.length);
+    _removeOverlay();
+    if (mounted) setState(() => _suggestions = []);
+  }
+
+  void _removeOverlay() {
+    _overlay?.remove();
+    _overlay = null;
+  }
+
+  void _showOverlay() {
+    if (_overlay != null) { _overlay!.markNeedsBuild(); return; }
+    final overlayState = Overlay.of(context);
+    final cardColor    = _cardColor;
+    final borderColor  = _borderColor;
+    final textPrimary  = _textPrimary;
+    final textDisabled = _textDisabled;
+    _overlay = OverlayEntry(builder: (_) {
+      final box   = context.findRenderObject() as RenderBox?;
+      final width = box?.size.width ?? 220;
+      return Positioned(
+        width: width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.bottomLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: const Offset(0, 4),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 220),
+              decoration: BoxDecoration(
+                color: cardColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: borderColor),
+                boxShadow: [BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
+                )],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  shrinkWrap: true,
+                  itemCount: _suggestions.length,
+                  separatorBuilder: (_, __) => Divider(
+                    height: 1,
+                    color: borderColor.withValues(alpha: 0.5),
+                  ),
+                  itemBuilder: (_, i) {
+                    final s = _suggestions[i];
+                    return InkWell(
+                      onTap: () => _select(s.name),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        child: Row(children: [
+                          Icon(
+                            s.isHistory ? Icons.history_rounded : Icons.medication_rounded,
+                            size: 14,
+                            color: s.isHistory ? _kGreen : _kP1,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(s.name,
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textPrimary),
+                                  overflow: TextOverflow.ellipsis),
+                              if (s.subtitle.isNotEmpty)
+                                Text(s.subtitle,
+                                    style: TextStyle(fontSize: 10, color: s.isHistory ? _kGreen : textDisabled),
+                                    overflow: TextOverflow.ellipsis),
+                            ],
+                          )),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    });
+    overlayState.insert(_overlay!);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    _cardColor    = context.cardColor;
+    _borderColor  = context.borderColor;
+    _textPrimary  = context.textPrimary;
+    _textDisabled = context.textDisabled;
+    _inputColor   = context.inputColor;
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: TextField(
+        controller: widget.controller,
+        focusNode:  _focus,
+        onChanged:  _onTextChanged,
+        style: TextStyle(color: _textPrimary, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: 'Medicine name',
+          hintStyle: TextStyle(color: _textDisabled, fontSize: 13),
+          filled: true,
+          fillColor: _inputColor,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: _borderColor),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: _borderColor),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: _kP1, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ── Medicines section ─────────────────────────────────────────────────────────
 class _MedicinesSection extends StatelessWidget {
   final List<_Medicine> medicines;
   final VoidCallback onAdd;
   final void Function(int) onRemove;
+  final String patientId;
   const _MedicinesSection({
     required this.medicines,
     required this.onAdd,
     required this.onRemove,
+    required this.patientId,
   });
 
   @override
@@ -763,9 +1092,9 @@ class _MedicinesSection extends StatelessWidget {
           child: Row(children: [
             Expanded(
               flex: 3,
-              child: _FlatField(
+              child: _MedicineNameField(
                 controller: medicines[i].name,
-                hint: 'Medicine name',
+                patientId: patientId,
               ),
             ),
             const SizedBox(width: 8),

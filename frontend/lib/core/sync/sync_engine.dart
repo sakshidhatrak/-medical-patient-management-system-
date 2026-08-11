@@ -87,9 +87,10 @@ class OfflineQueue {
       return (_web?.pending() ?? []).map(SyncItem.fromRow).toList();
     }
     final db = await _db.database;
+    // No attempts filter — all queued items are returned so the retry loop
+    // never terminates and the pending count is always accurate.
     final rows = await db.query(
       'sync_queue',
-      where: 'attempts < 5',
       orderBy: 'queued_at ASC',
     );
     return rows.map(SyncItem.fromRow).toList();
@@ -157,6 +158,18 @@ class OfflineQueue {
   }
 }
 
+// ── Visit sync event (notifies visitsProvider to reload after SyncEngine syncs) ─
+
+/// Incremented each time SyncEngine successfully syncs a visit.
+/// visitsProvider listens to this and reloads from SQLite so the grey dot
+/// turns green without the user needing to navigate away.
+final visitSyncEventProvider = StateProvider<int>((ref) => 0);
+
+/// Emits (count, timestamp) after a sync run that pushed ≥1 item to the server.
+/// UI listens to this to show a "X records synced" success message.
+final syncSuccessProvider =
+    StateProvider<({int count, DateTime at})?>((_) => null);
+
 // ── Sync engine (push: local → API) ──────────────────────────────
 
 class SyncEngine {
@@ -165,20 +178,23 @@ class SyncEngine {
   final LocalVisitCache _localVisit;
   final LocalSurgeryCache _localSurgery;
   final LocalPhotoStore _localPhoto;
+  final LocalPrescriptionCache _localPrescription;
   final PatientIdMap _idMap;
+  final Ref _ref;
 
   SyncEngine(this._queue, this._api, this._localVisit, this._localSurgery,
-      this._localPhoto, this._idMap);
+      this._localPhoto, this._localPrescription, this._idMap, this._ref);
 
   bool _running = false;
 
-  Future<void> syncAll() async {
-    if (_running) return;
+  Future<int> syncAll() async {
+    if (_running) return 0;
     _running = true;
+    int syncedCount = 0;
     try {
       // Give items that exhausted retries a fresh chance — they may have been
       // stuck due to a UUID patientId that is now resolved, or a transient
-      // network failure. This runs once per sync session, not per item.
+      // network failure (e.g. Render cold start). Runs once per session.
       await _queue.resetAllFailed();
 
       // Process items one at a time, reloading the queue after any patient-ID
@@ -186,8 +202,9 @@ class SyncEngine {
       List<SyncItem> items = await _queue.pending();
       int i = 0;
       while (i < items.length) {
-        final remapped = await _processItem(items[i]);
-        if (remapped) {
+        final result = await _processItem(items[i]);
+        if (result.success) syncedCount++;
+        if (result.remapped) {
           // Queue payloads were rewritten — reload to pick up new patientIds.
           items = await _queue.pending();
           i = 0;
@@ -198,10 +215,24 @@ class SyncEngine {
     } finally {
       _running = false;
     }
+
+    // Reset any items that accumulated high attempt counts during this run
+    // (upgrade compat: old installs may have items stuck at attempts ≥ 5).
+    await _queue.resetAllFailed();
+
+    // If items remain (e.g. transient failure or Render cold-start timeout),
+    // schedule one automatic retry after 60 s so the user doesn't have to
+    // toggle airplane mode or restart the app.
+    final remaining = await _queue.pending();
+    if (remaining.isNotEmpty) {
+      Future.delayed(const Duration(seconds: 60), syncAll);
+    }
+    return syncedCount;
   }
 
-  // Returns true when patient IDs were remapped (caller should reload queue).
-  Future<bool> _processItem(SyncItem item) async {
+  // Returns (remapped: true) when patient IDs were rewritten (caller reloads queue).
+  // Returns (success: true) when the item was pushed to the server successfully.
+  Future<({bool remapped, bool success})> _processItem(SyncItem item) async {
     try {
       // Resolve a UUID patientId to a numeric one via the id map if possible.
       // This covers offline-created visits whose patient already synced outside
@@ -215,24 +246,23 @@ class SyncEngine {
             // Parse response to get server-assigned numeric ID, then remap all
             // queued visits/surgeries that referenced this patient's client UUID.
             // Backend wraps all responses in ApiResponse.data, so use body['data'].
-            final body =
-                await _api.post<Map<String, dynamic>>(path, data: payload);
-            final dataMap = body['data'] as Map<String, dynamic>?;
+            final raw = await _api.post<dynamic>(path, data: payload);
+            final dataMap = _extractData(raw);
             final newId = dataMap?['id']?.toString();
             if (newId != null && newId != item.entityId) {
               await _idMap.insert(item.entityId, newId);
               await _localVisit.remapPatientId(item.entityId, newId);
               await _localSurgery.remapPatientId(item.entityId, newId);
               await _localPhoto.remapPatientId(item.entityId, newId);
+              await _localPrescription.remapPatientId(item.entityId, newId);
               await _queue.remapPatientIdInQueue(item.entityId, newId);
               remapped = true;
             }
           } else if (item.entityType == 'visits') {
             // Parse response to get server visit ID, then replace the local
             // UUID visit row with the server-confirmed entry.
-            final body =
-                await _api.post<Map<String, dynamic>>(path, data: payload);
-            final dataMap = body['data'] as Map<String, dynamic>?;
+            final raw = await _api.post<dynamic>(path, data: payload);
+            final dataMap = _extractData(raw);
             if (dataMap == null) throw Exception('empty visit response');
             final newVisitId = dataMap['id']?.toString();
             if (newVisitId != null && newVisitId != item.entityId) {
@@ -240,6 +270,9 @@ class SyncEngine {
               await _localVisit.purge(item.entityId);
             }
             await _localVisit.upsert(dataMap);
+            // Signal visitsProvider to reload from SQLite so the UI updates
+            // immediately (grey dot → green) without user needing to navigate.
+            _ref.read(visitSyncEventProvider.notifier).state++;
           } else {
             await _api.post<void>(path, data: payload);
           }
@@ -250,12 +283,22 @@ class SyncEngine {
       }
       await _queue.markDone(item.id);
       debugPrint('[SyncEngine] synced ${item.entityType}/${item.entityId}');
-      return remapped;
+      return (remapped: remapped, success: true);
     } catch (e) {
       await _queue.incrementAttempt(item.id, e.toString());
       debugPrint('[SyncEngine] failed ${item.entityType}/${item.entityId}: $e');
-      return false;
+      return (remapped: false, success: false);
     }
+  }
+
+  // Safely extract body['data'] from the backend's ApiResponse envelope.
+  // Works regardless of whether Dio parsed the JSON as Map<String, dynamic>
+  // or Map<dynamic, dynamic> — avoids runtime type-cast errors.
+  Map<String, dynamic>? _extractData(dynamic raw) {
+    if (raw is! Map) return null;
+    final d = raw['data'];
+    if (d is! Map) return null;
+    return d.map((k, v) => MapEntry(k.toString(), v));
   }
 
   // If the payload's patientId is a client UUID that's now in the id map,
@@ -475,6 +518,29 @@ class LocalVisitCache {
     final db = await _db.database;
     await db.update('visits', {'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Mark as synced BEFORE purging so _syncFromApi won't treat the UUID as
+  // a still-pending local entry during the brief window before purge runs.
+  Future<void> markSynced(String id) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('visits', {'sync_status': 'synced'},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Returns visits for a patient that are still pending in SQLite.
+  // Used by _syncFromApi to find genuinely unsynced local entries without
+  // relying on in-memory state (which can be stale / cause duplicates).
+  Future<List<Map<String, dynamic>>> getPendingForPatient(
+      String patientId) async {
+    if (kIsWeb) return [];
+    final db = await _db.database;
+    return db.query(
+      'visits',
+      where: 'patient_id = ? AND is_active = 1 AND sync_status = ?',
+      whereArgs: [patientId, 'pending'],
+    );
   }
 
   Future<void> delete(String id) async {
@@ -800,6 +866,13 @@ class LocalPrescriptionCache {
         where: 'visit_id = ?', whereArgs: [visitId]);
   }
 
+  Future<void> remapPatientId(String oldPatientId, String newPatientId) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.update('prescriptions', {'patient_id': newPatientId},
+        where: 'patient_id = ?', whereArgs: [oldPatientId]);
+  }
+
   Future<List<Map<String, dynamic>>> getAllForPatient(String patientId) async {
     if (kIsWeb) return [];
     final db = await _db.database;
@@ -976,7 +1049,9 @@ final syncEngineProvider = Provider<SyncEngine>((ref) => SyncEngine(
       ref.watch(localVisitCacheProvider),
       ref.watch(localSurgeryCacheProvider),
       ref.watch(localPhotoStoreProvider),
+      ref.watch(localPrescriptionCacheProvider),
       ref.watch(patientIdMapProvider),
+      ref,
     ));
 
 final localPatientCacheProvider = Provider<LocalPatientCache>((ref) =>
@@ -1025,15 +1100,25 @@ class SyncCoordinator extends Notifier<void> {
   void build() {
     // Flush pending queue on startup if already online (covers stuck items
     // from previous sessions that never got a connectivity-change event).
-    Future.microtask(() {
+    Future.microtask(() async {
       if (ref.read(isOnlineProvider) == true) {
-        ref.read(syncEngineProvider).syncAll();
+        final count = await ref.read(syncEngineProvider).syncAll();
+        if (count > 0) {
+          ref.read(syncSuccessProvider.notifier).state =
+              (count: count, at: DateTime.now());
+        }
       }
     });
 
     ref.listen<bool?>(isOnlineProvider, (prev, isOnline) {
       if (isOnline == true && prev == false) {
-        ref.read(syncEngineProvider).syncAll();
+        Future(() async {
+          final count = await ref.read(syncEngineProvider).syncAll();
+          if (count > 0) {
+            ref.read(syncSuccessProvider.notifier).state =
+                (count: count, at: DateTime.now());
+          }
+        });
       }
     });
   }
