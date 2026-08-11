@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../domain/entities/visit_entity.dart';
 
 class VisitModel {
@@ -10,6 +12,9 @@ class VisitModel {
   final String? clinicalImpression;
   final String? plan;
   final String? notes;
+  final String? bp;
+  final String? temperature;
+  final String? weight;
   final String status;
   final bool isActive;
   final String createdAt;
@@ -28,6 +33,9 @@ class VisitModel {
     this.clinicalImpression,
     this.plan,
     this.notes,
+    this.bp,
+    this.temperature,
+    this.weight,
     this.status = 'draft',
     this.isActive = true,
     required this.createdAt,
@@ -38,17 +46,32 @@ class VisitModel {
   });
 
   factory VisitModel.fromJson(Map<String, dynamic> j) {
-    // If the backend returns individual columns instead of a combined examination
-    // JSON blob (e.g. older visits or visits created via SQL), rebuild the blob.
+    // Read vitals directly from flat fields (backend VisitDto returns them separately).
+    // For backward compat with old SQLite data_json blobs that embedded vitals inside
+    // the examination JSON, fall back to extracting from the blob if flat fields missing.
+    String? bpVal         = j['bp'] as String?;
+    String? temperatureVal = j['temperature'] as String?;
+    String? weightVal      = j['weight'] as String?;
+
     String? examination = j['examination'] as String?;
+    if (examination?.isNotEmpty == true) {
+      try {
+        final blob = jsonDecode(examination!) as Map<String, dynamic>?;
+        if (blob != null) {
+          bpVal          ??= blob['bp'] as String?;
+          temperatureVal ??= blob['temperature'] as String?;
+          weightVal      ??= blob['weight'] as String?;
+        }
+      } catch (_) {}
+    }
+
+    // For older API responses that returned individual columns but no examination blob,
+    // rebuild the blob from legacy columns (excluding vitals which are now dedicated).
     if (examination == null || examination.isEmpty) {
       final Map<String, dynamic> rebuilt = {};
       void add(String key, String? val) {
         if (val != null && val.isNotEmpty) rebuilt[key] = val;
       }
-      add('bp',                 j['bp'] as String?);
-      add('weight',             j['weight'] as String?);
-      add('temperature',        j['temperature'] as String?);
       add('pulse',              j['pulse'] as String?);
       add('spo2',               j['spo2'] as String?);
       add('height',             j['height'] as String?);
@@ -58,10 +81,10 @@ class VisitModel {
       add('examNeurological',   j['examSystemic'] as String?);
       add('imaging',            j['examRadiology'] as String?);
       if (rebuilt.isNotEmpty) {
-        // ignore: avoid_dynamic_calls
         examination = _jsonEncode(rebuilt);
       }
     }
+
     return VisitModel(
       id: (j['id'] as Object).toString(),
       patientId: (j['patientId'] ?? j['patient_id'])!.toString(),
@@ -72,6 +95,9 @@ class VisitModel {
       clinicalImpression: (j['clinicalImpression'] ?? j['clinical_impression']) as String?,
       plan: j['plan'] as String?,
       notes: j['notes'] as String?,
+      bp: bpVal?.isNotEmpty == true ? bpVal : null,
+      temperature: temperatureVal?.isNotEmpty == true ? temperatureVal : null,
+      weight: weightVal?.isNotEmpty == true ? weightVal : null,
       status: j['status'] as String? ?? 'draft',
       createdAt: (j['createdAt'] ?? j['created_at']) as String,
       updatedAt: (j['updatedAt'] ?? j['updated_at']) as String,
@@ -81,6 +107,7 @@ class VisitModel {
       syncStatus: (j['syncStatus'] ?? j['sync_status']) as String? ?? 'synced',
     );
   }
+
 
   static String _jsonEncode(Map<String, dynamic> m) {
     final buf = StringBuffer('{');
@@ -103,12 +130,15 @@ class VisitModel {
         'clinicalImpression': clinicalImpression,
         'plan': plan,
         'notes': notes,
+        'bp': bp,
+        'temperature': temperature,
+        'weight': weight,
         'status': status,
       };
 
   Map<String, dynamic> toFullJson() => {
         ...toApiJson(),
-        'id': id, // toApiJson uses 'clientId'; local cache needs 'id'
+        'id': id,
         'patientId': patientId,
         'isActive': isActive,
         'createdAt': createdAt,
@@ -128,6 +158,9 @@ class VisitModel {
         'clinical_impression': clinicalImpression,
         'plan': plan,
         'notes': notes,
+        'bp': bp,
+        'temperature': temperature,
+        'weight': weight,
         'status': status,
       };
 
@@ -141,6 +174,9 @@ class VisitModel {
         clinicalImpression: clinicalImpression,
         plan: plan,
         notes: notes,
+        bp: bp,
+        temperature: temperature,
+        weight: weight,
         status: status,
         isActive: isActive,
         createdAt: DateTime.parse(createdAt),
@@ -160,6 +196,9 @@ class VisitModel {
         clinicalImpression: e.clinicalImpression,
         plan: e.plan,
         notes: e.notes,
+        bp: e.bp,
+        temperature: e.temperature,
+        weight: e.weight,
         status: e.status,
         isActive: e.isActive,
         createdAt: e.createdAt.toUtc().toIso8601String(),

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -21,10 +22,10 @@ class _DoctorInfo {
   static const degree3    = 'Fellow in NeuroSurgical Oncology (TMH, Mumbai)';
   static const regNo      = 'MMC Reg. No: 2009031020';
   static const website    = 'www.thebrainandspineclinic.com';
-  static const phone      = '+91 98765 43210';
+  static const phone      = '+91 83900 24528';
   static const clinicName = 'The Brain & Spine Clinic';
   static const tagline    = 'Excellence, Ethics, Efficiency';
-  static var   address    = 'Clinic Address: (update in settings)';
+  static var   address    = 'C/0 Nashik Hematology Services- 6th Floor, S.K. Empire, Near Ved Mandir, Mico Circle, Nashik';
   static const specialisations = [
     'Neurosurgery',
     'Brain Tumour',
@@ -67,18 +68,9 @@ class PdfService {
     final pdf  = pw.Document();
     final logo = await _loadLogo();
 
-    pw.Font font;
-    pw.Font fontBold;
-    pw.Font fontItal;
-    try {
-      font     = await PdfGoogleFonts.nunitoRegular();
-      fontBold = await PdfGoogleFonts.nunitoBold();
-      fontItal = await PdfGoogleFonts.nunitoItalic();
-    } catch (_) {
-      font     = pw.Font.helvetica();
-      fontBold = pw.Font.helveticaBold();
-      fontItal = pw.Font.helveticaOblique();
-    }
+    final font     = pw.Font.helvetica();
+    final fontBold = pw.Font.helveticaBold();
+    final fontItal = pw.Font.helveticaOblique();
 
     pdf.addPage(
       pw.MultiPage(
@@ -117,15 +109,8 @@ class PdfService {
     final pdf  = pw.Document();
     final logo = await _loadLogo();
 
-    pw.Font font;
-    pw.Font fontBold;
-    try {
-      font     = await PdfGoogleFonts.nunitoRegular();
-      fontBold = await PdfGoogleFonts.nunitoBold();
-    } catch (_) {
-      font     = pw.Font.helvetica();
-      fontBold = pw.Font.helveticaBold();
-    }
+    final font     = pw.Font.helvetica();
+    final fontBold = pw.Font.helveticaBold();
 
     pdf.addPage(
       pw.MultiPage(
@@ -467,13 +452,7 @@ class PdfService {
                       pw.Container(
                           width: 70, height: 0.5, color: _C.border),
                     ]),
-                    pw.SizedBox(height: 8),
-                    pw.Text('Notes:',
-                        style: pw.TextStyle(
-                            font: fontBold,
-                            fontSize: 7.5,
-                            color: _C.sub)),
-                    pw.SizedBox(height: 4),
+                    pw.SizedBox(height: 10),
                     pw.Container(height: 0.5, color: _C.border),
                     pw.SizedBox(height: 10),
                     pw.Container(height: 0.5, color: _C.border),
@@ -560,27 +539,47 @@ class PdfService {
     final examText = examination ?? visit.examination ?? '';
     final rxText   = _prescriptionText(prescription);
 
+    // Build labeled examination text
+    final examLabeled = [
+      if (examText.trim().isNotEmpty) 'General: $examText',
+    ].join('\n');
+    final radiolLabeled = radiology?.trim().isNotEmpty == true
+        ? 'Imaging: ${radiology!.trim()}'
+        : '';
+    final investigationsText = [
+      if (visit.clinicalImpression?.trim().isNotEmpty == true)
+        'Impression: ${visit.clinicalImpression!.trim()}',
+      if (radiolLabeled.isNotEmpty) radiolLabeled,
+    ].join('\n');
+
+    final sections = <pw.Widget>[];
+    void add(String title, String content, {pw.Font? bodyFont}) {
+      if (content.trim().isEmpty) return;
+      if (sections.isNotEmpty) sections.add(_sectionDiv());
+      sections.add(_section(title, content, font, fontBold,
+          top: false, bodyFont: bodyFont));
+    }
+
+    add('CHIEF COMPLAINT', visit.complaints ?? '');
+    if (examLabeled.isNotEmpty) {
+      if (sections.isNotEmpty) sections.add(_sectionDiv());
+      sections.add(_section('EXAMINATION FINDINGS', examLabeled, font, fontBold, top: false));
+    }
+    if (sections.isNotEmpty) sections.add(pw.Container(height: 2, color: _C.navy));
+    final adviceStart = sections.length;
+    add('ADVICE', visit.plan ?? '');
+    add('TREATMENT (MEDICINES)', rxText, bodyFont: fontItal);
+    if (sections.length > adviceStart) {
+      sections.insert(adviceStart, pw.Container(height: 2, color: _C.navy));
+    } else {
+      sections.add(pw.Container(height: 2, color: _C.navy));
+    }
+    add('INVESTIGATIONS', investigationsText);
+    add('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', visit.notes ?? '');
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        _section('PRESENTING COMPLAINTS & CLINICAL HISTORY',
-            visit.complaints ?? '', font, fontBold, top: false),
-        _sectionDiv(),
-        _section('EXAMINATION FINDINGS', examText, font, fontBold),
-        _sectionDiv(),
-        _section('REPORTS', radiology ?? '', font, fontBold),
-        pw.Container(height: 2, color: _C.navy),
-        _section('ADVICE', visit.plan ?? '', font, fontBold, top: false),
-        _sectionDiv(),
-        _section('TREATMENT (MEDICINES)', rxText, font, fontBold,
-            bodyFont: fontItal),
-        pw.Container(height: 2, color: _C.navy),
-        _section('INVESTIGATIONS', visit.clinicalImpression ?? '',
-            font, fontBold, top: false),
-        _sectionDiv(),
-        _section('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)',
-            visit.notes ?? '', font, fontBold),
-      ],
+      children: sections,
     );
   }
 
@@ -774,8 +773,16 @@ class PdfService {
 
   static Future<pw.MemoryImage?> _loadLogo() async {
     try {
-      final data = await rootBundle.load('assets/images/app_logo.png');
-      return pw.MemoryImage(data.buffer.asUint8List());
+      final data  = await rootBundle.load('assets/images/app_logo.png');
+      final bytes = data.buffer.asUint8List();
+      final codec = await ui.instantiateImageCodec(
+          bytes, targetWidth: 80, targetHeight: 80);
+      final frame    = await codec.getNextFrame();
+      final byteData = await frame.image.toByteData(
+          format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      if (byteData == null) return null;
+      return pw.MemoryImage(byteData.buffer.asUint8List());
     } catch (_) {
       return null;
     }

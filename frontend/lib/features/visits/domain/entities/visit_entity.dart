@@ -34,6 +34,11 @@ class VisitEntity extends Equatable {
   final String? plan;
   final String? notes;
 
+  // Vitals (change visit-to-visit)
+  final String? bp;
+  final String? temperature;
+  final String? weight;
+
   final String status;   // draft / completed
   final bool isActive;
   final DateTime createdAt;
@@ -52,6 +57,9 @@ class VisitEntity extends Equatable {
     this.clinicalImpression,
     this.plan,
     this.notes,
+    this.bp,
+    this.temperature,
+    this.weight,
     this.status = 'draft',
     this.isActive = true,
     required this.createdAt,
@@ -78,6 +86,9 @@ class VisitEntity extends Equatable {
     String? clinicalImpression,
     String? plan,
     String? notes,
+    String? bp,
+    String? temperature,
+    String? weight,
     String? status,
     bool? isActive,
     String? syncStatus,
@@ -92,6 +103,9 @@ class VisitEntity extends Equatable {
         clinicalImpression: clinicalImpression ?? this.clinicalImpression,
         plan: plan ?? this.plan,
         notes: notes ?? this.notes,
+        bp: bp ?? this.bp,
+        temperature: temperature ?? this.temperature,
+        weight: weight ?? this.weight,
         status: status ?? this.status,
         isActive: isActive ?? this.isActive,
         createdAt: createdAt,

@@ -44,11 +44,14 @@ class MedicineService {
   final LocalPrescriptionCache _prescriptions;
   final LocalPatientCache _patients;
   final LocalDrugCache _drugs;
+  final LocalVisitCache _visits;
   final ApiClient _api;
 
-  MedicineService(this._prescriptions, this._patients, this._drugs, this._api);
+  MedicineService(this._prescriptions, this._patients, this._drugs, this._visits, this._api);
 
-  // Seed master list into drugs_cache on first run.
+  // Seed master list into drugs_cache. Uses INSERT OR IGNORE so existing
+  // API-synced entries are never overwritten, but the table always has at
+  // least the built-in medicine list as a fallback after login.
   Future<void> seedMasterIfEmpty() async {
     if (kIsWeb) return;
     try {
@@ -68,16 +71,20 @@ class MedicineService {
       final resp = await _api.get<Map<String, dynamic>>('/drugs');
       final data = resp['data'];
       if (data is! List || data.isEmpty) return;
+      // Support both camelCase and snake_case keys from the backend.
       final drugs = data.whereType<Map<String, dynamic>>().map<Map<String, dynamic>>((d) => {
-            'id': d['id'].toString(),
-            'genericName': (d['genericName'] ?? '') as String,
-            'brandNames': (d['brandNames'] ?? '') as String,
-            'defaultDose': (d['defaultDose'] ?? '') as String,
-            'defaultFrequency': (d['defaultFrequency'] ?? '') as String,
-            'defaultDuration': (d['defaultDuration'] ?? '') as String,
+            'id': (d['id'] ?? '').toString(),
+            'genericName': (d['genericName'] ?? d['generic_name'] ?? '') as String,
+            'brandNames': (d['brandNames'] ?? d['brand_names'] ?? '') as String,
+            'defaultDose': (d['defaultDose'] ?? d['default_dose'] ?? '') as String,
+            'defaultFrequency': (d['defaultFrequency'] ?? d['default_frequency'] ?? '') as String,
+            'defaultDuration': (d['defaultDuration'] ?? d['default_duration'] ?? '') as String,
             'category': (d['category'] ?? '') as String,
           }).toList();
-      // Clear first so hardcoded-seed IDs don't cause duplicates.
+      // Only replace the cache if there are drugs with valid names — prevents
+      // a bad API response from wiping the seed data and breaking autocomplete.
+      final hasValid = drugs.any((d) => (d['genericName'] as String).isNotEmpty);
+      if (!hasValid) return;
       await _drugs.clearAll();
       await _drugs.upsertAll(drugs);
     } catch (_) {
@@ -208,6 +215,38 @@ class MedicineService {
         }
       } catch (_) {}
 
+      // ── 3. Medicines from visit examination data (direct SQLite) ──
+      // This covers the common case where savePrescription() wasn't called
+      // (e.g. medicines typed but not committed as chips) — reads the
+      // examination JSON stored by createFullVisit() instead.
+      try {
+        if (!kIsWeb) {
+          final visitRows = await _visits.getForPatient(patientId);
+          for (final row in visitRows) {
+            final examStr = row['examination'] as String?;
+            if (examStr == null || examStr.isEmpty) continue;
+            try {
+              final examData = jsonDecode(examStr) as Map<String, dynamic>;
+              final medsText = examData['medications'] as String? ?? '';
+              if (medsText.isEmpty) continue;
+              final visitDateStr =
+                  row['visit_date'] as String? ?? row['created_at'] as String? ?? '';
+              final dateLabel = _formatDateLabel(visitDateStr);
+              for (final med in _parseMedicineText(medsText)) {
+                final nl = med.toLowerCase();
+                if (nl.contains(q) && seen.add(nl)) {
+                  result.add(MedicineSuggestion(
+                    name: med,
+                    visitDateLabel: dateLabel,
+                    isHistory: true,
+                  ));
+                }
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (_) {}
+
       return result;
     } catch (_) {
       return [];
@@ -220,7 +259,6 @@ class MedicineService {
     try {
       final all = await _drugs.getAll();
       if (all.isEmpty) {
-        // Fallback to in-memory list.
         return _masterSuggestionsFromConst(q, exclude: exclude, limit: limit);
       }
       final result = <MedicineSuggestion>[];
@@ -237,6 +275,11 @@ class MedicineService {
           category: m['category'] as String?,
           isHistory: false,
         ));
+      }
+      // DB had drugs but none matched this query — fall back to the in-memory
+      // constant master list so suggestions always appear for valid input.
+      if (result.isEmpty) {
+        return _masterSuggestionsFromConst(q, exclude: exclude, limit: limit);
       }
       return result;
     } catch (_) {
@@ -295,6 +338,7 @@ final medicineServiceProvider = Provider<MedicineService>((ref) {
     ref.watch(localPrescriptionCacheProvider),
     ref.watch(localPatientCacheProvider),
     ref.watch(localDrugCacheProvider),
+    ref.watch(localVisitCacheProvider),
     ref.watch(apiClientProvider),
   );
   svc.seedMasterIfEmpty();

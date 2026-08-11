@@ -75,11 +75,20 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
   }
 
   Future<void> _load(String patientId) async {
-    // 1. Load from local SQLite first (mobile only)
+    // 1. Load from local SQLite first (mobile only).
+    // While loading, build a visitId/surgeryId map keyed by photo id so we
+    // can restore these associations when the server response omits them.
+    final localVisitIdMap   = <String, String?>{};
+    final localSurgeryIdMap = <String, String?>{};
     if (!kIsWeb) {
       try {
         final rows = await _store.getForPatient(patientId);
         if (rows.isNotEmpty) {
+          for (final r in rows) {
+            final pid = r['id'] as String;
+            localVisitIdMap[pid]   = r['visit_id']   as String?;
+            localSurgeryIdMap[pid] = r['surgery_id'] as String?;
+          }
           state = state.copyWith(
             photos: rows.map(_rowToEntity).toList(),
             isLoading: false,
@@ -105,8 +114,17 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
               await _store.markUploaded(p.id, p.url ?? '', p.storagePath);
             }
           }
+          // Write server photos to SQLite, preserving local visitId/surgeryId
+          // when the backend omits them (it may not echo back these foreign keys).
           for (final p in photos) {
-            await _store.insert(_entityToRow(p));
+            final row = _entityToRow(p);
+            if (p.visitId == null && localVisitIdMap.containsKey(p.id)) {
+              row['visit_id'] = localVisitIdMap[p.id];
+            }
+            if (p.surgeryId == null && localSurgeryIdMap.containsKey(p.id)) {
+              row['surgery_id'] = localSurgeryIdMap[p.id];
+            }
+            await _store.insert(row);
           }
           final pendingStillLocal =
               pending.where((p) => !serverIds.contains(p.id)).toList();
@@ -130,8 +148,33 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
               .map(_rowToEntity)
               .toList();
 
+          // Build merged server photo list: if server didn't return visitId /
+          // surgeryId but local SQLite has one, restore it so patient-detail
+          // visit filters can match the photo to the right visit card.
+          final mergedServerPhotos = photos.map((p) {
+            final effectiveVisitId   = p.visitId   ?? localVisitIdMap[p.id];
+            final effectiveSurgeryId = p.surgeryId ?? localSurgeryIdMap[p.id];
+            if (effectiveVisitId == p.visitId && effectiveSurgeryId == p.surgeryId) {
+              return p;
+            }
+            return PhotoEntity(
+              id:          p.id,
+              patientId:   p.patientId,
+              visitId:     effectiveVisitId,
+              surgeryId:   effectiveSurgeryId,
+              storagePath: p.storagePath,
+              url:         p.url,
+              category:    p.category,
+              caption:     p.caption,
+              isUploaded:  p.isUploaded,
+              localPath:   p.localPath,
+              fileSize:    p.fileSize,
+              createdAt:   p.createdAt,
+            );
+          }).toList();
+
           state = state.copyWith(
-            photos: [...linkedLocal, ...pendingStillLocal, ...photos],
+            photos: [...linkedLocal, ...pendingStillLocal, ...mergedServerPhotos],
             isLoading: false,
           );
         } else {
@@ -318,10 +361,28 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
         );
         // Use the local client id (row['id']) — not the server-returned numeric
         // id (photo.id) — so the correct local SQLite row is marked as uploaded.
-        await _store.markUploaded(row['id'] as String, photo.url ?? '', photo.storagePath);
+        final localId = row['id'] as String;
+        await _store.markUploaded(localId, photo.url ?? '', photo.storagePath);
         try { await file.delete(); } catch (_) {}
+        // Update state using localId so the pending photo is replaced correctly.
         state = state.copyWith(
-          photos: state.photos.map((p) => p.id == photo.id ? photo : p).toList(),
+          photos: state.photos.map((p) {
+            if (p.id != localId) return p;
+            return PhotoEntity(
+              id:          p.id,
+              patientId:   p.patientId,
+              visitId:     p.visitId,
+              surgeryId:   p.surgeryId,
+              storagePath: photo.storagePath,
+              url:         photo.url,
+              category:    p.category,
+              caption:     p.caption,
+              isUploaded:  true,
+              localPath:   null,
+              fileSize:    photo.fileSize ?? p.fileSize,
+              createdAt:   p.createdAt,
+            );
+          }).toList(),
         );
       } catch (_) {}
     }

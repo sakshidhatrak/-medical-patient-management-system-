@@ -43,7 +43,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authProvider, (_, next) {
-      if (next is AuthAuthenticated) context.go(RouteNames.dashboard);
+      if (next is AuthAuthenticated) context.go(RouteNames.patients);
       if (next is AuthError) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next.message), backgroundColor: _kRed),
@@ -58,9 +58,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return Scaffold(
       backgroundColor: _kBg,
-      // Don't resize — the layout is fixed to the screen; fields are accessible
-      // by tapping and the card is already in the lower half.
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -97,79 +95,82 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
 
-          // ── Main fixed column ────────────────────────────────────
+          // ── Scrollable main content ──────────────────────────────
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                children: [
-                  // Dark navy top oval with logo
-                  SizedBox(
-                    height: h * 0.26,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      alignment: Alignment.bottomCenter,
-                      children: [
-                        Positioned(
-                          top: 0,
-                          bottom: 0,
-                          left: -20,
-                          right: -20,
-                          child: ClipPath(
-                            clipper: _OvalBottomClipper(),
-                            child: Container(color: _kNavy),
+            bottom: false,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              physics: const ClampingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  children: [
+                    // Dark navy top oval with logo
+                    SizedBox(
+                      height: h * 0.26,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          Positioned(
+                            top: 0,
+                            bottom: 0,
+                            left: -20,
+                            right: -20,
+                            child: ClipPath(
+                              clipper: _OvalBottomClipper(),
+                              child: Container(color: _kNavy),
+                            ),
                           ),
-                        ),
-                        Positioned(
-                          bottom: -h * 0.07,
-                          child: Image.asset(
-                            'assets/images/app_logo.png',
-                            width: h * 0.130,
-                            height: h * 0.155,
-                            fit: BoxFit.contain,
+                          Positioned(
+                            bottom: -h * 0.07,
+                            child: Image.asset(
+                              'assets/images/app_logo.png',
+                              width: h * 0.130,
+                              height: h * 0.155,
+                              fit: BoxFit.contain,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
 
-                  SizedBox(height: h * 0.068),
+                    SizedBox(height: h * 0.068),
 
-                  // Clinic name
-                  const Text(
-                    'The Brain &\nSpine Clinic',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w900,
-                      color: _kNavy,
-                      height: 1.15,
-                      letterSpacing: -0.5,
+                    // Clinic name
+                    const Text(
+                      'The Brain &\nSpine Clinic',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: _kNavy,
+                        height: 1.15,
+                        letterSpacing: -0.5,
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 8),
 
-                  // ECG line + tagline
-                  SizedBox(
-                    width: 110, height: 20,
-                    child: CustomPaint(painter: _EcgPainter()),
-                  ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'Excellence. Ethics. Efficiency',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF616161),
-                      fontStyle: FontStyle.italic,
+                    // ECG line + tagline
+                    SizedBox(
+                      width: 110, height: 20,
+                      child: CustomPaint(painter: _EcgPainter()),
                     ),
-                  ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Excellence. Ethics. Efficiency',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF616161),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // ── Login card ────────────────────────────────────
-                  Expanded(
-                    child: Container(
+                    // ── Login card ────────────────────────────────────
+                    Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(24),
@@ -189,25 +190,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           children: [
                             // Role toggle
                             Container(
-                              height: 48,
+                              height: 50,
+                              clipBehavior: Clip.antiAlias,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF0F0F0),
+                                color: const Color(0xFFEEEEEE),
                                 borderRadius: BorderRadius.circular(14),
                               ),
-                              child: Row(children: [
-                                _RoleTab(
-                                  label: 'Doctor',
-                                  icon: Icons.medical_services_outlined,
-                                  active: _roleIndex == 0,
-                                  onTap: () => setState(() => _roleIndex = 0),
-                                ),
-                                _RoleTab(
-                                  label: 'Front Desk',
-                                  icon: Icons.support_agent_outlined,
-                                  active: _roleIndex == 1,
-                                  onTap: () => setState(() => _roleIndex = 1),
-                                ),
-                              ]),
+                              child: Row(
+                                children: [
+                                  _RoleTab(
+                                    label: 'Doctor',
+                                    icon: Icons.medical_services_outlined,
+                                    active: _roleIndex == 0,
+                                    onTap: () => setState(() => _roleIndex = 0),
+                                  ),
+                                  _RoleTab(
+                                    label: 'Front Desk',
+                                    icon: Icons.support_agent_outlined,
+                                    active: _roleIndex == 1,
+                                    onTap: () => setState(() => _roleIndex = 1),
+                                  ),
+                                ],
+                              ),
                             ),
 
                             const SizedBox(height: 14),
@@ -330,20 +334,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 12),
 
-                  // Secure badge
-                  Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
-                    Icon(Icons.shield_outlined, size: 13, color: _kMuted),
-                    SizedBox(width: 4),
-                    Text('Secure clinical access',
-                        style: TextStyle(fontSize: 11, color: _kMuted)),
-                  ]),
+                    // Secure badge
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
+                      Icon(Icons.shield_outlined, size: 13, color: _kMuted),
+                      SizedBox(width: 4),
+                      Text('Secure clinical access',
+                          style: TextStyle(fontSize: 11, color: _kMuted)),
+                    ]),
 
-                  const SizedBox(height: 14),
-                ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
           ),
@@ -389,21 +393,21 @@ class _RoleTab extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.all(4),
+        margin: const EdgeInsets.all(5),
         decoration: BoxDecoration(
           color: active ? _kNavy : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           boxShadow: active
               ? [BoxShadow(
-                  color: _kNavy.withValues(alpha: 0.28),
-                  blurRadius: 6, offset: const Offset(0, 3))]
+                  color: _kNavy.withValues(alpha: 0.30),
+                  blurRadius: 8, offset: const Offset(0, 3))]
               : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 16, color: active ? Colors.white : _kMuted),
-            const SizedBox(width: 5),
+            const SizedBox(width: 6),
             Text(label,
                 style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w700,

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -20,8 +21,8 @@ class _Clinic {
   static const degree3     = 'Fellow in NeuroSurgical Oncology (TMH, Mumbai)';
   static const regNo       = 'MMC Reg. No: 2009031020';
   static const website     = 'www.thebrainandspineclinic.com';
-  static const phone       = '+91 98765 43210';
-  static const address     = 'Clinic Address: (update in settings)';
+  static const phone       = '+91 83900 24528';
+  static const address     = 'C/0 Nashik Hematology Services- 6th Floor, S.K. Empire, Near Ved Mandir, Mico Circle, Nashik';
   static const specialisations = [
     'Neurosurgery',
     'Brain Tumour',
@@ -68,19 +69,10 @@ class PdfExportService {
       author: _Clinic.doctor,
     );
 
-    // Load Google Fonts; fall back to built-in Helvetica if network unavailable.
-    pw.Font font;
-    pw.Font fontBold;
-    pw.Font fontItal;
-    try {
-      font     = await PdfGoogleFonts.nunitoRegular();
-      fontBold = await PdfGoogleFonts.nunitoBold();
-      fontItal = await PdfGoogleFonts.nunitoItalic();
-    } catch (_) {
-      font     = pw.Font.helvetica();
-      fontBold = pw.Font.helveticaBold();
-      fontItal = pw.Font.helveticaOblique();
-    }
+    // Use built-in fonts to avoid network download OOM on low-memory devices.
+    final font     = pw.Font.helvetica();
+    final fontBold = pw.Font.helveticaBold();
+    final fontItal = pw.Font.helveticaOblique();
 
     doc.addPage(
       pw.MultiPage(
@@ -109,12 +101,28 @@ class PdfExportService {
     );
   }
 
-  // ── Logo loader ─────────────────────────────────────────────────────────────
+  // Alias used by ReportActionBar._print
+  static Future<void> printReport(
+    PrintConfigState config, {
+    Map<String, String>? patientData,
+  }) => exportPdf(config, patientData: patientData);
+
+  // ── Logo loader — resizes to 80px to prevent OOM on low-memory devices ─────
 
   static Future<pw.MemoryImage?> _loadLogo() async {
     try {
-      final data = await rootBundle.load('assets/images/app_logo.png');
-      return pw.MemoryImage(data.buffer.asUint8List());
+      final data  = await rootBundle.load('assets/images/app_logo.png');
+      final bytes = data.buffer.asUint8List();
+      // Decode and resize to max 80x80 — the full 1.3 MB PNG decoded raw
+      // can exceed 4 MB and crash PDF generation on low-memory Android devices.
+      final codec = await ui.instantiateImageCodec(
+          bytes, targetWidth: 80, targetHeight: 80);
+      final frame     = await codec.getNextFrame();
+      final byteData  = await frame.image.toByteData(
+          format: ui.ImageByteFormat.png);
+      frame.image.dispose();
+      if (byteData == null) return null;
+      return pw.MemoryImage(byteData.buffer.asUint8List());
     } catch (_) {
       return null;
     }
@@ -450,7 +458,7 @@ class PdfExportService {
       ('ID No.', 'idProofNumber'),
     ]);
 
-    // Vitals
+    // Vitals — labeled so each reading is identifiable
     final vitals = _labeledJoin(data, enabled, [
       ('Weight', 'weight'),
       ('Blood Pressure', 'bloodPressure'),
@@ -465,22 +473,16 @@ class PdfExportService {
     final medHistory =
         enabled.contains('medicalHistory') ? (data['medicalHistory'] ?? '') : '';
 
-    // Presenting complaints + previous history
-    final complaints = _joinFields([
-      if (enabled.contains('chiefComplaint')) data['chiefComplaint'],
-      if (enabled.contains('previousHistory')) data['previousHistory'],
+    // Chief complaint + previous history — each labeled so it's clear which is which
+    final complaints = _labeledJoin(data, enabled, [
+      ('Chief Complaint', 'chiefComplaint'),
+      ('Previous History', 'previousHistory'),
     ]);
 
-    // Examination findings
-    final examination = _joinFields([
-      if (enabled.contains('examGeneral')) data['examGeneral'],
-      if (enabled.contains('examNeurological')) data['examNeurological'],
-    ]);
-
-    // Reports (imaging + other investigation)
-    final reports = _joinFields([
-      if (enabled.contains('imaging')) data['imaging'],
-      if (enabled.contains('otherInvestigation')) data['otherInvestigation'],
+    // Examination findings — labeled by type (General / Neurological)
+    final examination = _labeledJoin(data, enabled, [
+      ('General', 'examGeneral'),
+      ('Neurological', 'examNeurological'),
     ]);
 
     // Advice
@@ -490,78 +492,74 @@ class PdfExportService {
     final medicines =
         enabled.contains('medications') ? (data['medications'] ?? '') : '';
 
-    // Investigations / diagnosis
-    final investigations = _joinFields([
-      if (enabled.contains('clinicalDiagnosis')) data['clinicalDiagnosis'],
-      if (enabled.contains('diagnosis')) data['diagnosis'],
-      if (enabled.contains('treatmentPlan')) data['treatmentPlan'],
+    // Investigations — includes clinical diagnosis, imaging, other investigation,
+    // impression and plan all in one labeled section (Reports section removed).
+    final investigations = _labeledJoin(data, enabled, [
+      ('Clinical Diagnosis', 'clinicalDiagnosis'),
+      ('Imaging', 'imaging'),
+      ('Other Investigation', 'otherInvestigation'),
+      ('Impression', 'diagnosis'),
+      ('Plan', 'treatmentPlan'),
     ]);
 
     // Cross reference / notes
     final crossRef = enabled.contains('notes') ? (data['notes'] ?? '') : '';
 
+    // Build blocks — skip any section whose content is empty so no blank headers appear.
+    final blocks = <List<pw.Widget>>[
+      _buildBlock([
+        (title: 'PATIENT CONTACT & ID', content: contactId, bodyFont: null),
+        (title: 'VITALS',               content: vitals,    bodyFont: null),
+        (title: 'KNOWN ALLERGIES',      content: allergies, bodyFont: null),
+        (title: 'PAST MEDICAL HISTORY', content: medHistory, bodyFont: null),
+      ], font, fontBold),
+      _buildBlock([
+        (title: 'PRESENTING COMPLAINTS', content: complaints,  bodyFont: null),
+        (title: 'EXAMINATION FINDINGS',  content: examination, bodyFont: null),
+      ], font, fontBold),
+      _buildBlock([
+        (title: 'ADVICE',               content: advice,    bodyFont: null),
+        (title: 'TREATMENT (MEDICINES)', content: medicines, bodyFont: fontItal),
+      ], font, fontBold),
+      _buildBlock([
+        (title: 'INVESTIGATIONS', content: investigations, bodyFont: null),
+        (title: 'CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', content: crossRef, bodyFont: null),
+      ], font, fontBold),
+    ].where((b) => b.isNotEmpty).toList();
+
+    final result = <pw.Widget>[];
+    for (var i = 0; i < blocks.length; i++) {
+      result.addAll(blocks[i]);
+      if (i < blocks.length - 1) {
+        result.add(pw.Container(height: 2, color: _kNavy));
+      }
+    }
+
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        // ── Block 0: Patient Contact & ID | Vitals | Allergies | History ───
-        _clinicalSection(
-          'PATIENT CONTACT & ID',
-          contactId,
-          font,
-          fontBold,
-          topBorder: false,
-        ),
-        _sectionDivider(),
-        _clinicalSection('VITALS', vitals, font, fontBold),
-        _sectionDivider(),
-        _clinicalSection('KNOWN ALLERGIES', allergies, font, fontBold),
-        _sectionDivider(),
-        _clinicalSection('PAST MEDICAL HISTORY', medHistory, font, fontBold),
-        // ── Thick divider ──────────────────────────────────────────────────
-        pw.Container(height: 2, color: _kNavy),
-        // ── Block A: Complaints | Examination | Reports ─────────────────────
-        _clinicalSection(
-          'PRESENTING COMPLAINTS & CLINICAL HISTORY',
-          complaints,
-          font,
-          fontBold,
-          topBorder: false,
-        ),
-        _sectionDivider(),
-        _clinicalSection('EXAMINATION FINDINGS', examination, font, fontBold),
-        _sectionDivider(),
-        _clinicalSection('REPORTS', reports, font, fontBold),
-        // ── Thick divider ─────────────────────────────────────────────────
-        pw.Container(height: 2, color: _kNavy),
-        // ── Block B: Advice | Treatment ────────────────────────────────────
-        _clinicalSection('ADVICE', advice, font, fontBold, topBorder: false),
-        _sectionDivider(),
-        _clinicalSection(
-          'TREATMENT (MEDICINES)',
-          medicines,
-          font,
-          fontBold,
-          bodyItalic: fontItal,
-        ),
-        // ── Thick divider ──────────────────────────────────────────────────
-        pw.Container(height: 2, color: _kNavy),
-        // ── Block C: Investigations | Cross Reference ──────────────────────
-        _clinicalSection(
-          'INVESTIGATIONS',
-          investigations,
-          font,
-          fontBold,
-          topBorder: false,
-        ),
-        _sectionDivider(),
-        _clinicalSection(
-          'CROSS REFERENCE (OTHER DOCTOR CONSULTATION)',
-          crossRef,
-          font,
-          fontBold,
-        ),
-      ],
+      children: result,
     );
+  }
+
+  // Builds a list of section widgets for one "block", separated by thin dividers.
+  // Returns empty list if all sections are empty (so the thick navy separator
+  // between blocks is also suppressed when there's nothing to show).
+  static List<pw.Widget> _buildBlock(
+    List<({String title, String content, pw.Font? bodyFont})> entries,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
+    final sections = <pw.Widget>[];
+    for (final e in entries) {
+      if (e.content.trim().isEmpty) continue;
+      if (sections.isNotEmpty) sections.add(_sectionDivider());
+      sections.add(_clinicalSection(
+        e.title, e.content, font, fontBold,
+        topBorder: false,
+        bodyItalic: e.bodyFont,
+      ));
+    }
+    return sections;
   }
 
   static pw.Widget _sectionDivider() =>
@@ -729,13 +727,7 @@ class PdfExportService {
                       pw.Container(
                           width: 70, height: 0.5, color: _kBorder),
                     ]),
-                    pw.SizedBox(height: 8),
-                    pw.Text(
-                      'Notes:',
-                      style: pw.TextStyle(
-                          font: fontBold, fontSize: 7.5, color: _kSub),
-                    ),
-                    pw.SizedBox(height: 4),
+                    pw.SizedBox(height: 10),
                     pw.Container(height: 0.5, color: _kBorder),
                     pw.SizedBox(height: 10),
                     pw.Container(height: 0.5, color: _kBorder),

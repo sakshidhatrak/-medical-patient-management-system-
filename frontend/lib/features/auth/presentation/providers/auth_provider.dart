@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/storage/storage_provider.dart';
@@ -76,7 +78,9 @@ class AuthNotifier extends Notifier<AuthState> {
         ? AuthAuthenticated(localUser)
         : const AuthUnauthenticated();
     if (state is AuthAuthenticated) {
-      ref.read(medicineServiceProvider).syncDrugsFromApi();
+      final svc = ref.read(medicineServiceProvider);
+      unawaited(svc.seedMasterIfEmpty());
+      unawaited(svc.syncDrugsFromApi());
     }
   }
 
@@ -90,8 +94,11 @@ class AuthNotifier extends Notifier<AuthState> {
       AuthAuthenticated.new,
     );
     if (state is AuthAuthenticated) {
-      // Fire-and-forget: refresh drug master list from backend after login.
-      ref.read(medicineServiceProvider).syncDrugsFromApi();
+      final svc = ref.read(medicineServiceProvider);
+      // Re-seed the master list first (in case it was cleared), then refresh
+      // from the backend. Both are fire-and-forget.
+      unawaited(svc.seedMasterIfEmpty());
+      unawaited(svc.syncDrugsFromApi());
     }
   }
 

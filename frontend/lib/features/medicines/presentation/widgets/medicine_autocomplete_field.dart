@@ -58,6 +58,24 @@ class _MedicineAutocompleteFieldState
   }
 
   @override
+  void didUpdateWidget(MedicineAutocompleteField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // When the parent loads visit data for editing, initialText changes after
+    // the first build. Sync _medicines from the new initialText if chips are
+    // still empty (i.e. user hasn't typed anything yet).
+    if (widget.initialText != oldWidget.initialText &&
+        _medicines.isEmpty &&
+        widget.initialText.trim().isNotEmpty) {
+      final parsed = _parse(widget.initialText);
+      if (parsed.isNotEmpty) {
+        setState(() => _medicines = parsed);
+        // Don't call _notify() here — we're restoring existing data, not
+        // triggering a user-initiated change. The parent already has the text.
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _removeOverlay();
