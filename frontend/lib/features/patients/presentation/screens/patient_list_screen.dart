@@ -327,17 +327,18 @@ class _ClinicHeader extends StatelessWidget {
           child: Row(
             children: [
               // Clinic logo
-              SizedBox(
+              Container(
                 width: 44,
-                height: 54,
-                child: Image.asset(
-                  'assets/images/app_logo.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Icon(
-                    Icons.local_hospital,
-                    size: 32,
-                    color: _kMaroon,
-                  ),
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _kMaroon,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.local_hospital_rounded,
+                  color: Colors.white,
+                  size: 26,
                 ),
               ),
               const SizedBox(width: 8),
