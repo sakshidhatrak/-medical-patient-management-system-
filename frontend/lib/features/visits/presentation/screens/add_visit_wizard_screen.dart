@@ -481,6 +481,26 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     }
   }
 
+  // Navigate to any step via tapping the step indicator.
+  // Preview (step 2) is only reachable once the visit has been saved.
+  void _goToStep(int target) {
+    if (target == _step) return;
+    if (target == 2 && _savedVisit == null && widget.visitId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Save the visit first to preview it.'),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: _kBlue,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        duration: const Duration(seconds: 2),
+      ));
+      return;
+    }
+    setState(() => _step = target);
+    _pageCtrl.animateToPage(target,
+        duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+  }
+
   void _openPrint() {
     if (_patient == null) return;
     final visit = _savedVisit;
@@ -673,46 +693,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     }
 
     final vp = MediaQuery.of(context).viewPadding;
-    final isLast    = _step == 1;
-    final isPreview = _step == 2;
     return Scaffold(
       backgroundColor: _kBg,
       resizeToAvoidBottomInset: false,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: isPreview ? null : Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 54,
-          child: ElevatedButton.icon(
-            onPressed: _saving ? null : (isLast ? _save : _nextStep),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _kBlue,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
-              elevation: 6,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              textStyle: const TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            icon: _saving
-                ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : Icon(isLast
-                    ? Icons.check_circle_outline_rounded
-                    : Icons.arrow_forward_rounded,
-                    size: 18),
-            label: _saving
-                ? const SizedBox.shrink()
-                : Text(isLast
-                    ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
-                    : 'Continue'),
-          ),
-        ),
-      ),
       body: Column(children: [
         SizedBox(height: vp.top),
         _buildWizardHeader(),
@@ -799,39 +782,43 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           final idx      = i ~/ 2;
           final isDone    = idx < _step;
           final isCurrent = idx == _step;
-          return Column(children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                color: (isDone || isCurrent) ? _kBlue : _kCard,
-                shape: BoxShape.circle,
-                border: (isDone || isCurrent)
-                    ? null
-                    : Border.all(color: _kBorder, width: 1.5),
-                boxShadow: (isDone || isCurrent)
-                    ? [BoxShadow(
-                        color: _kBlue.withValues(alpha: 0.4),
-                        blurRadius: 8, offset: const Offset(0, 3))]
-                    : null,
+          return GestureDetector(
+            onTap: () => _goToStep(idx),
+            behavior: HitTestBehavior.opaque,
+            child: Column(children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: (isDone || isCurrent) ? _kBlue : _kCard,
+                  shape: BoxShape.circle,
+                  border: (isDone || isCurrent)
+                      ? null
+                      : Border.all(color: _kBorder, width: 1.5),
+                  boxShadow: (isDone || isCurrent)
+                      ? [BoxShadow(
+                          color: _kBlue.withValues(alpha: 0.4),
+                          blurRadius: 8, offset: const Offset(0, 3))]
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: isDone
+                    ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                    : idx == 2
+                        ? const Icon(Icons.print_outlined, size: 16, color: Colors.white)
+                        : Text('${idx + 1}',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w800,
+                                color: isCurrent ? Colors.white : _kMuted)),
               ),
-              alignment: Alignment.center,
-              child: isDone
-                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
-                  : idx == 2
-                      ? const Icon(Icons.print_outlined, size: 16, color: Colors.white)
-                      : Text('${idx + 1}',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w800,
-                              color: isCurrent ? Colors.white : _kMuted)),
-            ),
-            const SizedBox(height: 4),
-            Text(_stepLabels[idx],
-                style: TextStyle(
-                    fontSize: 9, fontWeight: FontWeight.w600,
-                    color: isCurrent ? _kBlue : isDone ? _kSlate : _kMuted,
-                    letterSpacing: 0.1)),
-          ]);
+              const SizedBox(height: 4),
+              Text(_stepLabels[idx],
+                  style: TextStyle(
+                      fontSize: 9, fontWeight: FontWeight.w600,
+                      color: isCurrent ? _kBlue : isDone ? _kSlate : _kMuted,
+                      letterSpacing: 0.1)),
+            ]),
+          );
         }),
         // Print icon shortcut (active only on step 3)
         GestureDetector(
@@ -859,6 +846,25 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
     final isPreview = _step == 2;
+    final isLast    = _step == 1;
+
+    // Shared button styles
+    final backStyle = OutlinedButton.styleFrom(
+      foregroundColor: _kSlate,
+      side: const BorderSide(color: _kBorder, width: 1.5),
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+    );
+    final primaryStyle = ElevatedButton.styleFrom(
+      backgroundColor: _kBlue,
+      foregroundColor: Colors.white,
+      disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
+      elevation: 0,
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+    );
 
     return Container(
       color: _kCard,
@@ -874,7 +880,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               color: _kBlue,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
         ],
         if (isPreview) ...[
           Row(children: [
@@ -933,26 +939,51 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ),
             ),
           ]),
-        ] else if (_step > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _saving ? null : _prevStep,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _kSlate,
-                side: const BorderSide(color: _kBorder, width: 1.5),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+        ] else ...[
+          // Back + primary action on one line
+          Row(children: [
+            // Back button (step 0 goes to patient, step 1 goes to step 0)
+            Expanded(
+              flex: 1,
+              child: OutlinedButton.icon(
+                onPressed: _saving ? null : () {
+                  if (_step == 0) {
+                    context.pop();
+                  } else {
+                    _prevStep();
+                  }
+                },
+                icon: const Icon(Icons.arrow_back_ios_new, size: 15),
+                label: const Text('Back'),
+                style: backStyle,
               ),
-              icon: const Icon(Icons.arrow_back_ios_new, size: 16),
-              label: const Text('Back'),
             ),
-          ),
-        // placeholder — FAB removed from here, now as floatingActionButton
-        // We only need enough space for FAB not to overlap back button
-        if (!isPreview) const SizedBox(height: 60),
+            const SizedBox(width: 10),
+            // Continue / Save Visit
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: _saving ? null : (isLast ? _save : _nextStep),
+                style: primaryStyle,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : Icon(
+                        isLast
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.arrow_forward_rounded,
+                        size: 17),
+                label: _saving
+                    ? const SizedBox.shrink()
+                    : Text(isLast
+                        ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
+                        : 'Continue'),
+              ),
+            ),
+          ]),
+        ],
       ]),
     );
   }
@@ -987,28 +1018,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: [
-            // ── Read-only notice ─────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: _kBlue.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _kBlue.withValues(alpha: 0.2)),
-              ),
-              child: Row(children: [
-                Icon(Icons.lock_outline_rounded, color: _kBlue, size: 16),
-                const SizedBox(width: 10),
-                Expanded(child: Text(
-                  'Patient information is auto-populated and read-only. '
-                  'Treatment fields are editable in the next step.',
-                  style: TextStyle(
-                      fontSize: 12, color: _kBlue,
-                      fontWeight: FontWeight.w500),
-                )),
-              ]),
-            ),
-            const SizedBox(height: 14),
-
             // ── Visit Date & Type ────────────────────────────────────────
             _WizardCard(
               title: 'Visit Details',
@@ -1240,26 +1249,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         title: 'History & Complaint',
         icon: Icons.history_edu_outlined,
         color: _kBlue,
-        child: Column(children: [
-          _fieldWithUpload(
-            label: 'Previous History',
-            controller: _prevHistoryCtrl,
-            files: _prevHistoryFiles,
-            onFilesChange: (f) => _prevHistoryFiles..clear()..addAll(f),
-            maxLines: 3,
-            prefixIcon: Icons.history_edu_outlined,
-            hint: 'Enter previous medical history…',
-          ),
-          const SizedBox(height: 12),
-          _fieldWithUpload(
-            label: 'Chief Complaint',
-            controller: _complaintCtrl,
-            files: _chiefComplaintFiles,
-            onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
-            prefixIcon: Icons.report_problem_outlined,
-            hint: 'Primary reason for visit…',
-          ),
-        ]),
+        child: _fieldWithUpload(
+          label: 'Chief Complaint',
+          controller: _complaintCtrl,
+          files: _chiefComplaintFiles,
+          onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
+          prefixIcon: Icons.report_problem_outlined,
+          hint: 'Primary reason for visit…',
+        ),
       ),
 
       // ── Examination Finding ──────────────────────────────────────────
