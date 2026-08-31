@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,7 +19,6 @@ import '../../../print_configuration/presentation/providers/print_config_provide
 import '../../../visits/domain/entities/visit_entity.dart';
 import '../../../visits/presentation/providers/visit_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
-import '../../../medicines/presentation/widgets/medicine_autocomplete_field.dart';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const _kBlue   = Color(0xFF5B5ECC);   // indigo primary (dark-bg variant)
@@ -88,10 +88,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   final _impressionFiles = <({String name, Uint8List bytes})>[];
   final _treatmentCtrl   = TextEditingController();   // Plan
   final _planFiles       = <({String name, Uint8List bytes})>[];
-  final _medicationsCtrl = TextEditingController();   // Treatment
   final _treatmentMedFiles = <({String name, Uint8List bytes})>[];
-  final _treatNotesCtrl  = TextEditingController();
-  final _adviceCtrl      = TextEditingController();
+  final _prescriptionRows  = <_PrescriptionRow>[];   // Structured prescriptions
+  final _treatNotesCtrl      = TextEditingController();
+  final _adviceCtrl          = TextEditingController();
+  final _crossConsultCtrl    = TextEditingController();
+  final _crossConsultFiles   = <({String name, Uint8List bytes})>[];
 
   // ── Clinical Snapshot ─────────────────────────────────────────────────────
   final _allergyCtrl = TextEditingController();
@@ -121,8 +123,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       _complaintCtrl,
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
-      _diagnosisCtrl, _treatmentCtrl, _medicationsCtrl,
-      _treatNotesCtrl, _adviceCtrl,
+      _diagnosisCtrl, _treatmentCtrl,
+      _treatNotesCtrl, _adviceCtrl, _crossConsultCtrl,
       _allergyCtrl, _historyCtrl,
     ]) {
       c.dispose();
@@ -138,11 +140,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     setState(() => _duplicates = dupes);
   }
 
-  bool _hasAnyTreatmentData() => [
-    _prevHistoryCtrl, _complaintCtrl, _examGeneralCtrl, _examNeurologicalCtrl,
-    _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
-    _diagnosisCtrl, _treatmentCtrl, _medicationsCtrl, _treatNotesCtrl, _adviceCtrl,
-  ].any((c) => c.text.trim().isNotEmpty);
+  bool _hasAnyTreatmentData() =>
+      _prescriptionRows.isNotEmpty ||
+      [
+        _prevHistoryCtrl, _complaintCtrl, _examGeneralCtrl, _examNeurologicalCtrl,
+        _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
+        _diagnosisCtrl, _treatmentCtrl, _treatNotesCtrl, _adviceCtrl,
+      ].any((c) => c.text.trim().isNotEmpty);
 
   String? _buildExaminationJson() {
     final m = <String, String>{};
@@ -153,8 +157,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     add('clinicalDiagnosis',  _clinicalDiagnosisCtrl.text.trim());
     add('imaging',            _imagingCtrl.text.trim());
     add('otherInvestigation', _otherInvestCtrl.text.trim());
-    add('medications',        _medicationsCtrl.text.trim());
+    if (_prescriptionRows.isNotEmpty) {
+      m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
+      add('medications', _prescriptionRows.map((r) => r.medicine).join('\n'));
+    }
     add('advice',             _adviceCtrl.text.trim());
+    add('crossConsultation',  _crossConsultCtrl.text.trim());
     add('weight',             _weightCtrl.text.trim());
     add('bp',                 _bpCtrl.text.trim());
     add('temperature',        _tempCtrl.text.trim());
@@ -219,13 +227,14 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         // suggest them. Use the auto-created visit ID if available; fall back to a
         // registration-scoped key so prescription is saved even when the API is
         // unreachable (visit returns null despite being stored locally).
-        if (_medicationsCtrl.text.trim().isNotEmpty) {
+        final medNames = _prescriptionRows.map((r) => r.medicine).join('\n');
+        if (medNames.isNotEmpty) {
           final presVisitId = firstVisitId ?? 'reg_${patient.id}';
           unawaited(ref.read(medicineServiceProvider).savePrescription(
             visitId: presVisitId,
             patientId: patient.id,
             visitDate: DateTime.now(),
-            medicationsText: _medicationsCtrl.text.trim(),
+            medicationsText: medNames,
           ));
         }
 
@@ -241,6 +250,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ..._impressionFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Impression', cat: PhotoCategory.treatment)),
           ..._planFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Plan', cat: PhotoCategory.treatment)),
           ..._treatmentMedFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Treatment', cat: PhotoCategory.treatment)),
+          ..._crossConsultFiles.map((f) => (name: f.name, bytes: f.bytes, caption: 'Cross Consultation', cat: PhotoCategory.visit)),
         ];
         if (allFieldFiles.isNotEmpty) {
           final photoNotifier = ref.read(photoProvider(patient.id).notifier);
@@ -319,6 +329,131 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   String? get _fullAddress {
     final v = _addressCtrl.text.trim();
     return v.isEmpty ? null : v;
+  }
+
+  // ── Structured medication table ───────────────────────────────────────────
+  Widget _buildMedicationTable() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('Treatment / Medications',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+        const Spacer(),
+        GestureDetector(
+          onTap: _showAddMedicineSheet,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(color: _kBlue, borderRadius: BorderRadius.circular(8)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.add_rounded, size: 14, color: Colors.white),
+              SizedBox(width: 4),
+              Text('Add Medicine', style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+            ]),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (_prescriptionRows.isEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 22),
+          decoration: BoxDecoration(
+            color: _kInput,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Column(children: [
+            const Icon(Icons.medication_outlined, color: _kMuted, size: 28),
+            const SizedBox(height: 6),
+            const Text('No medicines added',
+                style: TextStyle(fontSize: 12, color: _kMuted)),
+            const SizedBox(height: 2),
+            Text('Tap "Add Medicine" to prescribe',
+                style: TextStyle(fontSize: 11, color: _kMuted.withValues(alpha: 0.7))),
+          ]),
+        )
+      else ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: _kBlue.withValues(alpha: 0.15),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(10), topRight: Radius.circular(10)),
+          ),
+          child: const Row(children: [
+            Expanded(flex: 3, child: Text('Medicine',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Dose',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Route',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Freq.',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Duration',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            SizedBox(width: 24),
+          ]),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: _kInput,
+            borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Column(
+            children: List.generate(_prescriptionRows.length, (idx) {
+              final row = _prescriptionRows[idx];
+              return Container(
+                decoration: BoxDecoration(
+                  border: idx > 0
+                      ? const Border(top: BorderSide(color: _kBorder, width: 0.5))
+                      : null,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                child: Row(children: [
+                  Expanded(flex: 3, child: Text(row.medicine,
+                      style: const TextStyle(fontSize: 12, color: _kNavy,
+                          fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.route,
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.frequency,
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  GestureDetector(
+                    onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
+                    child: const Icon(Icons.close_rounded, size: 16, color: _kMuted),
+                  ),
+                ]),
+              );
+            }),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Future<void> _showAddMedicineSheet() async {
+    final result = await showModalBottomSheet<_PrescriptionRow>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddMedicineSheet(
+        patientId: '',
+        medicineService: ref.read(medicineServiceProvider),
+      ),
+    );
+    if (result != null && result.medicine.isNotEmpty) {
+      setState(() => _prescriptionRows.add(result));
+    }
   }
 
   Widget _fileChip(String name, VoidCallback onClear) => Container(
@@ -456,7 +591,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     );
   }
 
-  static const _stepLabels = ['Patient Info', 'Treatment', 'Preview & Print'];
+  static const _stepLabels = ['Patient Info', 'Treatment & Advice', 'Preview & Print'];
   static const _stepSubtitles = [
     'Identity, contact & vitals',
     'Treatment & clinical plan',
@@ -733,6 +868,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     final raw = <String, String>{
       'firstName':          p.firstName,
       'lastName':           p.lastName ?? '',
+      'date':               DateFormat('dd-MM-yyyy').format(DateTime.now()),
       'age':                _ageCtrl.text.trim().isEmpty
                               ? '' : '${_ageCtrl.text.trim()} yrs',
       'gender':             _sex ?? '',
@@ -756,9 +892,11 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       'otherInvestigation': _otherInvestCtrl.text.trim(),
       'diagnosis':          _diagnosisCtrl.text.trim(),
       'treatmentPlan':      _treatmentCtrl.text.trim(),
-      'medications':        _medicationsCtrl.text.trim(),
+      'medications':        _prescriptionRows.map((r) =>
+          '${r.medicine}${r.dose.isNotEmpty ? " ${r.dose}" : ""} (${r.route}) - ${r.frequency}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
       'notes':              _treatNotesCtrl.text.trim(),
       'advice':             _adviceCtrl.text.trim(),
+      'crossConsultation':  _crossConsultCtrl.text.trim(),
     };
     // Exclude fields with empty values — Report Generator will skip them
     ref.read(activePatientDataProvider.notifier).state = Map.fromEntries(
@@ -1020,14 +1158,6 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               prefixIcon: Icons.warning_amber_outlined,
               hint: 'e.g. Penicillin, NSAIDs, Latex…',
             ),
-            const SizedBox(height: 12),
-            _RegField(
-              label: 'Medical History',
-              controller: _historyCtrl,
-              maxLines: 3,
-              prefixIcon: Icons.history_edu_outlined,
-              hint: 'Past surgeries, chronic conditions…',
-            ),
           ]),
         ),
       ],
@@ -1276,19 +1406,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             hint: 'Recommended plan…',
           ),
           const SizedBox(height: 12),
-          MedicineAutocompleteField(
-            patientId: '',
-            initialText: _medicationsCtrl.text,
-            onChanged: (text) => _medicationsCtrl.text = text,
-            medicineService: ref.read(medicineServiceProvider),
-            cardColor: _kCard,
-            inputBgColor: _kInput,
-            textColor: _kNavy,
-            hintColor: _kMuted,
-            borderColor: _kBorder,
-            primaryColor: _kBlue,
-            historyColor: _kGreen,
-          ),
+          _buildMedicationTable(),
           const SizedBox(height: 12),
           _RegField(
             label: 'Notes',
@@ -1304,6 +1422,15 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             maxLines: 3,
             prefixIcon: Icons.tips_and_updates_outlined,
             hint: 'Advice given to patient…',
+          ),
+          const SizedBox(height: 12),
+          _fieldWithUpload(
+            label: 'Cross Consultation',
+            controller: _crossConsultCtrl,
+            files: _crossConsultFiles,
+            onFilesChange: (f) => _crossConsultFiles..clear()..addAll(f),
+            prefixIcon: Icons.people_outline_rounded,
+            hint: 'Referred to / consulted with…',
           ),
         ]),
       ),
@@ -1560,9 +1687,45 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               eRow('Impression', _diagnosisCtrl.text.trim(), _impressionFiles),
               eRow('Plan', _treatmentCtrl.text.trim(), _planFiles),
-              eRow('Treatment', _medicationsCtrl.text.trim(), _treatmentMedFiles),
+              if (_prescriptionRows.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('Prescriptions',
+                        style: TextStyle(fontSize: 11, color: _kMuted,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    ...List.generate(_prescriptionRows.length, (idx) {
+                      final r = _prescriptionRows[idx];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Row(children: [
+                          Container(
+                            width: 18, height: 18,
+                            decoration: BoxDecoration(
+                                color: _kBlue.withValues(alpha: 0.12),
+                                shape: BoxShape.circle),
+                            alignment: Alignment.center,
+                            child: Text('${idx + 1}',
+                                style: const TextStyle(fontSize: 8,
+                                    fontWeight: FontWeight.w800, color: _kBlue)),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(
+                            '${r.medicine}${r.dose.isNotEmpty ? "  ${r.dose}" : ""}  ·  ${r.route}  ·  ${r.frequency}${r.duration.isNotEmpty ? "  ×  ${r.duration}" : ""}',
+                            style: const TextStyle(fontSize: 11, color: _kNavy,
+                                fontWeight: FontWeight.w600),
+                          )),
+                        ]),
+                      );
+                    }),
+                  ]),
+                ),
+              ] else
+                eRow('Treatment', '', _treatmentMedFiles),
               pRow('Notes', fv(_treatNotesCtrl.text.trim())),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
+              eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),
         ),
@@ -1678,6 +1841,315 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     );
   }
 
+}
+
+// ── Prescription row model ────────────────────────────────────────────────────
+
+class _PrescriptionRow {
+  String medicine;
+  String dose;
+  String route;
+  String frequency;
+  String duration;
+
+  _PrescriptionRow({
+    this.medicine = '',
+    this.dose = '',
+    this.route = 'Oral',
+    this.frequency = 'OD',
+    this.duration = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+    'medicine':  medicine,
+    'dose':      dose,
+    'route':     route,
+    'frequency': frequency,
+    'duration':  duration,
+  };
+}
+
+// ── Add Medicine bottom sheet ─────────────────────────────────────────────────
+
+const _kRegRoutes = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'SL', 'Inhalation', 'Rectal', 'Nasal'];
+const _kRegFreqs  = ['OD', 'BD', 'TDS', 'QID', 'SOS', 'PRN', 'HS', 'Weekly', 'Fortnightly', 'Monthly'];
+
+class _AddMedicineSheet extends StatefulWidget {
+  final String patientId;
+  final MedicineService medicineService;
+
+  const _AddMedicineSheet({
+    required this.patientId,
+    required this.medicineService,
+  });
+
+  @override
+  State<_AddMedicineSheet> createState() => _AddMedicineSheetState();
+}
+
+class _AddMedicineSheetState extends State<_AddMedicineSheet> {
+  final _nameCtrl  = TextEditingController();
+  final _doseCtrl  = TextEditingController();
+  final _routeCtrl = TextEditingController(text: 'Oral');
+  final _freqCtrl  = TextEditingController();
+  final _durCtrl   = TextEditingController();
+
+  List<MedicineSuggestion> _suggestions = [];
+  bool _showSugg = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl.addListener(_onNameChanged);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.removeListener(_onNameChanged);
+    _nameCtrl.dispose();
+    _doseCtrl.dispose();
+    _routeCtrl.dispose();
+    _freqCtrl.dispose();
+    _durCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onNameChanged() async {
+    final q = _nameCtrl.text.trim();
+    if (q.length < 2) {
+      if (mounted) setState(() { _suggestions = []; _showSugg = false; });
+      return;
+    }
+    final results = await widget.medicineService.getSuggestions(
+        query: q, patientId: widget.patientId);
+    if (!mounted) return;
+    setState(() { _suggestions = results; _showSugg = results.isNotEmpty; });
+  }
+
+  void _selectSuggestion(MedicineSuggestion s) {
+    _nameCtrl.text = s.name;
+    if (s.defaultDose?.isNotEmpty == true && _doseCtrl.text.isEmpty) {
+      _doseCtrl.text = s.defaultDose!;
+    }
+    if (s.frequency?.isNotEmpty == true && _freqCtrl.text.isEmpty) {
+      _freqCtrl.text = s.frequency!;
+    }
+    setState(() { _suggestions = []; _showSugg = false; });
+  }
+
+  void _submit() {
+    final med = _nameCtrl.text.trim();
+    if (med.isEmpty) return;
+    Navigator.of(context).pop(_PrescriptionRow(
+      medicine:  med,
+      dose:      _doseCtrl.text.trim(),
+      route:     _routeCtrl.text.trim(),
+      frequency: _freqCtrl.text.trim(),
+      duration:  _durCtrl.text.trim(),
+    ));
+  }
+
+  InputDecoration _dec({String? hint}) => InputDecoration(
+    hintText: hint,
+    hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+    filled: true, fillColor: _kInput,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _kBorder)),
+    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _kBorder)),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: _kCard,
+          borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 16),
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: _kBorder, borderRadius: BorderRadius.circular(2)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                    color: _kBlue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.medication_rounded, color: _kBlue, size: 17),
+              ),
+              const SizedBox(width: 10),
+              const Text('Add Medicine',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+                      color: _kNavy)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Icon(Icons.close_rounded, color: _kMuted, size: 20),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: _kBorder),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Medicine name
+                const Text('Medicine Name *',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                        color: _kSlate)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _nameCtrl,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 14, color: _kNavy,
+                      fontWeight: FontWeight.w500),
+                  decoration: _dec(hint: 'Type medicine name…').copyWith(
+                    prefixIcon: const Icon(Icons.medication_outlined,
+                        size: 17, color: _kMuted),
+                    suffixIcon: _nameCtrl.text.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () { _nameCtrl.clear();
+                              setState(() { _suggestions = []; _showSugg = false; }); },
+                            child: const Icon(Icons.close_rounded,
+                                size: 16, color: _kMuted))
+                        : null,
+                  ),
+                ),
+                if (_showSugg && _suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 160),
+                    decoration: BoxDecoration(
+                      color: _kInput,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _kBorder),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: _kBorder),
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        return InkWell(
+                          onTap: () => _selectSuggestion(s),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 9),
+                            child: Row(children: [
+                              Icon(s.isHistory
+                                  ? Icons.history_rounded
+                                  : Icons.medication_rounded,
+                                size: 15,
+                                color: s.isHistory ? _kGreen : _kBlue),
+                              const SizedBox(width: 10),
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(s.name,
+                                      style: const TextStyle(fontSize: 13,
+                                          fontWeight: FontWeight.w600, color: _kNavy)),
+                                  if (s.subtitle.isNotEmpty)
+                                    Text(s.subtitle,
+                                        style: TextStyle(fontSize: 11,
+                                            color: s.isHistory ? _kGreen : _kMuted)),
+                                ],
+                              )),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Dose', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(controller: _doseCtrl,
+                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                              fontWeight: FontWeight.w500),
+                          decoration: _dec(hint: '500mg')),
+                    ])),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Route', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(controller: _routeCtrl,
+                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                              fontWeight: FontWeight.w500),
+                          decoration: _dec(hint: 'Oral / IV / IM…')),
+                    ])),
+                ]),
+                const SizedBox(height: 12),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Frequency', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(controller: _freqCtrl,
+                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                              fontWeight: FontWeight.w500),
+                          decoration: _dec(hint: 'e.g. 1-0-1')),
+                    ])),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Duration', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(controller: _durCtrl,
+                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                              fontWeight: FontWeight.w500),
+                          decoration: _dec(hint: '5 days')),
+                    ])),
+                ]),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity, height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _submit,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Add Medicine',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 // ── Wizard card ───────────────────────────────────────────────────────────────

@@ -323,110 +323,106 @@ class _ClinicHeader extends StatelessWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-          child: Row(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Clinic logo
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: _kMaroon,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.local_hospital_rounded,
-                  color: Colors.white,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Clinic name + tagline
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'The Brain &\nSpine Clinic',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: _kMaroon,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Excellence. Ethics. Efficiency.',
-                      style: TextStyle(
-                        fontSize: 8.5,
-                        fontStyle: FontStyle.italic,
-                        color: _kMaroon,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Dark / light mode toggle pill
-              _ThemeTogglePill(isDark: isDark),
-              const SizedBox(width: 10),
-              // User avatar
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: _kBlue,
-                child: Text(
-                  initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // User name + role (abbreviated to first name)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // ── Row 1: logo + clinic name + tagline ──────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    name.split(' ').first,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: textMain,
+                  // Clinic logo
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      width: 46,
+                      height: 46,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 46, height: 46,
+                        decoration: BoxDecoration(
+                          color: _kMaroon,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.local_hospital_rounded,
+                            color: Colors.white, size: 26),
+                      ),
                     ),
                   ),
-                  Text(
-                    role,
-                    style: const TextStyle(fontSize: 10, color: _kSub),
+                  const SizedBox(width: 10),
+                  // Clinic name + tagline (full remaining width)
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'The Brain & Spine Clinic',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                            color: _kMaroon,
+                            height: 1.2,
+                          ),
+                        ),
+                        Text(
+                          'Excellence. Ethics. Efficiency.',
+                          style: TextStyle(
+                            fontSize: 8.5,
+                            fontStyle: FontStyle.italic,
+                            color: _kMaroon,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(width: 8),
-              // Logout button
-              GestureDetector(
-                onTap: onLogout,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: isDark
-                        ? _kDarkField
-                        : const Color(0xFFF0F4FF),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.1)
-                          : Colors.grey.withValues(alpha: 0.2),
+              const SizedBox(height: 8),
+              // ── Row 2: toggle + avatar + logout (right-aligned) ──────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _ThemeTogglePill(isDark: isDark),
+                  const SizedBox(width: 10),
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: _kBlue,
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                  child: Icon(
-                    Icons.logout_rounded,
-                    size: 16,
-                    color: isDark ? Colors.white70 : _kNavy,
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: onLogout,
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? _kDarkField
+                            : const Color(0xFFF0F4FF),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.1)
+                              : Colors.grey.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.logout_rounded,
+                        size: 16,
+                        color: isDark ? Colors.white70 : _kNavy,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -838,6 +834,7 @@ Map<String, String> _patientDataMap(PatientEntity patient) {
   return {
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
+    'date':            DateFormat('dd-MM-yyyy').format(DateTime.now()),
     'dob':             dob,
     'gender':          gender,
     'phone':           patient.phone ?? '—',
