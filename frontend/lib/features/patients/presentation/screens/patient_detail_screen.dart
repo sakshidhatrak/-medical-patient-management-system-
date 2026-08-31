@@ -57,6 +57,7 @@ Map<String, String> _buildVisitPrintMap(
   return {
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
+    'date':            DateFormat('dd-MM-yyyy').format(DateTime.now()),
     'age':             ageStr,
     'dob':             dob,
     'gender':          gender,

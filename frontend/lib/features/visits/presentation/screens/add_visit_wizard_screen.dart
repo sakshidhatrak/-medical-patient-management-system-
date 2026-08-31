@@ -22,7 +22,6 @@ import '../../../print_configuration/presentation/providers/print_config_provide
 import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
-import '../../../medicines/presentation/widgets/medicine_autocomplete_field.dart';
 
 // ── Design tokens (matches patient registration dark theme) ───────────────────
 const _kBlue   = Color(0xFF5B5ECC);   // indigo primary (dark-bg variant)
@@ -100,17 +99,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   final _impressionFiles    = <({String name, Uint8List bytes})>[];
   final _treatmentCtrl      = TextEditingController(); // Plan
   final _planFiles          = <({String name, Uint8List bytes})>[];
-  final _medicationsCtrl    = TextEditingController(); // Medications
   final _treatmentMedFiles  = <({String name, Uint8List bytes})>[];
-  final _treatNotesCtrl     = TextEditingController();
-  final _adviceCtrl         = TextEditingController();
+  final _prescriptionRows   = <_PrescriptionRow>[]; // Structured prescriptions
+  final _treatNotesCtrl       = TextEditingController();
+  final _adviceCtrl           = TextEditingController();
+  final _crossConsultCtrl     = TextEditingController();
+  final _crossConsultFiles    = <({String name, Uint8List bytes})>[];
 
   // ── Vitals (per visit) ────────────────────────────────────────────────────
   final _weightCtrl = TextEditingController();
   final _bpCtrl     = TextEditingController();
   final _tempCtrl   = TextEditingController();
 
-  static const _stepLabels = ['Patient Info', 'Treatment', 'Preview & Print'];
+  static const _stepLabels = ['Patient Info', 'Treatment & Advice', 'Preview & Print'];
   static const _stepSubtitles = [
     'Auto-populated · Review & continue',
     'Enter treatment details',
@@ -139,8 +140,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _prevHistoryCtrl, _complaintCtrl,
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
-      _diagnosisCtrl, _treatmentCtrl, _medicationsCtrl,
-      _treatNotesCtrl, _adviceCtrl,
+      _diagnosisCtrl, _treatmentCtrl,
+      _treatNotesCtrl, _adviceCtrl, _crossConsultCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
     ]) {
       c.dispose();
@@ -176,8 +177,28 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         se(_clinicalDiagnosisCtrl,   'clinicalDiagnosis');
         se(_imagingCtrl,             'imaging');
         se(_otherInvestCtrl,         'otherInvestigation');
-        se(_medicationsCtrl,         'medications');
+        // Load structured prescriptions (new format)
+        if (m.containsKey('prescriptions')) {
+          try {
+            final list = jsonDecode(m['prescriptions'] as String) as List;
+            _prescriptionRows.clear();
+            for (final item in list) {
+              if (item is Map<String, dynamic>) {
+                _prescriptionRows.add(_PrescriptionRow.fromJson(item));
+              }
+            }
+          } catch (_) {}
+        }
+        // Backward compat: plain text medications → name-only rows
+        if (_prescriptionRows.isEmpty && (m['medications'] as String? ?? '').isNotEmpty) {
+          final lines = (m['medications'] as String).split('\n')
+              .where((l) => l.trim().isNotEmpty);
+          for (final line in lines) {
+            _prescriptionRows.add(_PrescriptionRow(medicine: line.trim()));
+          }
+        }
         se(_adviceCtrl,              'advice');
+        se(_crossConsultCtrl,        'crossConsultation');
         se(_bpCtrl,                  'bp');
         se(_weightCtrl,              'weight');
         se(_tempCtrl,                'temperature');
@@ -196,8 +217,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     add('clinicalDiagnosis', _clinicalDiagnosisCtrl.text.trim());
     add('imaging',           _imagingCtrl.text.trim());
     add('otherInvestigation',_otherInvestCtrl.text.trim());
-    add('medications',       _medicationsCtrl.text.trim());
+    // Store structured prescriptions as JSON array
+    if (_prescriptionRows.isNotEmpty) {
+      m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
+      // Also store plain medicine names for autocomplete history
+      add('medications', _prescriptionRows.map((r) => r.medicine).join('\n'));
+    }
     add('advice',            _adviceCtrl.text.trim());
+    add('crossConsultation', _crossConsultCtrl.text.trim());
     add('bp',                _bpCtrl.text.trim());
     add('weight',            _weightCtrl.text.trim());
     add('temperature',       _tempCtrl.text.trim());
@@ -210,11 +237,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _prevHistoryCtrl, _complaintCtrl,
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
-      _diagnosisCtrl, _treatmentCtrl, _medicationsCtrl,
+      _diagnosisCtrl, _treatmentCtrl,
       _treatNotesCtrl, _adviceCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
     ];
     return ctrls.any((c) => c.text.trim().isNotEmpty) ||
+        _prescriptionRows.isNotEmpty    ||
         _prevHistoryFiles.isNotEmpty    || _chiefComplaintFiles.isNotEmpty ||
         _examGeneralFiles.isNotEmpty    || _examNeurologicalFiles.isNotEmpty ||
         _clinicalDiagnosisFiles.isNotEmpty || _imagingFiles.isNotEmpty ||
@@ -236,6 +264,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       (_impressionFiles,        PhotoCategory.treatment),
       (_planFiles,              PhotoCategory.treatment),
       (_treatmentMedFiles,      PhotoCategory.treatment),
+      (_crossConsultFiles,      PhotoCategory.visit),
     ];
 
     int uploaded = 0;
@@ -343,12 +372,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
         if (visit != null) {
           // Persist prescription for offline medicine history
-          if (_medicationsCtrl.text.trim().isNotEmpty) {
+          final medNames = _prescriptionRows.map((r) => r.medicine).join('\n');
+          if (medNames.isNotEmpty) {
             unawaited(ref.read(medicineServiceProvider).savePrescription(
               visitId: visit.id,
               patientId: widget.patientId,
               visitDate: _visitDate,
-              medicationsText: _medicationsCtrl.text.trim(),
+              medicationsText: medNames,
             ));
           }
           // Keep _saving = true (button disabled) during file upload so a
@@ -409,12 +439,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         if (!mounted) return;
 
         if (ok) {
-          if (_medicationsCtrl.text.trim().isNotEmpty) {
+          final medNamesEdit = _prescriptionRows.map((r) => r.medicine).join('\n');
+          if (medNamesEdit.isNotEmpty) {
             unawaited(ref.read(medicineServiceProvider).savePrescription(
               visitId: widget.visitId!,
               patientId: widget.patientId,
               visitDate: _visitDate,
-              medicationsText: _medicationsCtrl.text.trim(),
+              medicationsText: medNamesEdit,
             ));
           }
           // Keep _saving = true during file upload (same fix as new-visit path).
@@ -466,7 +497,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   }
 
   void _nextStep() {
-    if (_step < 1) {
+    if (_step < 2) {
       setState(() => _step++);
       _pageCtrl.animateToPage(_step,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -474,28 +505,16 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   }
 
   void _prevStep() {
-    if (_step > 0 && _step < 2) {
+    if (_step > 0) {
       setState(() => _step--);
       _pageCtrl.animateToPage(_step,
           duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
     }
   }
 
-  // Navigate to any step via tapping the step indicator.
-  // Preview (step 2) is only reachable once the visit has been saved.
+  // Free navigation between all steps — no save triggered by tab tap.
   void _goToStep(int target) {
     if (target == _step) return;
-    if (target == 2 && _savedVisit == null && widget.visitId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Save the visit first to preview it.'),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: _kBlue,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-        duration: const Duration(seconds: 2),
-      ));
-      return;
-    }
     setState(() => _step = target);
     _pageCtrl.animateToPage(target,
         duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -522,6 +541,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     ref.read(activePatientDataProvider.notifier).state = {
       'firstName':      _patient!.firstName,
       'lastName':       _patient!.lastName,
+      'date':           DateFormat('dd-MM-yyyy').format(DateTime.now()),
       'gender':         gender,
       'phone':          _patient!.phone ?? '—',
       'age':            _patient!.age != null ? '${_patient!.age} yrs' : '—',
@@ -541,7 +561,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'otherInvestigation': _otherInvestCtrl.text.trim(),
       'diagnosis':      _diagnosisCtrl.text.trim(),
       'treatmentPlan':  _treatmentCtrl.text.trim(),
-      'medications':    _medicationsCtrl.text.trim(),
+      'medications':    _prescriptionRows.map((r) =>
+          '${r.medicine}${r.dose.isNotEmpty ? " ${r.dose}" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""} - ${r.frequency}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
       'notes':          _treatNotesCtrl.text.trim(),
       'advice':         _adviceCtrl.text.trim(),
       'visitType':      visit.visitType.label,
@@ -726,8 +747,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy),
         onPressed: () {
           if (_step == 2) {
-            // On preview: always go back to patient timeline
-            context.go('/patients/${widget.patientId}');
+            // If saved/edit mode: go to patient timeline; if unsaved draft: go back to treatment
+            final isUnsaved = _savedVisit == null && widget.visitId == null;
+            if (isUnsaved) {
+              _prevStep();
+            } else {
+              context.go('/patients/${widget.patientId}');
+            }
           } else if (_step == 0) {
             context.pop();
           } else {
@@ -845,10 +871,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
-    final isPreview = _step == 2;
-    final isLast    = _step == 1;
+    final isPreview  = _step == 2;
+    final isTreatment = _step == 1;
+    final isUnsaved  = _savedVisit == null && widget.visitId == null;
 
-    // Shared button styles
     final backStyle = OutlinedButton.styleFrom(
       foregroundColor: _kSlate,
       side: const BorderSide(color: _kBorder, width: 1.5),
@@ -870,6 +896,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       color: _kCard,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Progress bar on steps 0 & 1
         if (!isPreview) ...[
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -882,20 +909,71 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ),
           const SizedBox(height: 10),
         ],
+
+        // ── Preview step ──────────────────────────────────────────────────
         if (isPreview) ...[
-          Row(children: [
-            if (widget.visitId != null) ...[
+          if (isUnsaved) ...[
+            // Not saved yet: Back + Save Visit
+            Row(children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() => _step = 1);
-                    _pageCtrl.jumpToPage(1);
-                  },
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Edit'),
+                  onPressed: _saving ? null : _prevStep,
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 15),
+                  label: const Text('Back'),
+                  style: backStyle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _saving ? null : _save,
+                  style: primaryStyle,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_circle_outline_rounded, size: 17),
+                  label: _saving
+                      ? const SizedBox.shrink()
+                      : const Text('Save Visit'),
+                ),
+              ),
+            ]),
+          ] else ...[
+            // Saved: Edit / Print / Patient
+            Row(children: [
+              if (widget.visitId != null) ...[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() => _step = 1);
+                      _pageCtrl.jumpToPage(1);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kSlate,
+                      side: const BorderSide(color: _kBorder, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _openPrint,
+                  icon: const Icon(Icons.print_outlined, size: 17),
+                  label: const Text('Print'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _kSlate,
-                    side: const BorderSide(color: _kBorder, width: 1.5),
+                    foregroundColor: _kBlue,
+                    side: const BorderSide(color: _kBlue, width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -905,53 +983,33 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _openPrint,
-                icon: const Icon(Icons.print_outlined, size: 17),
-                label: const Text('Print'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _kBlue,
-                  side: const BorderSide(color: _kBlue, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => context.go('/patients/${widget.patientId}'),
+                  icon: const Icon(Icons.person_outlined, size: 17),
+                  label: const Text('Patient'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _kBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: () => context.go('/patients/${widget.patientId}'),
-                icon: const Icon(Icons.person_outlined, size: 17),
-                label: const Text('Patient'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _kBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-          ]),
-        ] else ...[
-          // Back + primary action on one line
+            ]),
+          ],
+        ]
+
+        // ── Patient Info (step 0) & Treatment (step 1) ────────────────────
+        else ...[
           Row(children: [
-            // Back button (step 0 goes to patient, step 1 goes to step 0)
             Expanded(
               flex: 1,
               child: OutlinedButton.icon(
                 onPressed: _saving ? null : () {
-                  if (_step == 0) {
-                    context.pop();
-                  } else {
-                    _prevStep();
-                  }
+                  if (_step == 0) context.pop(); else _prevStep();
                 },
                 icon: const Icon(Icons.arrow_back_ios_new, size: 15),
                 label: const Text('Back'),
@@ -959,29 +1017,48 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ),
             ),
             const SizedBox(width: 10),
-            // Continue / Save Visit
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: _saving ? null : (isLast ? _save : _nextStep),
-                style: primaryStyle,
-                icon: _saving
-                    ? const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Icon(
-                        isLast
-                            ? Icons.check_circle_outline_rounded
-                            : Icons.arrow_forward_rounded,
-                        size: 17),
-                label: _saving
-                    ? const SizedBox.shrink()
-                    : Text(isLast
-                        ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
-                        : 'Continue'),
+            // Treatment step: Save Visit + Preview side by side
+            if (isTreatment) ...[
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _saving ? null : _save,
+                  style: primaryStyle,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 16, height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.check_circle_outline_rounded, size: 17),
+                  label: _saving
+                      ? const SizedBox.shrink()
+                      : Text(widget.visitId == null ? 'Save Visit' : 'Update Visit'),
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _saving ? null : _nextStep,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _kSlate,
+                  side: const BorderSide(color: _kBorder, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: const Icon(Icons.visibility_outlined, size: 18),
+              ),
+            ] else ...[
+              // Step 0: Continue
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  onPressed: _nextStep,
+                  style: primaryStyle,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 17),
+                  label: const Text('Continue'),
+                ),
+              ),
+            ],
           ]),
         ],
       ]),
@@ -1177,8 +1254,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ]),
                 const SizedBox(height: 10),
                 _roRow('Known Allergies', n('allergies')),
-                const SizedBox(height: 10),
-                _roRow('Medical History', n('clinicalNotes')),
               ]),
             ),
           ],
@@ -1504,19 +1579,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             hint: 'Recommended plan…',
           ),
           const SizedBox(height: 12),
-          MedicineAutocompleteField(
-            patientId: widget.patientId,
-            initialText: _medicationsCtrl.text,
-            onChanged: (text) => _medicationsCtrl.text = text,
-            medicineService: ref.read(medicineServiceProvider),
-            cardColor: _kCard,
-            inputBgColor: _kWiz,
-            textColor: _kNavy,
-            hintColor: _kMuted,
-            borderColor: _kBorder,
-            primaryColor: _kBlue,
-            historyColor: _kGreen,
-          ),
+          _buildMedicationTable(),
           const SizedBox(height: 12),
           _vField(
             label: 'Notes',
@@ -1533,10 +1596,144 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             prefixIcon: Icons.tips_and_updates_outlined,
             hint: 'Advice given to patient…',
           ),
+          const SizedBox(height: 12),
+          _fieldWithUpload(
+            label: 'Cross Consultation',
+            controller: _crossConsultCtrl,
+            files: _crossConsultFiles,
+            onFilesChange: (f) => _crossConsultFiles..clear()..addAll(f),
+            prefixIcon: Icons.people_outline_rounded,
+            hint: 'Referred to / consulted with…',
+          ),
         ]),
       ),
     ],
   );
+
+  // ── Structured medication table ───────────────────────────────────────────
+  Widget _buildMedicationTable() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Text('Treatment / Medications',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+        const Spacer(),
+        GestureDetector(
+          onTap: _showAddMedicineSheet,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(color: _kBlue, borderRadius: BorderRadius.circular(8)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.add_rounded, size: 14, color: Colors.white),
+              SizedBox(width: 4),
+              Text('Add Medicine', style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+            ]),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      if (_prescriptionRows.isEmpty)
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 22),
+          decoration: BoxDecoration(
+            color: _kBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Column(children: [
+            const Icon(Icons.medication_outlined, color: _kMuted, size: 28),
+            const SizedBox(height: 6),
+            const Text('No medicines added', style: TextStyle(fontSize: 12, color: _kMuted)),
+            const SizedBox(height: 2),
+            Text('Tap "Add Medicine" to prescribe',
+                style: TextStyle(fontSize: 11, color: _kMuted.withValues(alpha: 0.7))),
+          ]),
+        )
+      else ...[
+        // Header row
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: _kBlue.withValues(alpha: 0.15),
+            borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(10), topRight: Radius.circular(10)),
+          ),
+          child: const Row(children: [
+            Expanded(flex: 3, child: Text('Medicine',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Dose',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Route',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Freq.',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            Expanded(flex: 2, child: Text('Duration',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+            SizedBox(width: 24),
+          ]),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: _kBg,
+            borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
+            border: Border.all(color: _kBorder),
+          ),
+          child: Column(
+            children: List.generate(_prescriptionRows.length, (idx) {
+              final row = _prescriptionRows[idx];
+              return Container(
+                decoration: BoxDecoration(
+                  border: idx > 0
+                      ? const Border(top: BorderSide(color: _kBorder, width: 0.5))
+                      : null,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                child: Row(children: [
+                  Expanded(flex: 3, child: Text(row.medicine,
+                      style: const TextStyle(fontSize: 12, color: _kNavy,
+                          fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.route,
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.frequency,
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
+                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      overflow: TextOverflow.ellipsis)),
+                  GestureDetector(
+                    onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
+                    child: const Icon(Icons.close_rounded, size: 16, color: _kMuted),
+                  ),
+                ]),
+              );
+            }),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Future<void> _showAddMedicineSheet() async {
+    final result = await showModalBottomSheet<_PrescriptionRow>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddMedicineSheet(
+        patientId: widget.patientId,
+        medicineService: ref.read(medicineServiceProvider),
+      ),
+    );
+    if (result != null && result.medicine.isNotEmpty) {
+      setState(() => _prescriptionRows.add(result));
+    }
+  }
 
   // Simple text field (no file upload) for Step 2
   Widget _vField({
@@ -1702,13 +1899,20 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       return const Center(child: CircularProgressIndicator(color: _kBlue));
     }
 
-    // Determine banner style: success (after save) vs info (viewing existing)
-    final isViewMode = widget.visitId != null && !_justSaved;
-    final bannerColor  = isViewMode ? _kBlue  : _kGreen;
-    final bannerIcon   = isViewMode ? Icons.assignment_outlined : Icons.check_rounded;
-    final bannerTitle  = isViewMode
-        ? 'Visit Record'
-        : (widget.visitId == null ? 'Visit Saved Successfully!' : 'Visit Updated Successfully!');
+    // Determine banner style
+    final isUnsavedDraft = _savedVisit == null && widget.visitId == null;
+    final isViewMode     = widget.visitId != null && !_justSaved;
+    final bannerColor = isUnsavedDraft ? _kAmber
+        : isViewMode ? _kBlue
+        : _kGreen;
+    final bannerIcon = isUnsavedDraft ? Icons.edit_note_outlined
+        : isViewMode ? Icons.assignment_outlined
+        : Icons.check_rounded;
+    final bannerTitle = isUnsavedDraft
+        ? 'Draft Preview  ·  Not saved yet'
+        : isViewMode
+            ? 'Visit Record'
+            : (widget.visitId == null ? 'Visit Saved Successfully!' : 'Visit Updated Successfully!');
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 28),
@@ -1856,10 +2060,62 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               eRow('Impression',
                   _diagnosisCtrl.text.trim(), _impressionFiles),
               eRow('Plan', _treatmentCtrl.text.trim(), _planFiles),
-              eRow('Treatment',
-                  _medicationsCtrl.text.trim(), _treatmentMedFiles),
+              if (_prescriptionRows.isNotEmpty) ...[
+                const Text('Prescriptions',
+                    style: TextStyle(fontSize: 10, color: _kMuted,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                ...List.generate(_prescriptionRows.length, (idx) {
+                  final r = _prescriptionRows[idx];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      Container(
+                        width: 20, height: 20,
+                        decoration: BoxDecoration(
+                            color: _kBlue.withValues(alpha: 0.12),
+                            shape: BoxShape.circle),
+                        alignment: Alignment.center,
+                        child: Text('${idx + 1}',
+                            style: const TextStyle(
+                                fontSize: 9, fontWeight: FontWeight.w800,
+                                color: _kBlue)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                                fontSize: 12, color: _kNavy,
+                                fontWeight: FontWeight.w600),
+                            children: [
+                              TextSpan(text: r.medicine),
+                              if (r.dose.isNotEmpty)
+                                TextSpan(text: '  ${r.dose}',
+                                    style: const TextStyle(
+                                        color: _kSlate, fontWeight: FontWeight.w500)),
+                              TextSpan(text: '  ·  ${r.route}  ·  ${r.frequency}',
+                                  style: const TextStyle(
+                                      color: _kMuted, fontSize: 11,
+                                      fontWeight: FontWeight.w500)),
+                              if (r.duration.isNotEmpty)
+                                TextSpan(text: '  ×  ${r.duration}',
+                                    style: const TextStyle(
+                                        color: _kMuted, fontSize: 11,
+                                        fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ]),
+                  );
+                }),
+                const SizedBox(height: 4),
+              ] else
+                eRow('Treatment', '', _treatmentMedFiles),
               pRow('Notes', fv(_treatNotesCtrl.text.trim())),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
+              eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),
         ),
@@ -1974,6 +2230,419 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             ),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+// ── Prescription row data model ───────────────────────────────────────────────
+
+class _PrescriptionRow {
+  String medicine;
+  String dose;
+  String route;
+  String frequency;
+  String duration;
+
+  _PrescriptionRow({
+    this.medicine = '',
+    this.dose = '',
+    this.route = 'Oral',
+    this.frequency = 'OD',
+    this.duration = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+    'medicine':  medicine,
+    'dose':      dose,
+    'route':     route,
+    'frequency': frequency,
+    'duration':  duration,
+  };
+
+  static _PrescriptionRow fromJson(Map<String, dynamic> j) => _PrescriptionRow(
+    medicine:  j['medicine']  as String? ?? '',
+    dose:      j['dose']      as String? ?? '',
+    route:     j['route']     as String? ?? 'Oral',
+    frequency: j['frequency'] as String? ?? 'OD',
+    duration:  j['duration']  as String? ?? '',
+  );
+}
+
+// ── Add Medicine bottom sheet ─────────────────────────────────────────────────
+
+class _AddMedicineSheet extends StatefulWidget {
+  final String patientId;
+  final MedicineService medicineService;
+
+  const _AddMedicineSheet({
+    required this.patientId,
+    required this.medicineService,
+  });
+
+  @override
+  State<_AddMedicineSheet> createState() => _AddMedicineSheetState();
+}
+
+const _kRoutes     = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'SL', 'Inhalation', 'Rectal', 'Nasal'];
+const _kFreqs      = ['OD', 'BD', 'TDS', 'QID', 'SOS', 'PRN', 'HS', 'Weekly', 'Fortnightly', 'Monthly'];
+
+class _AddMedicineSheetState extends State<_AddMedicineSheet> {
+  final _nameCtrl  = TextEditingController();
+  final _doseCtrl  = TextEditingController();
+  final _routeCtrl = TextEditingController(text: 'Oral');
+  final _freqCtrl  = TextEditingController();
+  final _durCtrl   = TextEditingController();
+  final _nameFocus = FocusNode();
+
+  List<MedicineSuggestion> _suggestions = [];
+  bool _showSugg = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl.addListener(_onNameChanged);
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.removeListener(_onNameChanged);
+    _nameCtrl.dispose();
+    _doseCtrl.dispose();
+    _routeCtrl.dispose();
+    _freqCtrl.dispose();
+    _durCtrl.dispose();
+    _nameFocus.dispose();
+    super.dispose();
+  }
+
+  void _onNameChanged() async {
+    final q = _nameCtrl.text.trim();
+    if (q.length < 2) {
+      if (mounted) setState(() { _suggestions = []; _showSugg = false; });
+      return;
+    }
+    final results = await widget.medicineService.getSuggestions(
+        query: q, patientId: widget.patientId);
+    if (!mounted) return;
+    setState(() { _suggestions = results; _showSugg = results.isNotEmpty; });
+  }
+
+  void _selectSuggestion(MedicineSuggestion s) {
+    _nameCtrl.text = s.name;
+    if (s.defaultDose?.isNotEmpty == true && _doseCtrl.text.isEmpty) {
+      _doseCtrl.text = s.defaultDose!;
+    }
+    if (s.frequency?.isNotEmpty == true && _freqCtrl.text.isEmpty) {
+      _freqCtrl.text = s.frequency!;
+    }
+    setState(() { _suggestions = []; _showSugg = false; });
+  }
+
+  void _submit() {
+    final med = _nameCtrl.text.trim();
+    if (med.isEmpty) return;
+    Navigator.of(context).pop(_PrescriptionRow(
+      medicine:  med,
+      dose:      _doseCtrl.text.trim(),
+      route:     _routeCtrl.text.trim(),
+      frequency: _freqCtrl.text.trim(),
+      duration:  _durCtrl.text.trim(),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: _kCard,
+          borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 16),
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: _kBorder, borderRadius: BorderRadius.circular(2)),
+          ),
+          // Title
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                    color: _kBlue.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.medication_rounded, color: _kBlue, size: 17),
+              ),
+              const SizedBox(width: 10),
+              const Text('Add Medicine',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+                      color: _kNavy)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Icon(Icons.close_rounded, color: _kMuted, size: 20),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: _kBorder),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // ── Medicine name with autocomplete ────────────────────────────
+                const Text('Medicine Name *',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                        color: _kSlate)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _nameCtrl,
+                  focusNode: _nameFocus,
+                  autofocus: true,
+                  style: const TextStyle(fontSize: 14, color: _kNavy,
+                      fontWeight: FontWeight.w500),
+                  decoration: InputDecoration(
+                    hintText: 'Type medicine name…',
+                    hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+                    prefixIcon: const Icon(Icons.medication_outlined, size: 17, color: _kMuted),
+                    suffixIcon: _nameCtrl.text.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () { _nameCtrl.clear();
+                              setState(() { _suggestions = []; _showSugg = false; }); },
+                            child: const Icon(Icons.close_rounded, size: 16, color: _kMuted))
+                        : null,
+                    filled: true, fillColor: _kBg,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _kBorder)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _kBorder)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                  ),
+                ),
+                // Suggestions dropdown
+                if (_showSugg && _suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 160),
+                    decoration: BoxDecoration(
+                      color: _kWiz,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: _kBorder),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      itemCount: _suggestions.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: _kBorder),
+                      itemBuilder: (_, i) {
+                        final s = _suggestions[i];
+                        return InkWell(
+                          onTap: () => _selectSuggestion(s),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 9),
+                            child: Row(children: [
+                              Icon(
+                                s.isHistory
+                                    ? Icons.history_rounded
+                                    : Icons.medication_rounded,
+                                size: 15,
+                                color: s.isHistory ? _kGreen : _kBlue,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                  Text(s.name,
+                                      style: const TextStyle(
+                                          fontSize: 13, fontWeight: FontWeight.w600,
+                                          color: _kNavy)),
+                                  if (s.subtitle.isNotEmpty)
+                                    Text(s.subtitle,
+                                        style: TextStyle(
+                                            fontSize: 11,
+                                            color: s.isHistory ? _kGreen : _kMuted)),
+                                ]),
+                              ),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 12),
+
+                // ── Dose & Route ───────────────────────────────────────────────
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Dose',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _doseCtrl,
+                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                            fontWeight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          hintText: '500mg',
+                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+                          filled: true, fillColor: _kBg,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Route',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _routeCtrl,
+                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                            fontWeight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          hintText: 'Oral / IV / IM…',
+                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+                          filled: true, fillColor: _kBg,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // ── Frequency & Duration ───────────────────────────────────────
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Frequency',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _freqCtrl,
+                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                            fontWeight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          hintText: 'e.g. 1-0-1',
+                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+                          filled: true, fillColor: _kBg,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Duration',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                              color: _kSlate)),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _durCtrl,
+                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                            fontWeight: FontWeight.w500),
+                        decoration: InputDecoration(
+                          hintText: '5 days',
+                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+                          filled: true, fillColor: _kBg,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 12),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBorder)),
+                          focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ]),
+
+                const SizedBox(height: 18),
+
+                // ── Add button ─────────────────────────────────────────────────
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _submit,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('Add Medicine',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kBlue,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ]),
+            ),
+          ),
+        ]),
       ),
     );
   }
