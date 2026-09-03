@@ -11,6 +11,8 @@ import 'core/sync/sync_engine.dart';
 import 'features/auth/domain/entities/user_entity.dart';
 import 'core/storage/storage_provider.dart';
 import 'features/auth/presentation/providers/auth_provider.dart';
+import 'dart:math' as math;
+
 
 // Pass --dart-define=BYPASS_LOGIN=true to skip authentication for testing.
 const bool _bypassLogin =
