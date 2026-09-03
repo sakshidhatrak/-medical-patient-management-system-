@@ -7,12 +7,35 @@ import '../providers/print_config_provider.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 
-const _kNavy   = Color(0xFF1A2D5A);
-const _kMaroon = Color(0xFF7B1F2E);
-const _kCream  = Color(0xFFF0EDE6);
-const _kDot    = Color(0xFFBBBBBB);
-const _kBorder = Color(0xFFDDDDDD);
-const _kSub    = Color(0xFF888888);
+const _kNavy       = Color(0xFF1A2D5A);
+const _kMaroon     = Color(0xFF7B1F2E);
+const _kCream      = Color(0xFFF0EDE6);
+const _kDot        = Color(0xFFBBBBBB);
+const _kBorder     = Color(0xFFDDDDDD);
+const _kSub        = Color(0xFF888888);
+const _kHeaderBlue   = Color(0xFFDEEDF8);
+const _kClinicRed    = Color(0xFFC41230);
+const _kSpecBlue     = Color(0xFF1A5276);
+const _kSidebarRed   = Color(0xFFE53935);
+const _kSidebarCream = Color(0xFFF0EAD2);
+
+// ── Approved specialties list ─────────────────────────────────────────────────
+
+const _kSpecialties = [
+  'Brain and Spine Injury',
+  'Vascular Neurosurgery',
+  'Brain tumors',
+  'Spine tumors',
+  'Pediatric Neurosurgery',
+  'Degenerative spine disease',
+  'Spondylosis',
+  'Slip disc',
+  'Cranio-Vertebral junction abnormality',
+  'Root or epidural block',
+  'Endoscopic skull base surgery',
+  'Hydrocephalus',
+  'Minimally invasive spine surgery',
+];
 
 // ── Section specification model ───────────────────────────────────────────────
 
@@ -101,40 +124,50 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
     final config = ref.watch(printConfigProvider);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F4F8),
+      backgroundColor: Colors.white,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Clinic header ────────────────────────────────────────────
-            _ClinicHeader(data: data),
-            const SizedBox(height: 10),
-            // ── Patient info bar ─────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _PatientBar(data: data),
-            ),
-            const SizedBox(height: 8),
-            // ── Customize fields bar ─────────────────────────────────────
-            _CustomizeBar(data: data, config: config),
-            const SizedBox(height: 8),
-            // ── Report sections (hidden when no data) ─────────────────────
-            ..._buildSections(config, data),
-            const SizedBox(height: 10),
-            // ── Footer ───────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _FooterCard(data: data),
-            ),
-            const SizedBox(height: 14),
-            // ── Save Report Button ────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: _SaveButton(
-                saving: _saving,
-                onTap: () => _export(config),
-              ),
+            // ── Approved letterhead header ────────────────────────────────
+            _LetterheadHeader(data: data),
+            // ── Body: specialty sidebar + right content ───────────────────
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left specialty sidebar
+                const _SpecialtySidebar(),
+                // Right content area
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 8),
+                      // ── Customize fields bar ──────────────────────────────
+                      _CustomizeBar(data: data, config: config),
+                      const SizedBox(height: 8),
+                      // ── Report sections ───────────────────────────────────
+                      ..._buildSections(config, data),
+                      const SizedBox(height: 10),
+                      // ── Footer ────────────────────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: _FooterCard(data: data),
+                      ),
+                      const SizedBox(height: 14),
+                      // ── Save button ───────────────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: _SaveButton(
+                          saving: _saving,
+                          onTap: () => _export(config),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -298,188 +331,230 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
   }
 }
 
-// ── Clinic header ─────────────────────────────────────────────────────────────
+// ── Approved letterhead header ────────────────────────────────────────────────
 
-class _ClinicHeader extends StatelessWidget {
+class _LetterheadHeader extends StatelessWidget {
   final Map<String, String> data;
-  const _ClinicHeader({required this.data});
+  const _LetterheadHeader({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: _kCream,
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Logo — compact
-          SizedBox(
-            width: 46,
-            height: 56,
-            child: Image.asset(
-              'assets/images/app_logo.png',
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) =>
-                  const Icon(Icons.local_hospital, color: _kNavy, size: 28),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Clinic name + tagline
-          Expanded(
-            flex: 5,
-            child: Column(
+    final name = [data['firstName'] ?? '', data['lastName'] ?? '']
+        .where((s) => s.isNotEmpty && s != '—').join(' ');
+    final date = data['date'] ?? '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Letterhead header with dot-pattern background ─────────────
+        Stack(
+          children: [
+            Positioned.fill(child: Container(color: _kHeaderBlue)),
+            Positioned.fill(
+                child: CustomPaint(painter: const _HeaderDotPainter())),
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'The Brain & Spine Clinic',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: _kMaroon,
-                    letterSpacing: 0.1,
-                    height: 1.25,
+              children: [
+                // Left: clinic branding + logo
+                SizedBox(
+                  width: 165,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 16, 8, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'The Brain & Spine Clinic',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            fontStyle: FontStyle.italic,
+                            color: _kClinicRed,
+                            letterSpacing: 0.3,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Excellence, Ethics, Efficiency',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                            color: _kClinicRed,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          height: 115,
+                          child: Image.asset(
+                            'assets/images/app_logo.png',
+                            fit: BoxFit.contain,
+                            alignment: Alignment.centerLeft,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.local_hospital,
+                              size: 80,
+                              color: _kNavy,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                SizedBox(height: 3),
-                Text(
-                  'Excellence, Ethics, Efficiency',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontStyle: FontStyle.italic,
-                    color: _kMaroon,
+                // Vertical divider
+                Container(width: 1, color: Colors.grey.shade400),
+                // Right: doctor credentials – centered
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const Text(
+                          'Dr. Harshal S. Chaudhari',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                            color: _kNavy,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Divider(height: 1, thickness: 0.8, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Brain and Spine surgeon/ Neurosurgeon',
+                          style: TextStyle(fontSize: 10.5, color: Colors.black87),
+                          textAlign: TextAlign.center,
+                        ),
+                        const Text(
+                          'M.B.B.S., M.S. General Surgery',
+                          style: TextStyle(fontSize: 10.5, color: Colors.black87),
+                          textAlign: TextAlign.center,
+                        ),
+                        const Text(
+                          '(K.E.M. Hospital, Mumbai)',
+                          style: TextStyle(fontSize: 10.5, color: Colors.black87),
+                          textAlign: TextAlign.center,
+                        ),
+                        const Text(
+                          'M.Ch. Neurosurgery (G.M.C., Goa)',
+                          style: TextStyle(fontSize: 10.5, color: Colors.black87),
+                          textAlign: TextAlign.center,
+                        ),
+                        const Text(
+                          'Fellow in Neurosurgical Oncology (Tata Memorial Hospital)',
+                          style: TextStyle(fontSize: 10.5, color: Colors.black87),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 10),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.language, size: 11, color: _kNavy),
+                            SizedBox(width: 3),
+                            Text(
+                              'www.drharshalchaudhari.com',
+                              style: TextStyle(fontSize: 10, color: _kNavy),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
+          ],
+        ),
+        // ── Separator ─────────────────────────────────────────────────
+        Container(height: 1, color: Colors.grey.shade400),
+        // ── Patient Name + Date row ───────────────────────────────────
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Row(
+            children: [
+              const Text(
+                'Patient Name : ',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+              ),
+              Expanded(
+                child: name.isNotEmpty
+                    ? Text(name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w700))
+                    : Container(height: 0.8, color: Colors.black45),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Date : ',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+              ),
+              SizedBox(
+                width: 82,
+                child: date.isNotEmpty
+                    ? Text(date,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11))
+                    : Container(height: 0.8, color: Colors.black45),
+              ),
+            ],
           ),
-          const SizedBox(width: 6),
-          // Doctor credentials — compact right column
-          Expanded(
-            flex: 6,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: const [
-                Text(
-                  'Dr. Harshal S. Chaudhari',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    color: _kNavy,
-                  ),
-                  textAlign: TextAlign.end,
-                ),
-                SizedBox(height: 2),
-                Text('Neurosurgeon (Brain & Spine)',
-                    style: TextStyle(fontSize: 7.5, color: _kNavy),
-                    textAlign: TextAlign.end),
-                Text('MBBS, MS Gen Surg (KEM, Mumbai)',
-                    style: TextStyle(fontSize: 6.5, color: _kSub),
-                    textAlign: TextAlign.end),
-                Text('MCh Neurosurgery (GMC, Goa)',
-                    style: TextStyle(fontSize: 6.5, color: _kSub),
-                    textAlign: TextAlign.end),
-                Text('Fellow Neuro-Oncology (TMH)',
-                    style: TextStyle(fontSize: 6.5, color: _kSub),
-                    textAlign: TextAlign.end),
-                SizedBox(height: 2),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.language, size: 8, color: _kNavy),
-                    SizedBox(width: 2),
-                    Text('drharshalchaudhari.com',
-                        style: TextStyle(fontSize: 7, color: _kNavy)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+        Container(height: 1, color: Colors.grey.shade400),
+      ],
     );
   }
 }
 
-// ── Patient info bar ──────────────────────────────────────────────────────────
+// ── Specialty sidebar ─────────────────────────────────────────────────────────
 
-class _PatientBar extends StatelessWidget {
-  final Map<String, String> data;
-  const _PatientBar({required this.data});
+class _SpecialtySidebar extends StatelessWidget {
+  const _SpecialtySidebar();
 
   @override
   Widget build(BuildContext context) {
-    final fn     = data['firstName'] ?? '';
-    final ln     = data['lastName'] ?? '';
-    final name   = [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
-    final age    = data['age'] ?? '';
-    final gender = data['gender'] ?? '';
-    final ageSex = [age, gender].where((s) => s.isNotEmpty && s != '—').join(' / ');
-    final uhid   = data['uhid'] ?? data['prn'] ?? data['idProofNumber'] ?? '';
-    final date   = data['date'] ?? '';
-
     return Container(
+      width: 155,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: _kBorder),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _cell(Icons.person_outline_rounded, 'Patient Name', name,
-                flex: 3),
-            _vd(),
-            _cell(Icons.calendar_today_outlined, 'Age / Gender', ageSex,
-                flex: 2),
-            _vd(),
-            _cell(Icons.badge_outlined, 'UHID / Reg. No.', uhid,
-                flex: 2),
-            _vd(),
-            _cell(Icons.date_range_outlined, 'Date', date, flex: 2),
-          ],
+        color: _kSidebarCream,
+        border: Border(
+          left: const BorderSide(color: _kSidebarRed, width: 5),
+          right: BorderSide(color: Colors.grey.shade300, width: 1),
         ),
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 14, 8, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _kSpecialties
+            .map((s) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          color: _kSpecBlue,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Container(height: 0.8, color: _kSpecBlue),
+                    ],
+                  ),
+                ))
+            .toList(),
       ),
     );
   }
-
-  Widget _cell(IconData icon, String label, String value, {int flex = 1}) =>
-      Expanded(
-        flex: flex,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Icon(icon, size: 14, color: _kNavy),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(label,
-                      style: const TextStyle(
-                          fontSize: 8.5,
-                          color: _kNavy,
-                          fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis),
-                ),
-              ]),
-              const SizedBox(height: 5),
-              if (value.isNotEmpty)
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: _kNavy),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis)
-              else
-                _dot(),
-            ],
-          ),
-        ),
-      );
-
-  Widget _vd() => Container(width: 1, color: _kBorder);
 }
 
 // ── Section card ──────────────────────────────────────────────────────────────
@@ -615,111 +690,107 @@ class _FooterCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: _kBorder),
       ),
-      padding: const EdgeInsets.all(12),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Signature + credentials
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Harshal',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontStyle: FontStyle.italic,
-                      fontWeight: FontWeight.w700,
-                      color: _kNavy,
-                    ),
-                  ),
-                  Container(
-                      height: 0.8, width: 90, color: Colors.black38),
-                  const SizedBox(height: 4),
-                  const Text('Dr. Harshal S. Chaudhari',
+      padding: const EdgeInsets.all(8),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 360,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Signature + credentials
+              SizedBox(
+                width: 130,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Harshal',
                       style: TextStyle(
-                          fontSize: 10, fontWeight: FontWeight.w800)),
-                  const Text('Neurosurgeon (Brain & Spine)',
-                      style: TextStyle(fontSize: 8)),
-                  const Text('MBBS, MS Gen Surg (KEM)',
-                      style: TextStyle(fontSize: 7.5, color: _kSub)),
-                  const Text('MCh Neurosurgery (GMC, Goa)',
-                      style: TextStyle(fontSize: 7.5, color: _kSub)),
-                  const Text('Fellow Neuro-Oncology (TMH)',
-                      style: TextStyle(fontSize: 7.5, color: _kSub)),
-                ],
+                        fontSize: 20,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w700,
+                        color: _kNavy,
+                      ),
+                    ),
+                    Container(height: 0.8, width: 90, color: Colors.black38),
+                    const SizedBox(height: 4),
+                    const Text('Dr. Harshal S. Chaudhari',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800)),
+                    const Text('Neurosurgeon (Brain & Spine)',
+                        style: TextStyle(fontSize: 8)),
+                    const Text('MBBS, MS Gen Surg (KEM)',
+                        style: TextStyle(fontSize: 7.5, color: _kSub)),
+                    const Text('MCh Neurosurgery (GMC, Goa)',
+                        style: TextStyle(fontSize: 7.5, color: _kSub)),
+                    const Text('Fellow Neuro-Oncology (TMH)',
+                        style: TextStyle(fontSize: 7.5, color: _kSub)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            // Logo
-            Expanded(
-              flex: 3,
-              child: Center(
-                child: SizedBox(
-                  width: 80,
-                  height: 90,
-                  child: Image.asset(
-                    'assets/images/app_logo.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                        Icons.local_hospital,
-                        size: 50,
-                        color: _kNavy),
+              const SizedBox(width: 10),
+              // Logo
+              SizedBox(
+                width: 90,
+                child: Center(
+                  child: SizedBox(
+                    width: 80,
+                    height: 90,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                          Icons.local_hospital, size: 50, color: _kNavy),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            // Follow up
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'FOLLOW UP / REVIEW',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      color: _kNavy,
-                      letterSpacing: 0.4,
+              const SizedBox(width: 10),
+              // Follow up
+              SizedBox(
+                width: 120,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'FOLLOW UP / REVIEW',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: _kNavy,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        size: 14, color: _kNavy),
-                    const SizedBox(width: 6),
-                    const Text('Next Visit on : ',
-                        style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: _kNavy)),
-                    Expanded(
-                        child:
-                            Container(height: 0.8, color: _kNavy)),
-                  ]),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'NOTES',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: _kNavy,
+                    const SizedBox(height: 12),
+                    Row(children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 12, color: _kNavy),
+                      const SizedBox(width: 4),
+                      const Text('Next Visit on : ',
+                          style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w600,
+                              color: _kNavy)),
+                      Expanded(child: Container(height: 0.8, color: _kNavy)),
+                    ]),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'NOTES',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: _kNavy,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  _dot(),
-                  const SizedBox(height: 8),
-                  _dot(),
-                ],
+                    const SizedBox(height: 8),
+                    _dot(),
+                    const SizedBox(height: 8),
+                    _dot(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -816,8 +887,10 @@ class _CustomizeBar extends StatelessWidget {
               const Expanded(
                 child: Text(
                   'Customize Report Fields',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: _kNavy,
                   ),
@@ -1067,18 +1140,51 @@ class _FieldTile extends StatelessWidget {
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 Widget _dot() {
-  return LayoutBuilder(builder: (_, c) {
-    final n = (c.maxWidth / 7).floor();
-    return Row(
-      children: List.generate(
-        n,
-        (i) => Container(
-          width: 4,
-          height: 0.9,
-          margin: const EdgeInsets.only(right: 3),
-          color: _kDot,
-        ),
-      ),
-    );
-  });
+  return CustomPaint(
+    painter: _DotLinePainter(),
+    child: const SizedBox(height: 1),
+  );
+}
+
+class _HeaderDotPainter extends CustomPainter {
+  const _HeaderDotPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0x407AB8D8)
+      ..style = PaintingStyle.fill;
+    const spacing = 9.0;
+    const radius = 1.5;
+    for (var row = 0; row * spacing < size.height + spacing; row++) {
+      final offsetX = (row % 2 == 0) ? 0.0 : spacing / 2;
+      for (var col = 0; col * spacing < size.width + spacing; col++) {
+        canvas.drawCircle(
+          Offset(col * spacing + offsetX, row * spacing),
+          radius,
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _DotLinePainter extends CustomPainter {
+  const _DotLinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = _kDot;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawRect(Rect.fromLTWH(x, 0, 4, 0.9), paint);
+      x += 7;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

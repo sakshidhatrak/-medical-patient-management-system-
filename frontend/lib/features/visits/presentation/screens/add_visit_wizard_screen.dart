@@ -713,10 +713,47 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       }
     }
 
-    final vp = MediaQuery.of(context).viewPadding;
+    final vp      = MediaQuery.of(context).viewPadding;
+    final isLast    = _step == 1;
+    final isPreview = _step == 2;
     return Scaffold(
       backgroundColor: _kBg,
       resizeToAvoidBottomInset: false,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: isPreview ? null : Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 54,
+          child: ElevatedButton.icon(
+            onPressed: _saving ? null : (isLast ? _save : _nextStep),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _kBlue,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
+              elevation: 6,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
+              textStyle: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            icon: _saving
+                ? const SizedBox(
+                    width: 18, height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : Icon(isLast
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.arrow_forward_rounded,
+                    size: 18),
+            label: _saving
+                ? const SizedBox.shrink()
+                : Text(isLast
+                    ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
+                    : 'Continue'),
+          ),
+        ),
+      ),
       body: Column(children: [
         SizedBox(height: vp.top),
         _buildWizardHeader(),
@@ -871,32 +908,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
-    final isPreview  = _step == 2;
-    final isTreatment = _step == 1;
-    final isUnsaved  = _savedVisit == null && widget.visitId == null;
-
-    final backStyle = OutlinedButton.styleFrom(
-      foregroundColor: _kSlate,
-      side: const BorderSide(color: _kBorder, width: 1.5),
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-    );
-    final primaryStyle = ElevatedButton.styleFrom(
-      backgroundColor: _kBlue,
-      foregroundColor: Colors.white,
-      disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
-      elevation: 0,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-    );
+    final isPreview = _step == 2;
 
     return Container(
       color: _kCard,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Progress bar on steps 0 & 1
         if (!isPreview) ...[
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -907,73 +924,22 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               color: _kBlue,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
         ],
-
-        // ── Preview step ──────────────────────────────────────────────────
         if (isPreview) ...[
-          if (isUnsaved) ...[
-            // Not saved yet: Back + Save Visit
-            Row(children: [
+          Row(children: [
+            if (widget.visitId != null) ...[
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _prevStep,
-                  icon: const Icon(Icons.arrow_back_ios_new, size: 15),
-                  label: const Text('Back'),
-                  style: backStyle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _saving ? null : _save,
-                  style: primaryStyle,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline_rounded, size: 17),
-                  label: _saving
-                      ? const SizedBox.shrink()
-                      : const Text('Save Visit'),
-                ),
-              ),
-            ]),
-          ] else ...[
-            // Saved: Edit / Print / Patient
-            Row(children: [
-              if (widget.visitId != null) ...[
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() => _step = 1);
-                      _pageCtrl.jumpToPage(1);
-                    },
-                    icon: const Icon(Icons.edit_outlined, size: 16),
-                    label: const Text('Edit'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _kSlate,
-                      side: const BorderSide(color: _kBorder, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                      textStyle: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openPrint,
-                  icon: const Icon(Icons.print_outlined, size: 17),
-                  label: const Text('Print'),
+                  onPressed: () {
+                    setState(() => _step = 1);
+                    _pageCtrl.jumpToPage(1);
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _kBlue,
-                    side: const BorderSide(color: _kBlue, width: 1.5),
+                    foregroundColor: _kSlate,
+                    side: const BorderSide(color: _kBorder, width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -983,84 +949,59 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () => context.go('/patients/${widget.patientId}'),
-                  icon: const Icon(Icons.person_outlined, size: 17),
-                  label: const Text('Patient'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _kBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-            ]),
-          ],
-        ]
-
-        // ── Patient Info (step 0) & Treatment (step 1) ────────────────────
-        else ...[
-          Row(children: [
+            ],
             Expanded(
-              flex: 1,
               child: OutlinedButton.icon(
-                onPressed: _saving ? null : () {
-                  if (_step == 0) context.pop(); else _prevStep();
-                },
-                icon: const Icon(Icons.arrow_back_ios_new, size: 15),
-                label: const Text('Back'),
-                style: backStyle,
+                onPressed: _openPrint,
+                icon: const Icon(Icons.print_outlined, size: 17),
+                label: const Text('Print'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _kBlue,
+                  side: const BorderSide(color: _kBlue, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                ),
               ),
             ),
-            const SizedBox(width: 10),
-            // Treatment step: Save Visit + Preview side by side
-            if (isTreatment) ...[
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _saving ? null : _save,
-                  style: primaryStyle,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 16, height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Icon(Icons.check_circle_outline_rounded, size: 17),
-                  label: _saving
-                      ? const SizedBox.shrink()
-                      : Text(widget.visitId == null ? 'Save Visit' : 'Update Visit'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: _saving ? null : _nextStep,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _kSlate,
-                  side: const BorderSide(color: _kBorder, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () => context.go('/patients/${widget.patientId}'),
+                icon: const Icon(Icons.person_outlined, size: 17),
+                label: const Text('Patient'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _kBlue,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                child: const Icon(Icons.visibility_outlined, size: 18),
-              ),
-            ] else ...[
-              // Step 0: Continue
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _nextStep,
-                  style: primaryStyle,
-                  icon: const Icon(Icons.arrow_forward_rounded, size: 17),
-                  label: const Text('Continue'),
+                      borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
                 ),
               ),
-            ],
+            ),
           ]),
-        ],
+        ] else if (_step > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _saving ? null : _prevStep,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _kSlate,
+                side: const BorderSide(color: _kBorder, width: 1.5),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.arrow_back_ios_new, size: 16),
+              label: const Text('Back'),
+            ),
+          ),
+        // Spacer so FAB doesn't overlap the Back button
+        if (!isPreview) const SizedBox(height: 60),
       ]),
     );
   }
