@@ -43,9 +43,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.listen<AuthState>(authProvider, (_, next) {
       if (next is AuthAuthenticated) context.go(RouteNames.patients);
       if (next is AuthError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.message), backgroundColor: _kRed),
-        );
+        final isUnreachable = next.message.contains('internet') ||
+            next.message.contains('connect to server');
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(next.message),
+              backgroundColor: _kRed,
+              duration: Duration(seconds: isUnreachable ? 8 : 4),
+              action: isUnreachable
+                  ? SnackBarAction(
+                      label: 'Retry',
+                      textColor: Colors.white,
+                      onPressed: _submit,
+                    )
+                  : null,
+            ),
+          );
       }
     });
 
@@ -274,10 +289,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   padding: const EdgeInsets.symmetric(horizontal: 20),
                                 ),
                                 child: isLoading
-                                    ? const SizedBox(
-                                        width: 22, height: 22,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white, strokeWidth: 2),
+                                    ? const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 18, height: 18,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white, strokeWidth: 2),
+                                          ),
+                                          SizedBox(width: 10),
+                                          Text('Connecting...',
+                                              style: TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                color: Colors.white,
+                                              )),
+                                        ],
                                       )
                                     : Row(
                                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

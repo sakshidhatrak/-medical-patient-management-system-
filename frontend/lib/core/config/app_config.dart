@@ -12,6 +12,7 @@ class AppConfig {
   static const String tokenKey = 'auth_access_token';
   static const String refreshTokenKey = 'auth_refresh_token';
   static const String userKey = 'current_user';
+  static const String credHashKey = 'auth_cred_hash'; // SHA-256(email:password)
 
   // API endpoints (Spring Boot backend, paths relative to /api)
   static const String loginEndpoint = '/auth/login';

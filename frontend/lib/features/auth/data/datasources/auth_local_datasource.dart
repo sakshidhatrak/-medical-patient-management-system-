@@ -15,6 +15,10 @@ abstract interface class AuthLocalDataSource {
 
   Future<UserModel?> getUser();
 
+  Future<void> saveCredHash(String hash);
+
+  Future<String?> getCredHash();
+
   Future<void> clearAll();
 }
 
@@ -55,6 +59,14 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
       );
     }
   }
+
+  @override
+  Future<void> saveCredHash(String hash) =>
+      _storage.write(key: AppConfig.credHashKey, value: hash);
+
+  @override
+  Future<String?> getCredHash() =>
+      _storage.read(key: AppConfig.credHashKey);
 
   @override
   Future<void> clearAll() => _storage.deleteAll();

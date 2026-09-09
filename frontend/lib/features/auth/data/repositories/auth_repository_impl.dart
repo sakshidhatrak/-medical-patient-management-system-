@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:dartz/dartz.dart';
 
 import '../../../../core/error/exceptions.dart';
@@ -6,6 +9,9 @@ import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/auth_repository.dart';
 import '../datasources/auth_local_datasource.dart';
 import '../datasources/auth_remote_datasource.dart';
+
+String _hashCreds(String email, String password) =>
+    sha256.convert(utf8.encode('${email.trim().toLowerCase()}:$password')).toString();
 
 class AuthRepositoryImpl implements AuthRepository {
   final AuthRemoteDataSource _remote;
@@ -28,11 +34,20 @@ class AuthRepositoryImpl implements AuthRepository {
       await Future.wait([
         _local.saveUser(user),
         _local.saveToken(token: token, refreshToken: token),
+        _local.saveCredHash(_hashCreds(email, password)),
       ]);
       return Right(user.toEntity());
     } on UnauthorizedException catch (e) {
       return Left(AuthFailure(e.message, code: e.code));
     } on AppException catch (e) {
+      // Server unreachable — try offline login with cached credentials
+      final cachedUser = await _local.getUser();
+      final storedHash = await _local.getCredHash();
+      if (cachedUser != null &&
+          storedHash != null &&
+          storedHash == _hashCreds(email, password)) {
+        return Right(cachedUser.toEntity());
+      }
       return Left(ServerFailure(e.message, code: e.code));
     }
   }

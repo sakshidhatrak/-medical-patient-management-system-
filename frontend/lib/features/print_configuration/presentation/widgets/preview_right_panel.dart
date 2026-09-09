@@ -859,11 +859,11 @@ class _CustomizeBar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: InkWell(
-        onTap: () => showModalBottomSheet(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => _FieldConfigSheet(data: data),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            fullscreenDialog: true,
+            builder: (_) => FieldConfigPage(patientData: data),
+          ),
         ),
         borderRadius: BorderRadius.circular(8),
         child: Container(
@@ -910,170 +910,249 @@ class _CustomizeBar extends StatelessWidget {
   }
 }
 
-// ── Field configuration bottom sheet ─────────────────────────────────────────
+// ── Field Configuration Page (full-screen) ───────────────────────────────────
 
-class _FieldConfigSheet extends ConsumerWidget {
-  final Map<String, String> data;
-  const _FieldConfigSheet({required this.data});
+const kFieldCfgPageBg  = Color(0xFFF0F3FF);
+const kFieldCfgIconBg  = Color(0xFFE8ECFF);
+const kFieldCfgNavy    = Color(0xFF1A237E);
+
+// ignore: library_private_types_in_public_api (intentional — used by PrintConfigScreen)
+const _kPageBg  = kFieldCfgPageBg;
+const _kIconBg  = kFieldCfgIconBg;
+const _kPrimNvy = kFieldCfgNavy;
+
+class FieldConfigPage extends ConsumerStatefulWidget {
+  final Map<String, String> patientData;
+  const FieldConfigPage({super.key, required this.patientData});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final enabled  = ref.watch(printConfigProvider).enabledFieldIds;
-    final notifier = ref.read(printConfigProvider.notifier);
-
-    return Material(
-      color: Colors.transparent,
-      child: DraggableScrollableSheet(
-        initialChildSize: 0.82,
-        maxChildSize: 0.95,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (ctx, scrollCtrl) => ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          child: Column(
-            children: [
-              // ── Header ──────────────────────────────────────────────────
-              Container(
-                color: _kNavy,
-                padding: const EdgeInsets.fromLTRB(16, 10, 12, 14),
-                child: Column(
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 36,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.tune_rounded,
-                            color: Colors.white, size: 18),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'Customize Report Fields',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => notifier.reset(),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
-                            foregroundColor: Colors.white70,
-                          ),
-                          child: const Text('Reset All',
-                              style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              // ── Section list ─────────────────────────────────────────────
-              Expanded(
-                child: ListView(
-                  controller: scrollCtrl,
-                  padding: EdgeInsets.zero,
-                  children: [
-                    for (final s in _kSectionDefs) ...[
-                      _SectionHeader(section: s, enabled: enabled, notifier: notifier),
-                      for (final f in s.fields)
-                        _FieldTile(
-                          field: f,
-                          data: data,
-                          enabled: enabled,
-                          notifier: notifier,
-                        ),
-                      const Divider(height: 1, thickness: 0.5),
-                    ],
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              ),
-              // ── Done button ──────────────────────────────────────────────
-              Container(
-                color: Colors.white,
-                padding: EdgeInsets.fromLTRB(
-                    16, 10, 16,
-                    16 + MediaQuery.of(context).padding.bottom),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _kNavy,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
-                    ),
-                    child: const Text('DONE',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1,
-                            fontSize: 14)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  ConsumerState<FieldConfigPage> createState() => _FieldConfigPageState();
 }
 
-class _SectionHeader extends StatelessWidget {
-  final _S section;
-  final Set<String> enabled;
-  final PrintConfigNotifier notifier;
-  const _SectionHeader(
-      {required this.section,
-      required this.enabled,
-      required this.notifier});
+class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
+  final Set<int> _expanded = {};
+  bool _saving = false;
 
   @override
   Widget build(BuildContext context) {
-    final allOn = section.fields.every((f) => enabled.contains(f.$2));
-    return Container(
-      color: _kCream,
-      padding: const EdgeInsets.fromLTRB(16, 9, 8, 9),
-      child: Row(
-        children: [
-          Icon(section.icon, size: 15, color: _kNavy),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              section.title,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: _kNavy,
-                letterSpacing: 0.3,
+    final enabled  = ref.watch(printConfigProvider).enabledFieldIds;
+    final notifier = ref.read(printConfigProvider.notifier);
+    final botPad   = MediaQuery.of(context).padding.bottom;
+
+    return Scaffold(
+      backgroundColor: _kPageBg,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0.5,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.black12,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: _kPrimNvy),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'Customize Report Fields',
+          style: TextStyle(
+            color: _kPrimNvy,
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => notifier.reset(),
+            child: const Text(
+              'Reset All',
+              style: TextStyle(
+                color: _kPrimNvy,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          Transform.scale(
-            scale: 0.82,
-            child: Switch(
-              value: allOn,
-              onChanged: (val) {
-                for (final f in section.fields) {
-                  final isOn = enabled.contains(f.$2);
-                  if (val && !isOn) notifier.toggleField(f.$2);
-                  if (!val && isOn) notifier.toggleField(f.$2);
-                }
-              },
-              activeColor: _kNavy,
+        ],
+      ),
+      body: Column(
+        children: [
+          // ── Scrollable section list ──────────────────────────────────────
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              children: [
+                // Section cards — only show sections that have actual data
+                for (int i = 0; i < _kSectionDefs.length; i++) ...[
+                  Builder(builder: (ctx) {
+                    final s = _kSectionDefs[i];
+                    final filled = s.fields
+                        .where((f) =>
+                            (widget.patientData[f.$2] ?? '').isNotEmpty &&
+                            widget.patientData[f.$2] != '—')
+                        .toList();
+                    if (filled.isEmpty) return const SizedBox.shrink();
+                    return _SectionConfigCard(
+                      key: ValueKey(i),
+                      section: s,
+                      filledFields: filled,
+                      enabled: enabled,
+                      isExpanded: _expanded.contains(i),
+                      patientData: widget.patientData,
+                      onToggleExpand: () => setState(() {
+                        if (_expanded.contains(i)) {
+                          _expanded.remove(i);
+                        } else {
+                          _expanded.add(i);
+                        }
+                      }),
+                      onToggleSection: (val) {
+                        for (final f in filled) {
+                          final isOn = enabled.contains(f.$2);
+                          if (val && !isOn) notifier.toggleField(f.$2);
+                          if (!val && isOn) notifier.toggleField(f.$2);
+                        }
+                      },
+                      onToggleField: notifier.toggleField,
+                    );
+                  }),
+                ],
+              ],
+            ),
+          ),
+          // ── Bottom action bar ─────────────────────────────────────────────
+          Container(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + botPad),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFE0E0E0))),
+            ),
+            child: Row(
+              children: [
+                // Cancel
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kPrimNvy,
+                      side: const BorderSide(color: _kPrimNvy, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Cancel',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Save Report
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _kPrimNvy,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.save_rounded, size: 18),
+                              SizedBox(width: 8),
+                              Text('SAVE REPORT',
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.5)),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await PdfExportService.exportPdf(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
+// ── Info header card ──────────────────────────────────────────────────────────
+
+class _CfgInfoCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _kIconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.tune_rounded, color: _kPrimNvy, size: 22),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Customize Report Fields',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: _kPrimNvy,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Select the sections you want to include in the report',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1082,57 +1161,299 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _FieldTile extends StatelessWidget {
-  final (String, String) field;
-  final Map<String, String> data;
+// ── Section config card ───────────────────────────────────────────────────────
+
+class _SectionConfigCard extends StatelessWidget {
+  final _S section;
+  final List<(String, String)> filledFields; // only fields that have data
   final Set<String> enabled;
-  final PrintConfigNotifier notifier;
-  const _FieldTile(
-      {required this.field,
-      required this.data,
-      required this.enabled,
-      required this.notifier});
+  final bool isExpanded;
+  final Map<String, String> patientData;
+  final VoidCallback onToggleExpand;
+  final ValueChanged<bool> onToggleSection;
+  final ValueChanged<String> onToggleField;
+
+  const _SectionConfigCard({
+    super.key,
+    required this.section,
+    required this.filledFields,
+    required this.enabled,
+    required this.isExpanded,
+    required this.patientData,
+    required this.onToggleExpand,
+    required this.onToggleSection,
+    required this.onToggleField,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isOn   = enabled.contains(field.$2);
-    final value  = data[field.$2] ?? '';
-    final filled = value.isNotEmpty && value != '—';
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.fromLTRB(32, 0, 8, 0),
-      title: Text(
-        field.$1,
-        style: TextStyle(
-          fontSize: 13,
-          color: isOn ? Colors.black87 : _kSub,
-          fontWeight: isOn ? FontWeight.w500 : FontWeight.w400,
+    final allOn  = filledFields.every((f) => enabled.contains(f.$2));
+    final count  = filledFields.where((f) => enabled.contains(f.$2)).length;
+    final total  = filledFields.length;
+    final sub    = section.rxIcon
+        ? 'Medicines & instructions'
+        : '$count of $total ${total == 1 ? 'field' : 'fields'} selected';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            // Header row
+            InkWell(
+              onTap: onToggleExpand,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(14),
+                topRight: const Radius.circular(14),
+                bottomLeft: Radius.circular(isExpanded ? 0 : 14),
+                bottomRight: Radius.circular(isExpanded ? 0 : 14),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(
+                  children: [
+                    // Section icon
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: _kIconBg,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(section.icon, color: _kPrimNvy, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    // Title + count
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            section.title,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: _kPrimNvy,
+                              letterSpacing: 0.15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sub,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Toggle switch
+                    Transform.scale(
+                      scale: 0.88,
+                      child: Switch(
+                        value: allOn,
+                        onChanged: onToggleSection,
+                        activeColor: Colors.white,
+                        activeTrackColor: _kPrimNvy,
+                        inactiveThumbColor: Colors.white,
+                        inactiveTrackColor: const Color(0xFFCCCCCC),
+                        trackOutlineColor:
+                            WidgetStateProperty.all(Colors.transparent),
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    // Chevron
+                    Icon(
+                      isExpanded
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      color: Colors.black45,
+                      size: 22,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Expanded field list — only filled fields shown
+            if (isExpanded) ...[
+              const Divider(height: 1, thickness: 0.5, color: Color(0xFFEEEEEE)),
+              for (final f in filledFields)
+                _FieldCheckRow(
+                  label: f.$1,
+                  value: patientData[f.$2] ?? '',
+                  isEnabled: enabled.contains(f.$2),
+                  onTap: () => onToggleField(f.$2),
+                ),
+              const SizedBox(height: 4),
+            ],
+          ],
         ),
       ),
-      subtitle: filled
-          ? Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 11,
-                  color: isOn ? _kSub : const Color(0xFFCCCCCC)),
-            )
-          : const Text(
-              'No data entered',
-              style: TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFFBBBBBB),
-                  fontStyle: FontStyle.italic),
+    );
+  }
+}
+
+// ── Individual field row (inside expanded section) ────────────────────────────
+
+class _FieldCheckRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool isEnabled;
+  final VoidCallback onTap;
+
+  const _FieldCheckRow({
+    required this.label,
+    required this.value,
+    required this.isEnabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final filled = value.isNotEmpty && value != '—';
+    final isMeds = label == 'Medications';
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(72, 10, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Label + checkbox row
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isEnabled ? Colors.black87 : Colors.black38,
+                      fontWeight: isEnabled ? FontWeight.w500 : FontWeight.w400,
+                    ),
+                  ),
+                ),
+                Checkbox(
+                  value: isEnabled,
+                  onChanged: (_) => onTap(),
+                  activeColor: _kPrimNvy,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
             ),
-      trailing: Checkbox(
-        value: isOn,
-        onChanged: (_) => notifier.toggleField(field.$2),
-        activeColor: _kNavy,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            // Value display
+            if (!filled)
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: Text(
+                  'No data entered',
+                  style: TextStyle(fontSize: 11, color: Color(0xFFBBBBBB), fontStyle: FontStyle.italic),
+                ),
+              )
+            else if (isMeds)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, right: 4),
+                child: _MedsMiniTable(raw: value, isEnabled: isEnabled),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isEnabled ? Colors.black54 : const Color(0xFFCCCCCC),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
-      onTap: () => notifier.toggleField(field.$2),
+    );
+  }
+}
+
+// ── Mini medicine table for Customize Report screen ───────────────────────────
+
+class _MedsMiniTable extends StatelessWidget {
+  final String raw;
+  final bool isEnabled;
+  const _MedsMiniTable({required this.raw, required this.isEnabled});
+
+  List<List<String>> _parse() {
+    return raw.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
+      final doseMatch   = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+      final dose        = doseMatch?.group(1) ?? '';
+      final withoutDose = line.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
+      final routeMatch  = RegExp(r'\(([^)]+)\)').firstMatch(withoutDose);
+      final route       = routeMatch?.group(1) ?? '';
+      final withoutRoute = withoutDose.replaceFirst(routeMatch?.group(0) ?? '', '').trim();
+      final dashIdx  = withoutRoute.indexOf(' - ');
+      final medicine = dashIdx >= 0 ? withoutRoute.substring(0, dashIdx).trim() : withoutRoute;
+      final right    = dashIdx >= 0 ? withoutRoute.substring(dashIdx + 3).trim() : '';
+      final mulIdx   = right.indexOf(' × ');
+      final frequency = mulIdx >= 0 ? right.substring(0, mulIdx).trim() : right;
+      final duration  = mulIdx >= 0 ? right.substring(mulIdx + 3).trim() : '';
+      return [medicine, dose, route, frequency, duration];
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _parse();
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    const headers = ['Medicine', 'Dose', 'Route', 'Freq', 'Duration'];
+    final dimColor = isEnabled ? Colors.black38 : const Color(0xFFCCCCCC);
+    final textColor = isEnabled ? Colors.black87 : const Color(0xFFCCCCCC);
+    final borderColor = isEnabled ? const Color(0xFFDDDDDD) : const Color(0xFFEEEEEE);
+
+    Widget cell(String t, {bool isHeader = false}) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Text(
+            t.isEmpty ? '—' : t,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: isHeader ? FontWeight.w700 : FontWeight.w500,
+              color: isHeader ? dimColor : textColor,
+            ),
+          ),
+        );
+
+    return Table(
+      border: TableBorder.all(color: borderColor, width: 0.5),
+      columnWidths: const {
+        0: FlexColumnWidth(4),
+        1: FlexColumnWidth(2),
+        2: FlexColumnWidth(2),
+        3: FlexColumnWidth(2),
+        4: FlexColumnWidth(2),
+      },
+      children: [
+        TableRow(
+          decoration: BoxDecoration(color: borderColor.withValues(alpha: 0.5)),
+          children: headers.map((h) => cell(h, isHeader: true)).toList(),
+        ),
+        ...rows.map((r) => TableRow(
+              children: r.map((v) => cell(v)).toList(),
+            )),
+      ],
     );
   }
 }
