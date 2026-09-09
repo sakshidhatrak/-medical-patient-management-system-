@@ -63,22 +63,32 @@ class PatientListScreen extends ConsumerStatefulWidget {
   ConsumerState<PatientListScreen> createState() => _PatientListScreenState();
 }
 
-class _PatientListScreenState extends ConsumerState<PatientListScreen> {
+class _PatientListScreenState extends ConsumerState<PatientListScreen>
+    with WidgetsBindingObserver {
   final _searchCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollCtrl.addListener(_onScroll);
     _searchCtrl.addListener(() => setState(() {}));
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.read(patientsProvider.notifier).refresh();
+    }
   }
 
   void _onScroll() {
@@ -100,9 +110,10 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state    = ref.watch(patientsProvider);
-    final canWrite = ref.watch(canWriteProvider);
-    final user     = ref.watch(currentUserProvider);
+    final state          = ref.watch(patientsProvider);
+    final canWrite       = ref.watch(canWriteProvider);
+    final canEditPatient = ref.watch(canEditPatientProvider);
+    final user           = ref.watch(currentUserProvider);
     final isDark   = Theme.of(context).brightness == Brightness.dark;
 
     final bg       = isDark ? _kDarkBg     : _kLightBg;
@@ -230,50 +241,59 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
           Expanded(
             child: state.isLoading && state.patients.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : state.patients.isEmpty
-                    ? _EmptyState(
-                        hasSearch: state.search?.isNotEmpty == true,
-                        isDark: isDark,
-                        textMain: textMain,
-                      )
-                    : RefreshIndicator(
-                        onRefresh: () =>
-                            ref.read(patientsProvider.notifier).refresh(),
-                        child: ListView.builder(
-                          controller: _scrollCtrl,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(
-                              16, 12, 16, 120),
-                          itemCount: state.patients.length +
-                              (state.hasMore ? 1 : 0),
-                          itemBuilder: (ctx, i) {
-                            if (i == state.patients.length) {
-                              return const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Center(
-                                    child: CircularProgressIndicator()),
+                : RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(patientsProvider.notifier).refresh(),
+                    child: state.patients.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.of(context).size.height * 0.55,
+                                child: _EmptyState(
+                                  hasSearch:
+                                      state.search?.isNotEmpty == true,
+                                  isDark: isDark,
+                                  textMain: textMain,
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            controller: _scrollCtrl,
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                            itemCount: state.patients.length +
+                                (state.hasMore ? 1 : 0),
+                            itemBuilder: (ctx, i) {
+                              if (i == state.patients.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                );
+                              }
+                              final p = state.patients[i];
+                              return _PatientCard(
+                                patient: p,
+                                isDark: isDark,
+                                cardBg: cardBg,
+                                textMain: textMain,
+                                onTap: () =>
+                                    context.push('/patients/${p.id}'),
+                                onAddVisit: () => _addVisit(p.id),
+                                onPrint: () {
+                                  ref
+                                      .read(activePatientDataProvider
+                                          .notifier)
+                                      .state = _patientDataMap(p);
+                                  context.go('/print-config');
+                                },
                               );
-                            }
-                            final p = state.patients[i];
-                            return _PatientCard(
-                              patient: p,
-                              isDark: isDark,
-                              cardBg: cardBg,
-                              textMain: textMain,
-                              onTap: () =>
-                                  context.push('/patients/${p.id}'),
-                              onAddVisit: () => _addVisit(p.id),
-                              onPrint: () {
-                                ref
-                                    .read(activePatientDataProvider
-                                        .notifier)
-                                    .state = _patientDataMap(p);
-                                context.go('/print-config');
-                              },
-                            );
-                          },
-                        ),
-                      ),
+                            },
+                          ),
+                  ),
           ),
         ],
       ),
@@ -282,7 +302,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen> {
         isDark: isDark,
         selectedIndex: 1, // Patients tab always selected on this screen
         onTap: (index) {
-          if (index == 2 && canWrite) {
+          if (index == 2 && canEditPatient) {
             context.push('/patients/register');
           }
           // Dashboard, Reports, Profile: not yet implemented

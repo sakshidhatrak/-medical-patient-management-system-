@@ -123,8 +123,14 @@ final currentUserProvider = Provider<UserEntity?>((ref) {
   return state is AuthAuthenticated ? state.user : null;
 });
 
-/// True only for admin users; all other roles are read-only (view-only).
+/// True only for admin — full write access (visits, surgeries, prescriptions).
 final canWriteProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user?.canWrite ?? false;
+});
+
+/// True for admin AND staff — can create/edit patient personal information.
+final canEditPatientProvider = Provider<bool>((ref) {
+  final user = ref.watch(currentUserProvider);
+  return user?.canEditPatient ?? false;
 });

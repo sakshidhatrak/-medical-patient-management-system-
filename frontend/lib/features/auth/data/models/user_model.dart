@@ -53,6 +53,7 @@ class UserModel {
         'doctor' => UserRole.doctor,
         'nurse' => UserRole.nurse,
         'admin' => UserRole.admin,
+        'staff' => UserRole.staff,
         'receptionist' => UserRole.receptionist,
         'assistant' => UserRole.assistant,
         _ => UserRole.assistant,

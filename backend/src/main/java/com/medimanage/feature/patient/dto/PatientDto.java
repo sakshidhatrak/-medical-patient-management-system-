@@ -31,7 +31,8 @@ public record PatientDto(
                 p.getAllergies(), p.getMedicalHistory(), p.getPreviousHistory(),
                 p.getNotes(),
                 p.isActive(),
-                p.getCreatedAt(), p.getUpdatedAt()
+                p.getCreatedAt() != null ? p.getCreatedAt() : Instant.now(),
+                p.getUpdatedAt() != null ? p.getUpdatedAt() : Instant.now()
         );
     }
 }
