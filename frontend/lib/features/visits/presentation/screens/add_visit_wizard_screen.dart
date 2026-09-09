@@ -220,8 +220,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     // Store structured prescriptions as JSON array
     if (_prescriptionRows.isNotEmpty) {
       m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
-      // Also store plain medicine names for autocomplete history
-      add('medications', _prescriptionRows.map((r) => r.medicine).join('\n'));
+      add('medications', _prescriptionRows.map((r) =>
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'));
     }
     add('advice',            _adviceCtrl.text.trim());
     add('crossConsultation', _crossConsultCtrl.text.trim());
@@ -372,7 +372,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
         if (visit != null) {
           // Persist prescription for offline medicine history
-          final medNames = _prescriptionRows.map((r) => r.medicine).join('\n');
+          final medNames = _prescriptionRows.map((r) =>
+              '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n');
           if (medNames.isNotEmpty) {
             unawaited(ref.read(medicineServiceProvider).savePrescription(
               visitId: visit.id,
@@ -562,7 +563,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'diagnosis':      _diagnosisCtrl.text.trim(),
       'treatmentPlan':  _treatmentCtrl.text.trim(),
       'medications':    _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " ${r.dose}" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""} - ${r.frequency}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
       'notes':          _treatNotesCtrl.text.trim(),
       'advice':         _adviceCtrl.text.trim(),
       'visitType':      visit.visitType.label,
@@ -1265,14 +1266,25 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         title: 'History & Complaint',
         icon: Icons.history_edu_outlined,
         color: _kBlue,
-        child: _fieldWithUpload(
-          label: 'Chief Complaint',
-          controller: _complaintCtrl,
-          files: _chiefComplaintFiles,
-          onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
-          prefixIcon: Icons.report_problem_outlined,
-          hint: 'Primary reason for visit…',
-        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _fieldWithUpload(
+            label: 'Previous History',
+            controller: _prevHistoryCtrl,
+            files: _prevHistoryFiles,
+            onFilesChange: (f) => _prevHistoryFiles..clear()..addAll(f),
+            prefixIcon: Icons.history_edu_outlined,
+            hint: 'Enter previous medical history…',
+          ),
+          const SizedBox(height: 14),
+          _fieldWithUpload(
+            label: 'Chief Complaint',
+            controller: _complaintCtrl,
+            files: _chiefComplaintFiles,
+            onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
+            prefixIcon: Icons.report_problem_outlined,
+            hint: 'Primary reason for visit…',
+          ),
+        ]),
       ),
 
       // ── Examination Finding ──────────────────────────────────────────
@@ -2188,8 +2200,8 @@ class _PrescriptionRow {
   _PrescriptionRow({
     this.medicine = '',
     this.dose = '',
-    this.route = 'Oral',
-    this.frequency = 'OD',
+    this.route = '',
+    this.frequency = '',
     this.duration = '',
   });
 
@@ -2204,8 +2216,8 @@ class _PrescriptionRow {
   static _PrescriptionRow fromJson(Map<String, dynamic> j) => _PrescriptionRow(
     medicine:  j['medicine']  as String? ?? '',
     dose:      j['dose']      as String? ?? '',
-    route:     j['route']     as String? ?? 'Oral',
-    frequency: j['frequency'] as String? ?? 'OD',
+    route:     j['route']     as String? ?? '',
+    frequency: j['frequency'] as String? ?? '',
     duration:  j['duration']  as String? ?? '',
   );
 }
@@ -2231,7 +2243,7 @@ const _kFreqs      = ['OD', 'BD', 'TDS', 'QID', 'SOS', 'PRN', 'HS', 'Weekly', 'F
 class _AddMedicineSheetState extends State<_AddMedicineSheet> {
   final _nameCtrl  = TextEditingController();
   final _doseCtrl  = TextEditingController();
-  final _routeCtrl = TextEditingController(text: 'Oral');
+  final _routeCtrl = TextEditingController();
   final _freqCtrl  = TextEditingController();
   final _durCtrl   = TextEditingController();
   final _nameFocus = FocusNode();

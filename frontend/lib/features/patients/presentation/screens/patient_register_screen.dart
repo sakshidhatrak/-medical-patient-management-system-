@@ -159,7 +159,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     add('otherInvestigation', _otherInvestCtrl.text.trim());
     if (_prescriptionRows.isNotEmpty) {
       m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
-      add('medications', _prescriptionRows.map((r) => r.medicine).join('\n'));
+      add('medications', _prescriptionRows.map((r) =>
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'));
     }
     add('advice',             _adviceCtrl.text.trim());
     add('crossConsultation',  _crossConsultCtrl.text.trim());
@@ -227,7 +228,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         // suggest them. Use the auto-created visit ID if available; fall back to a
         // registration-scoped key so prescription is saved even when the API is
         // unreachable (visit returns null despite being stored locally).
-        final medNames = _prescriptionRows.map((r) => r.medicine).join('\n');
+        final medNames = _prescriptionRows.map((r) =>
+            '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n');
         if (medNames.isNotEmpty) {
           final presVisitId = firstVisitId ?? 'reg_${patient.id}';
           unawaited(ref.read(medicineServiceProvider).savePrescription(
@@ -893,7 +895,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       'diagnosis':          _diagnosisCtrl.text.trim(),
       'treatmentPlan':      _treatmentCtrl.text.trim(),
       'medications':        _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " ${r.dose}" : ""} (${r.route}) - ${r.frequency}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
       'notes':              _treatNotesCtrl.text.trim(),
       'advice':             _adviceCtrl.text.trim(),
       'crossConsultation':  _crossConsultCtrl.text.trim(),
@@ -1855,8 +1857,8 @@ class _PrescriptionRow {
   _PrescriptionRow({
     this.medicine = '',
     this.dose = '',
-    this.route = 'Oral',
-    this.frequency = 'OD',
+    this.route = '',
+    this.frequency = '',
     this.duration = '',
   });
 
@@ -1890,7 +1892,7 @@ class _AddMedicineSheet extends StatefulWidget {
 class _AddMedicineSheetState extends State<_AddMedicineSheet> {
   final _nameCtrl  = TextEditingController();
   final _doseCtrl  = TextEditingController();
-  final _routeCtrl = TextEditingController(text: 'Oral');
+  final _routeCtrl = TextEditingController();
   final _freqCtrl  = TextEditingController();
   final _durCtrl   = TextEditingController();
 
