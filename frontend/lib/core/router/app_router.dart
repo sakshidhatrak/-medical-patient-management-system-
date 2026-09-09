@@ -9,6 +9,7 @@ import '../../features/auth/presentation/screens/splash_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/examinations/presentation/screens/examination_screen.dart';
 import '../../features/patients/presentation/screens/patient_detail_screen.dart';
+import '../../features/patients/presentation/screens/patient_edit_screen.dart';
 import '../../features/patients/presentation/screens/patient_list_screen.dart';
 import '../../features/patients/presentation/screens/patient_register_screen.dart';
 import '../../features/print_configuration/presentation/screens/print_config_screen.dart';
@@ -33,29 +34,40 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (!isAuth && !isAuthPage) return RouteNames.login;
       if (isAuth  && loc == RouteNames.login) return RouteNames.patients;
 
-      // View-only guard: assistants cannot access write routes
-      if (isAuth && authState.user.role == UserRole.assistant) {
-        // Block new patient registration
-        if (loc == '/patients/register') return '/patients';
+      // Role-based route guards
+      if (isAuth) {
+        final role = authState.user.role;
+        final isReadOnly = !authState.user.canEditPatient; // assistant, doctor, nurse, etc.
+        final isStaff    = role == UserRole.staff;
 
-        // Block new visit creation
-        if (loc.endsWith('/new-visit')) {
-          return loc.substring(0, loc.length - '/new-visit'.length);
+        // Staff and read-only roles cannot access clinical write routes
+        if (isReadOnly || isStaff) {
+          // Block new visit creation
+          if (loc.endsWith('/new-visit')) {
+            return loc.substring(0, loc.length - '/new-visit'.length);
+          }
+
+          // Block surgery form
+          final surgeryMatch = RegExp(r'^(.*)/surgeries/[^/]+$').firstMatch(loc);
+          if (surgeryMatch != null) return surgeryMatch.group(1)!;
+
+          // Block visit edit form — redirect to read-only view
+          final visitEditMatch =
+              RegExp(r'^(/patients/[^/]+/visits/[^/]+)$').firstMatch(loc);
+          if (visitEditMatch != null) return '${visitEditMatch.group(1)!}/view';
+
+          // Block examination form — redirect to read-only view
+          if (loc.endsWith('/examination')) {
+            final base = loc.substring(0, loc.length - '/examination'.length);
+            return '$base/view';
+          }
         }
 
-        // Block surgery form
-        final surgeryMatch = RegExp(r'^(.*)/surgeries/[^/]+$').firstMatch(loc);
-        if (surgeryMatch != null) return surgeryMatch.group(1)!;
-
-        // Block visit edit form — redirect to read-only view
-        final visitEditMatch =
-            RegExp(r'^(/patients/[^/]+/visits/[^/]+)$').firstMatch(loc);
-        if (visitEditMatch != null) return '${visitEditMatch.group(1)!}/view';
-
-        // Block examination form — redirect to read-only view
-        if (loc.endsWith('/examination')) {
-          final base = loc.substring(0, loc.length - '/examination'.length);
-          return '$base/view';
+        // Purely read-only roles (not staff) also cannot register/edit patients
+        if (isReadOnly && !isStaff) {
+          if (loc == '/patients/register') return '/patients';
+          final editMatch = RegExp(r'^/patients/[^/]+/edit$').firstMatch(loc);
+          if (editMatch != null) return '/patients';
         }
       }
 
@@ -138,6 +150,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   patientId: s.pathParameters['patientId']!,
                 ),
                 routes: [
+                  // ── Patient personal info edit (admin + staff) ─
+                  GoRoute(
+                    path: 'edit',
+                    name: 'patient-edit',
+                    builder: (_, s) => PatientEditScreen(
+                      patientId: s.pathParameters['patientId']!,
+                    ),
+                  ),
+
                   // ── New visit wizard (no pre-create) ──────────
                   GoRoute(
                     path: 'new-visit',

@@ -44,6 +44,22 @@ Map<String, String> _buildVisitPrintMap(
           .map((k, v) => MapEntry(k, v.toString()));
     } catch (_) {}
   }
+  // Rebuild medications from structured prescriptions JSON (covers existing data)
+  if (exam.containsKey('prescriptions')) {
+    try {
+      final presJson = jsonDecode(exam['prescriptions']!) as List;
+      final rebuilt = presJson.map((p) {
+        final m = p as Map<String, dynamic>;
+        final medicine  = m['medicine']  as String? ?? '';
+        final dose      = m['dose']      as String? ?? '';
+        final route     = m['route']     as String? ?? '';
+        final frequency = m['frequency'] as String? ?? '';
+        final duration  = m['duration']  as String? ?? '';
+        return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}';
+      }).where((l) => l.isNotEmpty).join('\n');
+      if (rebuilt.isNotEmpty) exam['medications'] = rebuilt;
+    } catch (_) {}
+  }
   String pn(String k) => pNotes[k]?.isNotEmpty == true ? pNotes[k]! : '';
   String ex(String k) => exam[k]?.isNotEmpty == true ? exam[k]! : '';
   // Prefer visit entity field, fall back to examination blob, then patient notes.
@@ -63,17 +79,17 @@ Map<String, String> _buildVisitPrintMap(
     'gender':          gender,
     'prn':             patient.prn,
     'phone':           patient.phone ?? '—',
-    'altPhone':        pn('altPhone'),
-    'email':           pn('email'),
+    'altPhone':        patient.altPhone ?? pn('altPhone'),
+    'email':           patient.email ?? pn('email'),
     'address':         patient.address ?? '—',
-    'idProofType':     pn('idProofType'),
-    'idProofNumber':   pn('idProofNumber'),
-    'allergies':       pn('allergies'),
-    'medicalHistory':  pn('medicalHistory'),
-    'weight':          _pick(vex(visit.weight, 'weight'),       pn('weight')),
-    'bloodPressure':   _pick(vex(visit.bp, 'bp'),               pn('bloodPressure')),
-    'temperature':     _pick(vex(visit.temperature, 'temperature'), pn('temperature')),
-    'previousHistory':    _pick(ex('previousHistory'),    pn('previousHistory')),
+    'idProofType':     patient.idProofType ?? pn('idProofType'),
+    'idProofNumber':   patient.idProofNumber ?? pn('idProofNumber'),
+    'allergies':       patient.allergies ?? pn('allergies'),
+    'medicalHistory':  patient.medicalHistory ?? pn('medicalHistory'),
+    'weight':          _pick(vex(visit.weight, 'weight'),       _pick(patient.weight, pn('weight'))),
+    'bloodPressure':   _pick(vex(visit.bp, 'bp'),               _pick(patient.bloodPressure, pn('bloodPressure'))),
+    'temperature':     _pick(vex(visit.temperature, 'temperature'), _pick(patient.temperature, pn('temperature'))),
+    'previousHistory':    _pick(ex('previousHistory'),    _pick(patient.previousHistory, pn('previousHistory'))),
     'chiefComplaint':     _pick(visit.complaints,          pn('chiefComplaint')),
     'examGeneral':        _pick(ex('examGeneral'),         pn('examGeneral')),
     'examNeurological':   _pick(ex('examNeurological'),    pn('examNeurological')),
@@ -114,12 +130,13 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final patientId    = widget.patientId;
-    final patientAsync = ref.watch(patientByIdProvider(patientId));
-    final visits       = ref.watch(visitsProvider(patientId));
-    final surgeries    = ref.watch(surgeriesProvider(patientId));
-    final allPhotos    = ref.watch(photoProvider(patientId)).photos;
-    final canWrite     = ref.watch(canWriteProvider);
+    final patientId      = widget.patientId;
+    final patientAsync   = ref.watch(patientByIdProvider(patientId));
+    final visits         = ref.watch(visitsProvider(patientId));
+    final surgeries      = ref.watch(surgeriesProvider(patientId));
+    final allPhotos      = ref.watch(photoProvider(patientId)).photos;
+    final canWrite       = ref.watch(canWriteProvider);
+    final canEditPatient = ref.watch(canEditPatientProvider);
 
     return patientAsync.when(
       loading: () => Scaffold(
@@ -155,7 +172,10 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
           body: Column(children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: _PatientHeaderCard(patient: patient),
+              child: _PatientHeaderCard(
+                patient: patient,
+                canEditPatient: canEditPatient,
+              ),
             ),
 
             _PatientReportsSection(
@@ -333,7 +353,8 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientHeaderCard extends StatelessWidget {
   final PatientEntity patient;
-  const _PatientHeaderCard({required this.patient});
+  final bool canEditPatient;
+  const _PatientHeaderCard({required this.patient, this.canEditPatient = false});
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +381,36 @@ class _PatientHeaderCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        if (canEditPatient) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: GestureDetector(
+              onTap: () => context.push('/patients/${patient.id}/edit'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _kAccent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _kAccent.withValues(alpha: 0.25)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.edit_outlined, size: 13, color: _kAccent),
+                  const SizedBox(width: 4),
+                  const Text('Edit Info',
+                      style: TextStyle(
+                          color: _kAccent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         // Avatar
         Container(
           width: 52,
@@ -477,6 +527,8 @@ class _PatientHeaderCard extends StatelessWidget {
           ),
         ],
       ]),
+      ], // Column children
+      ),
     );
   }
 }
@@ -535,6 +587,22 @@ class _TimelineRowState extends State<_TimelineRow> {
             .forEach((k, v) {
           if (v is String && v.isNotEmpty) examMap[k] = v;
         });
+      } catch (_) {}
+    }
+    // Rebuild medications from structured prescriptions JSON (covers existing data)
+    if (examMap.containsKey('prescriptions')) {
+      try {
+        final presJson = jsonDecode(examMap['prescriptions']!) as List;
+        final rebuilt = presJson.map((p) {
+          final m = p as Map<String, dynamic>;
+          final medicine  = m['medicine']  as String? ?? '';
+          final dose      = m['dose']      as String? ?? '';
+          final route     = m['route']     as String? ?? '';
+          final frequency = m['frequency'] as String? ?? '';
+          final duration  = m['duration']  as String? ?? '';
+          return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}';
+        }).where((l) => l.isNotEmpty).join('\n');
+        if (rebuilt.isNotEmpty) examMap['medications'] = rebuilt;
       } catch (_) {}
     }
     String ex(String k) => examMap[k] ?? '';
@@ -673,7 +741,7 @@ class _TimelineRowState extends State<_TimelineRow> {
                               ],
                             ),
                           ),
-                          // Print + chevron
+                          // Print + Edit + chevron
                           Row(mainAxisSize: MainAxisSize.min, children: [
                             if (widget.onPrint != null) ...[
                               Tooltip(
@@ -687,6 +755,24 @@ class _TimelineRowState extends State<_TimelineRow> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Icon(Icons.print_outlined,
+                                        size: 16, color: _kAccent),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (widget.canWrite) ...[
+                              Tooltip(
+                                message: 'Edit',
+                                child: GestureDetector(
+                                  onTap: widget.onDocTap,
+                                  child: Container(
+                                    width: 32, height: 32,
+                                    decoration: BoxDecoration(
+                                      color: _kAccent.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.edit_outlined,
                                         size: 16, color: _kAccent),
                                   ),
                                 ),
@@ -728,7 +814,20 @@ class _TimelineRowState extends State<_TimelineRow> {
                             if (dataRows.isNotEmpty || photos.isNotEmpty)
                               const SizedBox(height: 10),
                           ],
-                          if (dataRows.isNotEmpty) _FieldGrid(rows: dataRows),
+                          Builder(builder: (_) {
+                            final medsEntry = dataRows.where((r) => r.label == 'Treatment').firstOrNull;
+                            final otherRows = dataRows.where((r) => r.label != 'Treatment').toList();
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (otherRows.isNotEmpty) _FieldGrid(rows: otherRows),
+                                if (medsEntry != null && medsEntry.value.isNotEmpty) ...[
+                                  if (otherRows.isNotEmpty) const SizedBox(height: 10),
+                                  _MedicinesTable(raw: medsEntry.value),
+                                ],
+                              ],
+                            );
+                          }),
                           if (photos.isNotEmpty) ...[
                             if (dataRows.isNotEmpty) const SizedBox(height: 10),
                             _AttachmentsSection(photos: photos),
@@ -901,6 +1000,122 @@ class _FieldGrid extends StatelessWidget {
           ]),
         );
       }).toList(),
+    );
+  }
+}
+
+// ── Medicines table widget ────────────────────────────────────────────────────
+class _ParsedMed {
+  final String medicine;
+  final String dose;
+  final String route;
+  final String frequency;
+  final String duration;
+  const _ParsedMed({required this.medicine, required this.dose, required this.route, required this.frequency, required this.duration});
+}
+
+List<_ParsedMed> _parseMeds(String raw) {
+  return raw.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
+    // Extract dose from [dose]
+    final doseMatch  = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+    final dose       = doseMatch?.group(1) ?? '';
+    final withoutDose = line.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
+    // Extract route from (route)
+    final routeMatch  = RegExp(r'\(([^)]+)\)').firstMatch(withoutDose);
+    final route       = routeMatch?.group(1) ?? '';
+    final withoutRoute = withoutDose.replaceFirst(routeMatch?.group(0) ?? '', '').trim();
+    // Split on " - " for frequency/duration
+    final dashIdx   = withoutRoute.indexOf(' - ');
+    final medicine  = dashIdx >= 0 ? withoutRoute.substring(0, dashIdx).trim() : withoutRoute;
+    final right     = dashIdx >= 0 ? withoutRoute.substring(dashIdx + 3).trim() : '';
+    final mulIdx    = right.indexOf(' × ');
+    final frequency = mulIdx >= 0 ? right.substring(0, mulIdx).trim() : right;
+    final duration  = mulIdx >= 0 ? right.substring(mulIdx + 3).trim() : '';
+    return _ParsedMed(medicine: medicine, dose: dose, route: route, frequency: frequency, duration: duration);
+  }).toList();
+}
+
+class _MedicinesTable extends StatelessWidget {
+  final String raw;
+  const _MedicinesTable({required this.raw});
+
+  @override
+  Widget build(BuildContext context) {
+    final meds = _parseMeds(raw);
+    if (meds.isEmpty) return const SizedBox.shrink();
+
+    const cols = ['Medicine', 'Dose', 'Route', 'Frequency', 'Duration'];
+    const weights = [3, 2, 2, 2, 2];
+
+    Widget headerCell(String t) => Expanded(
+          flex: weights[cols.indexOf(t)],
+          child: Text(t,
+              style: TextStyle(
+                  fontSize: 9, fontWeight: FontWeight.w700,
+                  color: context.textDisabled, letterSpacing: 0.3)),
+        );
+
+    Widget dataCell(String t, int flex) => Expanded(
+          flex: flex,
+          child: Text(t.isEmpty ? '—' : t,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600,
+                  color: context.textPrimary)),
+        );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: context.bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.borderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Container(
+            color: context.borderColor.withValues(alpha: 0.4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Icon(Icons.medication_outlined, size: 12, color: context.textDisabled),
+              ),
+              Text('Treatment / Medicines',
+                  style: TextStyle(
+                      fontSize: 9, fontWeight: FontWeight.w700,
+                      color: context.textDisabled, letterSpacing: 0.3)),
+            ]),
+          ),
+          // Column headers
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
+            child: Row(children: cols.map(headerCell).toList()),
+          ),
+          Divider(height: 1, thickness: 1, color: context.borderColor),
+          // Rows
+          ...meds.asMap().entries.map((e) {
+            final m = e.value;
+            final isLast = e.key == meds.length - 1;
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  child: Row(children: [
+                    dataCell(m.medicine,  weights[0]),
+                    dataCell(m.dose,      weights[1]),
+                    dataCell(m.route,     weights[2]),
+                    dataCell(m.frequency, weights[3]),
+                    dataCell(m.duration,  weights[4]),
+                  ]),
+                ),
+                if (!isLast) Divider(height: 1, thickness: 1, color: context.borderColor),
+              ],
+            );
+          }),
+        ],
+      ),
     );
   }
 }

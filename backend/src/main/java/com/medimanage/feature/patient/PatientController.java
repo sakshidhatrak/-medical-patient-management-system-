@@ -41,7 +41,7 @@ public class PatientController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     public ResponseEntity<ApiResponse<PatientDto>> create(
             @Valid @RequestBody PatientRequest req,
             Authentication auth) {
@@ -51,7 +51,7 @@ public class PatientController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
     public ResponseEntity<ApiResponse<PatientDto>> update(
             @PathVariable Long id,
             @Valid @RequestBody PatientRequest req,

@@ -154,14 +154,12 @@ class PatientEntity extends Equatable {
       [id, prn, firstName, lastName, age, dateOfBirth, sex, phone];
 }
 
-/// Generates offline PRN: DD-MM-YYYY-NNN (first 3 letters of firstName).
+/// Generates offline PRN: DDMMYYYYHHMMSS
 /// Uniqueness is guaranteed by the server; offline PRN is temporary.
 String generatePrn(String firstName) {
   final n = DateTime.now();
-  final initials = firstName.length >= 3
-      ? firstName.substring(0, 3).toUpperCase()
-      : firstName.toUpperCase();
-  return '${_p(n.day)}-${_p(n.month)}-${n.year}-$initials';
+  return '${_p(n.day)}${_p(n.month)}${n.year}'
+      '${_p(n.hour)}${_p(n.minute)}${_p(n.second)}';
 }
 
 String _p(int v) => v.toString().padLeft(2, '0');

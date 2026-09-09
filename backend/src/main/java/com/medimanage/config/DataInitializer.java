@@ -19,21 +19,23 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        seedAdmin("admin@medimanage.com", "Admin", "User");
-        seedAdmin("admin@test.com", "Admin", "User");
+        seedUser("admin@medimanage.com", "Admin",  "User",  UserRole.admin, "Admin@123");
+        seedUser("admin@test.com",       "Admin",  "User",  UserRole.admin, "Admin@123");
+        seedUser("staff@medimanage.com", "Staff",  "User",  UserRole.staff, "Staff@123");
     }
 
-    private void seedAdmin(String email, String firstName, String lastName) {
+    private void seedUser(String email, String firstName, String lastName,
+                          UserRole role, String rawPassword) {
         if (!userRepo.existsByEmail(email)) {
             userRepo.save(User.builder()
                     .email(email)
-                    .password(passwordEncoder.encode("Admin@123"))
+                    .password(passwordEncoder.encode(rawPassword))
                     .firstName(firstName)
                     .lastName(lastName)
-                    .role(UserRole.admin)
+                    .role(role)
                     .isActive(true)
                     .build());
-            log.info("Seeded admin user: {}", email);
+            log.info("Seeded {} user: {}", role, email);
         }
     }
 }
