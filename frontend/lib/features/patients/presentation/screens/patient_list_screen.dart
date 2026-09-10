@@ -675,70 +675,26 @@ class _BottomNavBar extends StatelessWidget {
         top: false,
         child: SizedBox(
           height: 64,
-          child: Row(
-            children: [
-              _NavTab(
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home_rounded,
-                label: 'Dashboard',
-                isSelected: selectedIndex == 0,
-                selectedColor: selectedColor,
-                unselectedColor: unselectedColor,
-                onTap: () => onTap(0),
-              ),
-              _NavTab(
-                icon: Icons.people_outlined,
-                activeIcon: Icons.people_rounded,
-                label: 'Patients',
-                isSelected: selectedIndex == 1,
-                selectedColor: selectedColor,
-                unselectedColor: unselectedColor,
-                onTap: () => onTap(1),
-              ),
-              // Centre elevated "New Patient" button
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => onTap(2),
-                  child: Center(
-                    child: Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: _kBlue,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _kBlue.withValues(alpha: 0.4),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.add,
-                          color: Colors.white, size: 28),
+          child: Center(
+            child: GestureDetector(
+              onTap: () => onTap(2),
+              child: Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: _kBlue,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _kBlue.withValues(alpha: 0.4),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
+                  ],
                 ),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
-              _NavTab(
-                icon: Icons.bar_chart_outlined,
-                activeIcon: Icons.bar_chart_rounded,
-                label: 'Reports',
-                isSelected: selectedIndex == 3,
-                selectedColor: selectedColor,
-                unselectedColor: unselectedColor,
-                onTap: () => onTap(3),
-              ),
-              _NavTab(
-                icon: Icons.person_outline_rounded,
-                activeIcon: Icons.person_rounded,
-                label: 'Profile',
-                isSelected: selectedIndex == 4,
-                selectedColor: selectedColor,
-                unselectedColor: unselectedColor,
-                onTap: () => onTap(4),
-              ),
-            ],
+            ),
           ),
         ),
       ),

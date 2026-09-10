@@ -73,7 +73,7 @@ Map<String, String> _buildVisitPrintMap(
   return {
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
-    'date':            DateFormat('dd-MM-yyyy').format(DateTime.now()),
+    'date':            DateFormat('dd-MM-yyyy').format(visit.visitDate),
     'age':             ageStr,
     'dob':             dob,
     'gender':          gender,
@@ -1903,18 +1903,17 @@ class _AddVisitBar extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         height: 52,
-        child: FilledButton.icon(
+        child: FilledButton(
           onPressed: onTap,
-          icon: const Icon(Icons.add_rounded, size: 20),
-          label: const Text(
-            '+ Add New Visit',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
           style: FilledButton.styleFrom(
             backgroundColor: _kAccent,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
+          ),
+          child: const Text(
+            'Add New Visit',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
           ),
         ),
       ),
