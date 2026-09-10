@@ -520,13 +520,11 @@ pw.Widget _buildSections(
       pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
     ]));
 
-  // TREATMENT (MEDICINES) — always shown, "-" when empty
-  sections.add(_section('TREATMENT (MEDICINES)', fontBold, [
-    if (d('medications').isNotEmpty)
-      _buildMedicinesTable(d('medications'), font, fontBold)
-    else
-      pw.Text('—', style: pw.TextStyle(font: font, fontSize: 10, color: _kText)),
-  ]));
+  // TREATMENT (MEDICINES) — only shown when there is data
+  if (d('medications').isNotEmpty)
+    sections.add(_section('TREATMENT (MEDICINES)', fontBold, [
+      _buildMedicinesTable(d('medications'), font, fontBold),
+    ]));
 
   // INVESTIGATIONS
   {

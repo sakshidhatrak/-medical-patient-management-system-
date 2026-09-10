@@ -73,15 +73,15 @@ Map<String, String> _buildVisitPrintMap(
   return {
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
-    'date':            DateFormat('dd-MM-yyyy').format(visit.visitDate),
+    'date':            DateFormat('dd/MM/yyyy').format(visit.visitDate),
     'age':             ageStr,
     'dob':             dob,
     'gender':          gender,
     'prn':             patient.prn,
-    'phone':           patient.phone ?? '—',
+    'phone':           patient.phone ?? '',
     'altPhone':        patient.altPhone ?? pn('altPhone'),
     'email':           patient.email ?? pn('email'),
-    'address':         patient.address ?? '—',
+    'address':         patient.address ?? '',
     'idProofType':     patient.idProofType ?? pn('idProofType'),
     'idProofNumber':   patient.idProofNumber ?? pn('idProofNumber'),
     'allergies':       patient.allergies ?? pn('allergies'),
@@ -99,7 +99,7 @@ Map<String, String> _buildVisitPrintMap(
     'diagnosis':          _pick(visit.clinicalImpression,  pn('diagnosis')),
     'treatmentPlan':      _pick(visit.plan,                pn('treatmentPlan')),
     'medications':        _pick(vex(ex('medications'), 'medications'), pn('medications')),
-    'notes':              _pick(visit.notes,               pn('notes')),
+    'notes':              _pick(ex('crossConsultation'),    pn('crossConsultation')),
     'advice':             _pick(ex('advice'),              pn('advice')),
     'visitType':          visit.visitType.label,
   }..removeWhere((_, v) => v.isEmpty);
@@ -349,7 +349,7 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Patient header card  (2-column layout: info left, age/phone right)
+// Patient header card — Image #18 design
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientHeaderCard extends StatelessWidget {
   final PatientEntity patient;
@@ -358,176 +358,104 @@ class _PatientHeaderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials  = patient.initials;
-    final ageStr    = patient.computedAge > 0 ? '${patient.computedAge} Years' : null;
-    final sex       = patient.sex?.isNotEmpty == true
-        ? '${patient.sex![0].toUpperCase()}${patient.sex!.substring(1)}'
-        : null;
-    final ageSexStr = [ageStr, sex].whereType<String>().join(' • ');
-    final phone     = patient.phone;
-    final hasRight  = ageSexStr.isNotEmpty || (phone != null && phone.isNotEmpty);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: context.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.borderColor),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-        if (canEditPatient) ...[
-          Align(
-            alignment: Alignment.centerRight,
-            child: GestureDetector(
-              onTap: () => context.push('/patients/${patient.id}/edit'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: _kAccent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _kAccent.withValues(alpha: 0.25)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.edit_outlined, size: 13, color: _kAccent),
-                  const SizedBox(width: 4),
-                  const Text('Edit Info',
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.cardColor,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Blue left accent bar
+            Container(width: 4, color: _kAccent),
+            const SizedBox(width: 12),
+            // Person icon
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _kAccent.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.person_outline_rounded,
+                  color: _kAccent, size: 22),
+            ),
+            // Vertical divider
+            Container(
+              width: 1,
+              height: 38,
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              color: context.borderColor,
+            ),
+            // Name + ID
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      patient.fullName,
                       style: TextStyle(
-                          color: _kAccent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700)),
-                ]),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'ID: ${patient.prn}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _kAccent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
-        Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        // Avatar
-        Container(
-          width: 52,
-          height: 52,
-          decoration: BoxDecoration(
-            color: context.primarySurf,
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
-          child: Text(initials,
-              style: const TextStyle(
-                  color: _kAccent, fontWeight: FontWeight.w800, fontSize: 18)),
-        ),
-        const SizedBox(width: 12),
-
-        // Left: name + phone + ID
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(patient.fullName,
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: context.textPrimary,
-                      letterSpacing: -0.2),
-                  overflow: TextOverflow.ellipsis),
-              if (phone != null && phone.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(phone,
-                    style: TextStyle(
-                        fontSize: 12, color: context.textSecondary)),
-              ],
-              const SizedBox(height: 6),
-              Row(children: [
-                Text('ID: ',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: context.textDisabled,
-                        fontWeight: FontWeight.w500)),
-                Flexible(
-                  child: Text(patient.prn,
-                      style: const TextStyle(
-                          color: _kAccent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700),
-                      overflow: TextOverflow.ellipsis),
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: patient.prn));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Patient ID copied'),
-                        duration: Duration(seconds: 1),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: _kAccent.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Icon(Icons.copy_outlined,
-                        size: 12, color: _kAccent),
+            const SizedBox(width: 8),
+            // Edit button
+            if (canEditPatient)
+              GestureDetector(
+                onTap: () => context.push('/patients/${patient.id}/edit'),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: _kAccent.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
                   ),
+                  child: const Icon(Icons.edit_outlined,
+                      color: _kAccent, size: 17),
                 ),
-              ]),
-            ],
-          ),
+              ),
+            const SizedBox(width: 8),
+            // Delete button (icon only — no action yet)
+            Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFEBEB),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: Color(0xFFE53935), size: 17),
+            ),
+            const SizedBox(width: 14),
+          ],
         ),
-
-        // Vertical divider + right info column (age/gender + phone)
-        if (hasRight) ...[
-          Container(
-            width: 1,
-            height: 56,
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            color: context.borderColor,
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (ageSexStr.isNotEmpty)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.calendar_today_outlined,
-                      size: 13, color: context.textSecondary),
-                  const SizedBox(width: 5),
-                  Text(ageSexStr,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: context.textPrimary)),
-                ]),
-              if (ageSexStr.isNotEmpty &&
-                  (phone != null && phone.isNotEmpty))
-                const SizedBox(height: 8),
-              if (phone != null && phone.isNotEmpty)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.phone_outlined,
-                      size: 13, color: context.textSecondary),
-                  const SizedBox(width: 5),
-                  Text(phone,
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: context.textPrimary)),
-                ]),
-            ],
-          ),
-        ],
-      ]),
-      ], // Column children
       ),
     );
   }

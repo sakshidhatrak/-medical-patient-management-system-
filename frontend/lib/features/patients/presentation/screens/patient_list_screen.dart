@@ -537,13 +537,7 @@ class _PatientCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ageSex = patient.ageSex;
-    final phone  = patient.phone ?? '';
-    final sub = [
-      if (ageSex.isNotEmpty) ageSex,
-      if (phone.isNotEmpty) phone,
-    ].join('  •  ');
-    final subtitle = sub.isNotEmpty ? sub : patient.prn;
+    final phone = patient.phone ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -569,8 +563,7 @@ class _PatientCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             child: Row(
               children: [
                 CircleAvatar(
@@ -590,33 +583,33 @@ class _PatientCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              patient.fullName,
-                              style: TextStyle(
-                                color: textMain,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Text(
-                            _timeAgo(patient.createdAt),
-                            style: const TextStyle(
-                                fontSize: 12, color: _kSub),
-                          ),
-                        ],
+                      Text(
+                        patient.fullName,
+                        style: TextStyle(
+                          color: textMain,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        subtitle,
-                        style: const TextStyle(
-                            fontSize: 12, color: _kSub),
+                        patient.prn,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _kBlue,
+                          fontWeight: FontWeight.w600,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (phone.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          phone,
+                          style: const TextStyle(fontSize: 12, color: _kSub),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
                   ),
                 ),
