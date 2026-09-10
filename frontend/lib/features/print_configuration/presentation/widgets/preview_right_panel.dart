@@ -303,53 +303,7 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
     addFull(_kSectionDefs[4]);              // Presenting Complaints
     addFull(_kSectionDefs[5]);              // Examination Findings
     addPaired(_kSectionDefs[6], _kSectionDefs[7]); // Reports | Advice
-    // Treatment always shown with "—" fallback; Investigations paired
-    {
-      final hasInv = _sectionHasData(c, d, _kSectionDefs[9].fields);
-      // Treatment section — always include even with no data
-      if (result.isNotEmpty) result.add(const SizedBox(height: 8));
-      if (hasInv) {
-        result.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: _SectionCard(
-                    icon: _kSectionDefs[8].icon,
-                    title: _kSectionDefs[8].title,
-                    rxIcon: true,
-                    noPadding: true,
-                    contentWidget: _sectionHasData(c, d, _kSectionDefs[8].fields)
-                        ? _fieldListWidget(c, d, _kSectionDefs[8].fields)
-                        : const Text('—', style: TextStyle(fontSize: 12, color: Colors.black54)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _SectionCard(
-                    icon: _kSectionDefs[9].icon,
-                    title: _kSectionDefs[9].title,
-                    noPadding: true,
-                    contentWidget: _fieldListWidget(c, d, _kSectionDefs[9].fields),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ));
-      } else {
-        result.add(_SectionCard(
-          icon: _kSectionDefs[8].icon,
-          title: _kSectionDefs[8].title,
-          rxIcon: true,
-          contentWidget: _sectionHasData(c, d, _kSectionDefs[8].fields)
-              ? _fieldListWidget(c, d, _kSectionDefs[8].fields)
-              : const Text('—', style: TextStyle(fontSize: 12, color: Colors.black54)),
-        ));
-      }
-    }
+    addPaired(_kSectionDefs[8], _kSectionDefs[9]); // Treatment | Investigations
     addFull(_kSectionDefs[10]);             // Cross Reference
 
     return result;
