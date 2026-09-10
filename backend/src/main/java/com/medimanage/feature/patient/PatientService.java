@@ -13,7 +13,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 
 @Service
@@ -110,16 +111,14 @@ public class PatientService {
     }
 
     /**
-     * PRN format: DD-MM-YYYY-NNN where NNN = first 3 letters of firstName (uppercase).
-     * Appends -2, -3 … when the prefix already exists (same day, same initials).
+     * PRN format: ddMMyyyyHHmmss in IST (Asia/Kolkata).
+     * Appends -2, -3 … on the rare same-second collision.
      */
     private String generatePrn(String firstName) {
-        LocalDate today = LocalDate.now();
-        String initials = firstName.length() >= 3
-                ? firstName.substring(0, 3).toUpperCase()
-                : firstName.toUpperCase();
-        String base = String.format("%02d-%02d-%04d-%s",
-                today.getDayOfMonth(), today.getMonthValue(), today.getYear(), initials);
+        ZonedDateTime ist = ZonedDateTime.now(ZoneId.of("Asia/Kolkata"));
+        String base = String.format("%02d%02d%04d%02d%02d%02d",
+                ist.getDayOfMonth(), ist.getMonthValue(), ist.getYear(),
+                ist.getHour(), ist.getMinute(), ist.getSecond());
 
         long existing = repo.countByPrnStartingWith(base);
         return existing == 0 ? base : base + "-" + (existing + 1);
