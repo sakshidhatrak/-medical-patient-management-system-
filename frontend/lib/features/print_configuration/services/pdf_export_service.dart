@@ -282,7 +282,7 @@ pw.Widget _buildHeader(
                     _hCred(_Clinic.degree2,     font, 10.0),
                     _hCred(_Clinic.degree3,     font, 9.5),
                     pw.SizedBox(height: 2),
-                    _hCred('⊕  ${_Clinic.website}', font, 9.5),
+                    _pdfGlobeRow(_Clinic.website, font, 9.5),
                   ],
                 ),
               ),
@@ -319,6 +319,49 @@ pw.Widget _hCred(String text, pw.Font font, double size) => pw.Text(
   textAlign: pw.TextAlign.right,
   style: pw.TextStyle(font: font, fontSize: size, color: _kText),
 );
+
+// Draws a globe icon (circle + vertical + horizontal meridians) in navy.
+pw.Widget _pdfGlobeRow(String text, pw.Font font, double fontSize) {
+  const iconSize = 10.0;
+  return pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.end,
+    children: [
+      pw.SizedBox(
+        width: iconSize,
+        height: iconSize,
+        child: pw.CustomPaint(
+          size: const PdfPoint(iconSize, iconSize),
+          painter: (PdfGraphics g, PdfPoint sz) {
+            final cx = sz.x / 2;
+            final cy = sz.y / 2;
+            final r  = sz.x / 2 - 0.5;
+            g.setStrokeColor(_kNavy);
+            g.setLineWidth(0.7);
+            // Outer circle
+            g.drawEllipse(cx, cy, r, r);
+            g.strokePath();
+            // Vertical meridian
+            g.moveTo(cx, cy - r);
+            g.lineTo(cx, cy + r);
+            g.strokePath();
+            // Equator
+            g.moveTo(cx - r, cy);
+            g.lineTo(cx + r, cy);
+            g.strokePath();
+            // Inner horizontal oval (latitude arc)
+            g.drawEllipse(cx, cy, r * 0.55, r * 0.3);
+            g.strokePath();
+          },
+        ),
+      ),
+      pw.SizedBox(width: 3),
+      pw.Text(
+        text,
+        style: pw.TextStyle(font: font, fontSize: fontSize, color: _kText),
+      ),
+    ],
+  );
+}
 
 // ── Left sidebar: specialisations list + red bar (items 1-7 only) ────────────
 //
@@ -432,6 +475,7 @@ pw.Widget _buildSections(
     final items = <pw.Widget>[
       if (d('phone').isNotEmpty)   _fieldRow('Phone',   d('phone'),   font, fontBold),
       if (d('address').isNotEmpty) _fieldRow('Address', d('address'), font, fontBold),
+      if (d('email').isNotEmpty)   _fieldRow('Email',   d('email'), font, fontBold),
     ];
     if (items.isNotEmpty) sections.add(_section('PATIENT CONTACT & ID', fontBold, items));
   }
@@ -476,11 +520,13 @@ pw.Widget _buildSections(
       pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
     ]));
 
-  // TREATMENT (MEDICINES)
-  if (d('medications').isNotEmpty)
-    sections.add(_section('TREATMENT (MEDICINES)', fontBold, [
-      _buildMedicinesTable(d('medications'), font, fontBold),
-    ]));
+  // TREATMENT (MEDICINES) — always shown, "-" when empty
+  sections.add(_section('TREATMENT (MEDICINES)', fontBold, [
+    if (d('medications').isNotEmpty)
+      _buildMedicinesTable(d('medications'), font, fontBold)
+    else
+      pw.Text('—', style: pw.TextStyle(font: font, fontSize: 10, color: _kText)),
+  ]));
 
   // INVESTIGATIONS
   {

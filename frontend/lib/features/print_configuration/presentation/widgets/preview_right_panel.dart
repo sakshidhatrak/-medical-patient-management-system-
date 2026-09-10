@@ -303,7 +303,53 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
     addFull(_kSectionDefs[4]);              // Presenting Complaints
     addFull(_kSectionDefs[5]);              // Examination Findings
     addPaired(_kSectionDefs[6], _kSectionDefs[7]); // Reports | Advice
-    addPaired(_kSectionDefs[8], _kSectionDefs[9]); // Treatment | Investigations
+    // Treatment always shown with "—" fallback; Investigations paired
+    {
+      final hasInv = _sectionHasData(c, d, _kSectionDefs[9].fields);
+      // Treatment section — always include even with no data
+      if (result.isNotEmpty) result.add(const SizedBox(height: 8));
+      if (hasInv) {
+        result.add(Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _SectionCard(
+                    icon: _kSectionDefs[8].icon,
+                    title: _kSectionDefs[8].title,
+                    rxIcon: true,
+                    noPadding: true,
+                    contentWidget: _sectionHasData(c, d, _kSectionDefs[8].fields)
+                        ? _fieldListWidget(c, d, _kSectionDefs[8].fields)
+                        : const Text('—', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _SectionCard(
+                    icon: _kSectionDefs[9].icon,
+                    title: _kSectionDefs[9].title,
+                    noPadding: true,
+                    contentWidget: _fieldListWidget(c, d, _kSectionDefs[9].fields),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ));
+      } else {
+        result.add(_SectionCard(
+          icon: _kSectionDefs[8].icon,
+          title: _kSectionDefs[8].title,
+          rxIcon: true,
+          contentWidget: _sectionHasData(c, d, _kSectionDefs[8].fields)
+              ? _fieldListWidget(c, d, _kSectionDefs[8].fields)
+              : const Text('—', style: TextStyle(fontSize: 12, color: Colors.black54)),
+        ));
+      }
+    }
     addFull(_kSectionDefs[10]);             // Cross Reference
 
     return result;
@@ -932,6 +978,7 @@ class FieldConfigPage extends ConsumerStatefulWidget {
 class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
   final Set<int> _expanded = {};
   bool _saving = false;
+  bool _printing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1029,7 +1076,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                 // Cancel
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _saving ? null : () => Navigator.of(context).pop(),
+                    onPressed: (_saving || _printing) ? null : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _kPrimNvy,
                       side: const BorderSide(color: _kPrimNvy, width: 1.5),
@@ -1038,17 +1085,48 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                           borderRadius: BorderRadius.circular(10)),
                     ),
                     child: const Text('Cancel',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w600)),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                // Print
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: (_saving || _printing) ? null : _print,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1565C0),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _printing
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.print_rounded, size: 16),
+                              SizedBox(width: 5),
+                              Text('PRINT',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.3)),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 // Save Report
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: _saving ? null : _save,
+                    onPressed: (_saving || _printing) ? null : _save,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _kPrimNvy,
+                      backgroundColor: const Color(0xFF1565C0),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       elevation: 0,
@@ -1057,19 +1135,19 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                     ),
                     child: _saving
                         ? const SizedBox(
-                            width: 18, height: 18,
+                            width: 16, height: 16,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.save_rounded, size: 18),
-                              SizedBox(width: 8),
-                              Text('SAVE REPORT',
+                              Icon(Icons.save_rounded, size: 16),
+                              SizedBox(width: 5),
+                              Text('SAVE',
                                   style: TextStyle(
-                                      fontSize: 14,
+                                      fontSize: 13,
                                       fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.5)),
+                                      letterSpacing: 0.3)),
                             ],
                           ),
                   ),
@@ -1098,6 +1176,24 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _print() async {
+    setState(() => _printing = true);
+    try {
+      await PdfExportService.printReport(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Print failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _printing = false);
     }
   }
 }
