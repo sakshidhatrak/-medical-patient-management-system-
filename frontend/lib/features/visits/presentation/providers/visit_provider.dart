@@ -46,6 +46,7 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         await _local.remapFromIdMap(patientId);
       }
       var rows = await _local.getForPatient(patientId);
+      debugPrint('[VisitLoad] patientId=$patientId sqliteRows=${rows.length}');
       // Fallback: scan for UUID-patient-id visits created within 24 h of this
       // patient. Covers devices that registered before patient_id_map existed
       // (pre-v41) so neither remapFromIdMap nor onOpen repair had the mapping.
@@ -80,13 +81,16 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
           }).toEntity();
         }).toList();
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[VisitLoad] patientId=$patientId EXCEPTION: $e');
+    }
   }
 
   Future<void> _syncFromApi(String patientId) async {
     if (!_online) return;
     try {
       final models = await _ds.getVisitsForPatient(patientId);
+      debugPrint('[VisitSync] patientId=$patientId apiModels=${models.length}');
       for (final m in models) {
         await _local.upsert(m.toFullJson());
       }
@@ -110,7 +114,9 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         }
       }
       state = [...models.map((m) => m.toEntity()), ...pendingLocal];
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[VisitSync] patientId=$patientId ERROR: $e');
+    }
   }
 
   Future<void> refresh() => _syncFromApi(arg);
@@ -284,6 +290,12 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
       );
       await _local.markPending(model.id);
     }
+  }
+
+  // Update a single visit in the in-memory list without touching SQLite/API.
+  // Called by the edit wizard after saving so the patient detail card refreshes.
+  void replaceInList(VisitEntity updated) {
+    state = state.map((v) => v.id == updated.id ? updated : v).toList();
   }
 
   Future<void> deleteVisit(String id) async {

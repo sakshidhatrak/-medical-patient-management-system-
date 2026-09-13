@@ -158,8 +158,11 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
         final sortedVisits = visits.toList()
           ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
 
+        // Hard cap: show only the latest 2 visits
+        final latestVisits = sortedVisits.take(2).toList();
+
         final timeline = <_TimelineItem>[
-          ...sortedVisits.map((v) => _TimelineItem.fromVisit(v)),
+          ...latestVisits.map((v) => _TimelineItem.fromVisit(v)),
           ...surgeries.map((s) => _TimelineItem.fromSurgery(s)),
         ]..sort((a, b) => b.date.compareTo(a.date));
 
@@ -198,40 +201,42 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                       itemCount: timeline.length,
-                      itemBuilder: (ctx, i) => _TimelineRow(
-                        item: timeline[i],
-                        isLast: i == timeline.length - 1,
-                        initiallyExpanded: i == 0,
-                        canWrite: canWrite,
-                        photos: allPhotos
-                            .where((p) =>
-                                p.visitId == timeline[i].id ||
-                                p.surgeryId == timeline[i].id)
-                            .toList(),
-                        onDocTap: () {
-                          if (timeline[i].type == 'visit') {
-                            context.push(
-                                '/patients/$patientId/visits/${timeline[i].id}');
-                          } else if (canWrite) {
-                            context.push(
-                                '/patients/$patientId/surgeries/${timeline[i].id}');
-                          }
-                        },
-                        onPrint: timeline[i].visit != null
-                            ? () {
-                                final visitPhotos = allPhotos
-                                    .where((p) =>
-                                        p.visitId == timeline[i].id)
-                                    .toList();
-                                ref
-                                    .read(activePatientDataProvider.notifier)
-                                    .state = _buildVisitPrintMap(
-                                        patient, timeline[i].visit!,
-                                        photos: visitPhotos);
-                                context.push('/print-config');
-                              }
-                            : null,
-                      ),
+                      itemBuilder: (ctx, i) {
+                        return _TimelineRow(
+                          item: timeline[i],
+                          isLast: i == timeline.length - 1,
+                          initiallyExpanded: i == 0,
+                          canWrite: canWrite,
+                          photos: allPhotos
+                              .where((p) =>
+                                  p.visitId == timeline[i].id ||
+                                  p.surgeryId == timeline[i].id)
+                              .toList(),
+                          onDocTap: () {
+                            if (timeline[i].type == 'visit') {
+                              context.push(
+                                  '/patients/$patientId/visits/${timeline[i].id}');
+                            } else if (canWrite) {
+                              context.push(
+                                  '/patients/$patientId/surgeries/${timeline[i].id}');
+                            }
+                          },
+                          onPrint: timeline[i].visit != null
+                              ? () {
+                                  final visitPhotos = allPhotos
+                                      .where((p) =>
+                                          p.visitId == timeline[i].id)
+                                      .toList();
+                                  ref
+                                      .read(activePatientDataProvider.notifier)
+                                      .state = _buildVisitPrintMap(
+                                          patient, timeline[i].visit!,
+                                          photos: visitPhotos);
+                                  context.push('/print-config');
+                                }
+                              : null,
+                        );
+                      },
                     ),
               ),
             ),
@@ -488,6 +493,7 @@ class _TimelineRow extends StatefulWidget {
 
 class _TimelineRowState extends State<_TimelineRow> {
   late bool _expanded;
+  bool _showMeds = false;
 
   @override
   void initState() {
@@ -503,9 +509,7 @@ class _TimelineRowState extends State<_TimelineRow> {
 
   @override
   Widget build(BuildContext context) {
-    final dateStr    = DateFormat('dd MMM yyyy').format(item.date);
-    final timeStr    = DateFormat('hh:mm a').format(item.date);
-    final dotColor   = _dotColor;
+    final dotColor    = _dotColor;
     final accentColor = item.type == 'visit' ? _kAccent : _kRed;
 
     final examMap = <String, String>{};
@@ -517,7 +521,7 @@ class _TimelineRowState extends State<_TimelineRow> {
         });
       } catch (_) {}
     }
-    // Rebuild medications from structured prescriptions JSON (covers existing data)
+    // Rebuild medications from structured prescriptions JSON
     if (examMap.containsKey('prescriptions')) {
       try {
         final presJson = jsonDecode(examMap['prescriptions']!) as List;
@@ -535,43 +539,44 @@ class _TimelineRowState extends State<_TimelineRow> {
     }
     String ex(String k) => examMap[k] ?? '';
 
-    final dataRows = <({String label, String value})>[];
-    void add(String label, String val) {
-      if (val.trim().isNotEmpty) dataRows.add((label: label, value: val.trim()));
+    final dataRows = <({String label, String value, IconData icon, Color color})>[];
+    void add(String label, String val, IconData icon, Color color) {
+      if (val.trim().isNotEmpty) dataRows.add((label: label, value: val.trim(), icon: icon, color: color));
     }
 
     if (item.visit != null) {
-      add('Chief Complaint',     item.visit!.complaints ?? '');
-      add('Previous History',    ex('previousHistory'));
-      add('General Exam',        ex('examGeneral'));
-      add('Neurological Exam',   ex('examNeurological'));
-      add('Clinical Diagnosis',  ex('clinicalDiagnosis'));
-      add('Imaging',             ex('imaging'));
-      add('Other Investigation', ex('otherInvestigation'));
-      add('Impression',          item.visit!.clinicalImpression ?? '');
-      add('Plan',                item.visit!.plan ?? '');
-      add('Treatment',           ex('medications'));
-      add('Notes',               item.visit!.notes ?? '');
-      add('Advice',              ex('advice'));
+      add('Chief Complaint',     item.visit!.complaints ?? '',        Icons.description_outlined,       const Color(0xFF4B55CC));
+      add('Previous History',    ex('previousHistory'),               Icons.history_outlined,            const Color(0xFF8B5CF6));
+      add('General Exam',        ex('examGeneral'),                   Icons.search_outlined,             const Color(0xFF06B6D4));
+      add('Neurological Exam',   ex('examNeurological'),              Icons.psychology_outlined,         const Color(0xFF10B981));
+      add('Clinical Diagnosis',  ex('clinicalDiagnosis'),             Icons.assignment_outlined,         const Color(0xFF3B82F6));
+      add('Imaging',             ex('imaging'),                       Icons.image_outlined,              const Color(0xFF0EA5E9));
+      add('Other Investigation', ex('otherInvestigation'),            Icons.science_outlined,            const Color(0xFF14B8A6));
+      add('Impression',          item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline,          const Color(0xFFF59E0B));
+      add('Plan',                item.visit!.plan ?? '',              Icons.map_outlined,                const Color(0xFF6366F1));
+      add('Notes',               item.visit!.notes ?? '',             Icons.notes_rounded,               const Color(0xFF64748B));
+      add('Advice',              ex('advice'),                        Icons.chat_bubble_outline_rounded, const Color(0xFF3B82F6));
     } else {
-      add('Procedure',        item.title);
-      add('Pre-op Diagnosis', item.subtitle);
+      add('Procedure',        item.title,    Icons.medical_services_outlined, _kRed);
+      add('Pre-op Diagnosis', item.subtitle, Icons.assignment_outlined,       const Color(0xFF3B82F6));
     }
 
-    // Vitals are dedicated visit fields — fall back to examination blob for old data
-    final bp   = (item.visit?.bp?.isNotEmpty == true)
-        ? item.visit!.bp!
-        : ex('bp');
-    final wt   = (item.visit?.weight?.isNotEmpty == true)
-        ? item.visit!.weight!
-        : ex('weight');
-    final temp = (item.visit?.temperature?.isNotEmpty == true)
-        ? item.visit!.temperature!
-        : ex('temperature');
+    final bp   = (item.visit?.bp?.isNotEmpty == true)   ? item.visit!.bp!   : ex('bp');
+    final wt   = (item.visit?.weight?.isNotEmpty == true) ? item.visit!.weight! : ex('weight');
+    final temp = (item.visit?.temperature?.isNotEmpty == true) ? item.visit!.temperature! : ex('temperature');
     final hasVitals = bp.isNotEmpty || wt.isNotEmpty || temp.isNotEmpty;
+
+    final medsRaw   = ex('medications');
+    final hasMeds   = medsRaw.isNotEmpty;
+    final medsCount = hasMeds
+        ? medsRaw.split('\n').where((l) => l.trim().isNotEmpty).length
+        : 0;
+
+    final hasBody = hasVitals || dataRows.isNotEmpty || hasMeds || photos.isNotEmpty;
 
     return IntrinsicHeight(
       child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Timeline dot + line
         SizedBox(
           width: 28,
           child: Column(
@@ -579,30 +584,23 @@ class _TimelineRowState extends State<_TimelineRow> {
             children: [
               const SizedBox(height: 10),
               Container(
-                width: 12,
-                height: 12,
+                width: 12, height: 12,
                 decoration: BoxDecoration(
                   color: dotColor,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: dotColor.withValues(alpha: 0.35),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  boxShadow: [BoxShadow(
+                    color: dotColor.withValues(alpha: 0.35),
+                    blurRadius: 6, offset: const Offset(0, 2),
+                  )],
                 ),
               ),
               if (!isLast)
-                Expanded(
-                  child: Center(
-                    child: Container(width: 1.5, color: context.borderColor),
-                  ),
-                ),
+                Expanded(child: Center(
+                  child: Container(width: 1.5, color: context.borderColor),
+                )),
             ],
           ),
         ),
-
         const SizedBox(width: 8),
 
         Expanded(
@@ -610,159 +608,206 @@ class _TimelineRowState extends State<_TimelineRow> {
             padding: const EdgeInsets.only(bottom: 16),
             child: Container(
               decoration: BoxDecoration(
-                color: context.primarySurf,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: accentColor.withValues(alpha: 0.18)),
+                color: context.cardColor,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accentColor.withValues(alpha: 0.15)),
+                boxShadow: [BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8, offset: const Offset(0, 2),
+                )],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Header (date + type/status + 3 action buttons) ──────
                   InkWell(
-                    onTap: () => setState(() => _expanded = !_expanded),
-                    borderRadius: BorderRadius.circular(12),
+                    onTap: hasBody ? () => setState(() => _expanded = !_expanded) : null,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(14),
+                      topRight: Radius.circular(14),
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          // Stacked date + time on the left
+                          // Date block
                           _DateStack(date: item.date, accentColor: accentColor),
-                          // Vertical divider
+                          // Divider
                           Container(
-                            width: 1,
-                            height: 64,
+                            width: 1, height: 64,
                             margin: const EdgeInsets.symmetric(horizontal: 12),
                             color: accentColor.withValues(alpha: 0.18),
                           ),
-                          // Title + chips
+                          // Visit type + status chips
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   item.type == 'visit'
-                                      ? (item.visit?.visitType.label ?? 'Visit')
+                                      ? (item.visit?.visitType.label ?? 'OPD Visit')
                                       : item.title,
                                   style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 14,
                                       fontWeight: FontWeight.w700,
                                       color: context.textPrimary),
                                 ),
-                                const SizedBox(height: 5),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    if (item.visit != null)
-                                      _Chip(
-                                          label: item.visit!.visitType.label,
-                                          color: accentColor),
-                                    _Chip(
-                                      label: item.isDraft ? 'Draft' : 'Completed',
-                                      color: item.isDraft
-                                          ? const Color(0xFFD97706)
-                                          : const Color(0xFF059669),
-                                    ),
-                                    SyncStatusBadge(syncStatus: item.syncStatus),
-                                  ],
-                                ),
+                                const SizedBox(height: 6),
+                                Wrap(spacing: 6, runSpacing: 4, children: [
+                                  if (item.visit != null)
+                                    _Chip(label: item.visit!.visitType.label, color: accentColor),
+                                  _Chip(
+                                    label: item.isDraft ? 'Draft' : 'Completed',
+                                    color: item.isDraft
+                                        ? const Color(0xFFD97706)
+                                        : const Color(0xFF059669),
+                                  ),
+                                  SyncStatusBadge(syncStatus: item.syncStatus),
+                                ]),
                               ],
                             ),
                           ),
-                          // Print + Edit + chevron
+                          // View / Print / Edit buttons
                           Row(mainAxisSize: MainAxisSize.min, children: [
+                            _ActionBtn(
+                              icon: Icons.remove_red_eye_outlined,
+                              label: 'View',
+                              onTap: widget.onDocTap,
+                              color: accentColor,
+                            ),
                             if (widget.onPrint != null) ...[
-                              Tooltip(
-                                message: 'Print & Export',
-                                child: GestureDetector(
-                                  onTap: widget.onPrint,
-                                  child: Container(
-                                    width: 32, height: 32,
-                                    decoration: BoxDecoration(
-                                      color: _kAccent.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.print_outlined,
-                                        size: 16, color: _kAccent),
-                                  ),
-                                ),
-                              ),
                               const SizedBox(width: 6),
+                              _ActionBtn(
+                                icon: Icons.print_outlined,
+                                label: 'Print',
+                                onTap: widget.onPrint!,
+                                color: accentColor,
+                              ),
                             ],
                             if (widget.canWrite) ...[
-                              Tooltip(
-                                message: 'Edit',
-                                child: GestureDetector(
-                                  onTap: widget.onDocTap,
-                                  child: Container(
-                                    width: 32, height: 32,
-                                    decoration: BoxDecoration(
-                                      color: _kAccent.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.edit_outlined,
-                                        size: 16, color: _kAccent),
-                                  ),
+                              const SizedBox(width: 6),
+                              _ActionBtn(
+                                icon: Icons.edit_outlined,
+                                label: 'Edit',
+                                onTap: widget.onDocTap,
+                                color: accentColor,
+                              ),
+                            ],
+                            if (hasBody) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: accentColor.withValues(alpha: 0.08),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  _expanded
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 18,
+                                  color: accentColor,
                                 ),
                               ),
-                              const SizedBox(width: 6),
                             ],
-                            AnimatedRotation(
-                              turns: _expanded ? 0.5 : 0,
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(Icons.keyboard_arrow_down_rounded,
-                                  size: 20, color: context.textDisabled),
-                            ),
                           ]),
                         ],
                       ),
                     ),
                   ),
 
-                  if (_expanded && (dataRows.isNotEmpty || hasVitals || photos.isNotEmpty)) ...[
+                  // ── Expanded body — section list ────────────────────────
+                  if (_expanded && hasBody) ...[
                     Divider(height: 1, thickness: 1,
                         color: accentColor.withValues(alpha: 0.12)),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (hasVitals) ...[
-                            Wrap(spacing: 12, runSpacing: 6, children: [
-                              if (bp.isNotEmpty)
-                                _VitalChip(icon: Icons.favorite_border_rounded,
-                                    label: 'BP', value: bp),
-                              if (wt.isNotEmpty)
-                                _VitalChip(icon: Icons.monitor_weight_outlined,
-                                    label: 'Weight', value: wt),
-                              if (temp.isNotEmpty)
-                                _VitalChip(icon: Icons.thermostat_outlined,
-                                    label: 'Temp', value: temp),
-                            ]),
-                            if (dataRows.isNotEmpty || photos.isNotEmpty)
-                              const SizedBox(height: 10),
-                          ],
-                          Builder(builder: (_) {
-                            final medsEntry = dataRows.where((r) => r.label == 'Treatment').firstOrNull;
-                            final otherRows = dataRows.where((r) => r.label != 'Treatment').toList();
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (otherRows.isNotEmpty) _FieldGrid(rows: otherRows),
-                                if (medsEntry != null && medsEntry.value.isNotEmpty) ...[
-                                  if (otherRows.isNotEmpty) const SizedBox(height: 10),
-                                  _MedicinesTable(raw: medsEntry.value),
-                                ],
-                              ],
-                            );
-                          }),
-                          if (photos.isNotEmpty) ...[
-                            if (dataRows.isNotEmpty) const SizedBox(height: 10),
-                            _AttachmentsSection(photos: photos),
-                          ],
-                        ],
+
+                    // Vitals row
+                    if (hasVitals)
+                      _SectionRow(
+                        icon: Icons.favorite_border_rounded,
+                        iconColor: const Color(0xFFEF4444),
+                        title: 'Vitals',
+                        value: [
+                          if (bp.isNotEmpty)   'SP: $bp',
+                          if (wt.isNotEmpty)   'Weight: $wt',
+                          if (temp.isNotEmpty) 'Temp: $temp',
+                        ].join('   '),
+                        isLast: dataRows.isEmpty && !hasMeds && photos.isEmpty,
                       ),
-                    ),
+
+                    // Data rows (all except medications)
+                    ...dataRows.asMap().entries.map((e) {
+                      final r       = e.value;
+                      final rowLast = e.key == dataRows.length - 1 &&
+                          !hasMeds && photos.isEmpty;
+                      return _SectionRow(
+                        icon: r.icon,
+                        iconColor: r.color,
+                        title: r.label,
+                        value: r.value,
+                        isLast: rowLast,
+                      );
+                    }),
+
+                    // Treatment / Medicines row
+                    if (hasMeds)
+                      _SectionRow(
+                        icon: Icons.medication_outlined,
+                        iconColor: const Color(0xFFF97316),
+                        title: 'Treatment / Medicines',
+                        value: '$medsCount item${medsCount == 1 ? '' : 's'} added',
+                        isLast: photos.isEmpty && !_showMeds,
+                        trailingWidget: GestureDetector(
+                          onTap: () => setState(() => _showMeds = !_showMeds),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 5),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: const Color(0xFFF97316)),
+                              borderRadius: BorderRadius.circular(7),
+                            ),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Icon(
+                                _showMeds
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.remove_red_eye_outlined,
+                                size: 13,
+                                color: const Color(0xFFF97316),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _showMeds ? 'Hide' : 'View',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFFF97316)),
+                              ),
+                            ]),
+                          ),
+                        ),
+                      ),
+
+                    // Medicines table — capped height so long lists don't
+                    // make the card enormous; scrollable to see all rows.
+                    if (_showMeds && hasMeds)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 220),
+                          child: SingleChildScrollView(
+                            child: _MedicinesTable(raw: medsRaw),
+                          ),
+                        ),
+                      ),
+
+                    // Attachments
+                    if (photos.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: _AttachmentsSection(photos: photos),
+                      ),
                   ],
                 ],
               ),
@@ -819,6 +864,157 @@ class _VitalChip extends StatelessWidget {
                   fontSize: 11, color: context.textPrimary, fontWeight: FontWeight.w700)),
         ]),
       );
+}
+
+// ── Action button (View / Print / Edit) in visit card header ─────────────────
+class _ActionBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+  const _ActionBtn({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withValues(alpha: 0.22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 9, fontWeight: FontWeight.w600, color: color)),
+            ],
+          ),
+        ),
+      );
+}
+
+// ── Section list row inside an expanded visit card ───────────────────────────
+class _SectionRow extends StatefulWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String value;
+  final bool isLast;
+  final Widget? trailingWidget;
+  const _SectionRow({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.value,
+    this.isLast = false,
+    this.trailingWidget,
+  });
+
+  @override
+  State<_SectionRow> createState() => _SectionRowState();
+}
+
+class _SectionRowState extends State<_SectionRow> {
+  bool _expanded = false;
+
+  // Text longer than ~70 chars will overflow 2 lines at fontSize 12
+  // on a typical phone screen. Avoids TextPainter inside LayoutBuilder
+  // (which can cause nested-layout assertion failures).
+  bool get _isLong => widget.value.length > 70;
+  bool get _canExpand => widget.trailingWidget == null && _isLong;
+
+  @override
+  Widget build(BuildContext context) {
+    final cross = (_expanded && _canExpand)
+        ? CrossAxisAlignment.start
+        : CrossAxisAlignment.center;
+
+    return GestureDetector(
+      onTap: _canExpand ? () => setState(() => _expanded = !_expanded) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          border: widget.isLast
+              ? null
+              : Border(
+                  bottom: BorderSide(
+                      color: context.borderColor.withValues(alpha: 0.6))),
+        ),
+        child: Row(
+          crossAxisAlignment: cross,
+          children: [
+            Padding(
+              padding: (_expanded && _canExpand)
+                  ? const EdgeInsets.only(top: 2)
+                  : EdgeInsets.zero,
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: widget.iconColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(widget.icon, size: 17, color: widget.iconColor),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.title,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: context.textPrimary)),
+                  if (widget.value.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      alignment: Alignment.topLeft,
+                      child: Text(
+                        widget.value,
+                        style: TextStyle(
+                            fontSize: 12, color: context.textSecondary),
+                        maxLines: _expanded ? null : 2,
+                        overflow: _expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (widget.trailingWidget != null) ...[
+              const SizedBox(width: 8),
+              widget.trailingWidget!,
+            ],
+            const SizedBox(width: 6),
+            Icon(
+              _canExpand
+                  ? (_expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded)
+                  : Icons.chevron_right_rounded,
+              size: 18,
+              color: context.textDisabled,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _DataRow extends StatelessWidget {
