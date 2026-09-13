@@ -19,17 +19,20 @@ import '../../../prescriptions/presentation/screens/prescription_screen.dart';
 import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
+// ── Fixed accent colours ───────────────────────────────────────────────────────
 const _kP1    = Color(0xFF4B55CC);
 const _kP2    = Color(0xFF3D47B4);
 const _kRed   = Color(0xFF8A4430);
 const _kGreen = Color(0xFF2D7A4E);
 const _kAmber = Color(0xFF74633E);
-const _kBg    = Color(0xFFF8F6F2);
-const _kNavy  = Color(0xFF302D28);
-const _kSlate = Color(0xFF6E6A63);
-const _kMuted = Color(0xFF979088);
-const _kBorder= Color(0xFFE0DDD7);
+
+// ── Theme-aware surface / text colours ────────────────────────────────────────
+bool  _isDarkCtx(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+Color _kBg    (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF171629) : const Color(0xFFF8F6F2);
+Color _kNavy  (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFEEECFF) : const Color(0xFF302D28);
+Color _kSlate (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFCCCAE8) : const Color(0xFF6E6A63);
+Color _kMuted (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF9896B8) : const Color(0xFF979088);
+Color _kBorder(BuildContext c) => _isDarkCtx(c) ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7);
 
 class VisitViewScreen extends ConsumerWidget {
   final String patientId;
@@ -48,7 +51,7 @@ class VisitViewScreen extends ConsumerWidget {
     final visit = visitAsync;
     if (visit == null) {
       return Scaffold(
-        backgroundColor: _kBg,
+        backgroundColor: _kBg(context),
         appBar: AppBar(backgroundColor: _kP1, foregroundColor: Colors.white),
         body: const Center(child: CircularProgressIndicator(color: _kP1)),
       );
@@ -90,7 +93,7 @@ class VisitViewScreen extends ConsumerWidget {
         : <String>[];
 
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: _kBg(context),
       body: CustomScrollView(
         slivers: [
           // ── Hero app bar ───────────────────────────────────────────
@@ -146,7 +149,7 @@ class VisitViewScreen extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: _kP1.withValues(alpha: 0.2)),
                             ),
-                            child: Text(c, style: const TextStyle(fontSize: 12, color: _kP1, fontWeight: FontWeight.w600)),
+                            child: Text(c, style: TextStyle(fontSize: 12, color: _kP1, fontWeight: FontWeight.w600)),
                           )
                         ).toList()),
                       if (visit.notes?.isNotEmpty == true) ...[
@@ -263,10 +266,10 @@ class VisitViewScreen extends ConsumerWidget {
                             Expanded(
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(d.displayName,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context))),
                                 if (d.displayDosage.isNotEmpty)
                                   Text(d.displayDosage,
-                                      style: const TextStyle(fontSize: 11, color: _kMuted)),
+                                      style: TextStyle(fontSize: 11, color: _kMuted(context))),
                               ]),
                             ),
                           ]),
@@ -295,7 +298,7 @@ class VisitViewScreen extends ConsumerWidget {
                   _ViewSection(
                     title: 'Uploaded Reports',
                     icon: Icons.upload_file_rounded,
-                    color: _kSlate,
+                    color: _kSlate(context),
                     child: _PhotoRow('Patient Reports', reportPhotos),
                   ),
 
@@ -310,16 +313,16 @@ class VisitViewScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: _kBorder),
+                      border: Border.all(color: _kBorder(context)),
                     ),
-                    child: Column(children: const [
-                      Icon(Icons.note_alt_outlined, size: 40, color: _kMuted),
-                      SizedBox(height: 12),
+                    child: Column(children: [
+                      Icon(Icons.note_alt_outlined, size: 40, color: _kMuted(context)),
+                      const SizedBox(height: 12),
                       Text('No details recorded yet.',
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _kNavy)),
-                      SizedBox(height: 6),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _kNavy(context))),
+                      const SizedBox(height: 6),
                       Text('No visit details have been filled in.',
-                          style: TextStyle(fontSize: 12, color: _kMuted),
+                          style: TextStyle(fontSize: 12, color: _kMuted(context)),
                           textAlign: TextAlign.center),
                     ]),
                   ),
@@ -357,7 +360,7 @@ class _VisitHeroBg extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft, end: Alignment.bottomRight,
         colors: [Color(0xFF4B55CC), Color(0xFF3D47B4)],
@@ -385,7 +388,7 @@ class _VisitHeroBg extends StatelessWidget {
                 const Icon(Icons.medical_services_outlined, size: 12, color: Colors.white),
                 const SizedBox(width: 5),
                 Text(visitType,
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
               ]),
             ),
             if (isDraft) ...[
@@ -408,18 +411,18 @@ class _VisitHeroBg extends StatelessWidget {
           // Patient name
           if (patient != null)
             Text(patient!.fullName,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.3)),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 20, letterSpacing: -0.3)),
           const SizedBox(height: 4),
 
           // Date/time
           Row(children: [
             const Icon(Icons.calendar_today_outlined, size: 12, color: Colors.white70),
             const SizedBox(width: 5),
-            Text(date, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text(date, style: TextStyle(color: Colors.white70, fontSize: 12)),
             const SizedBox(width: 10),
             const Icon(Icons.access_time_outlined, size: 12, color: Colors.white70),
             const SizedBox(width: 4),
-            Text(time, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text(time, style: TextStyle(color: Colors.white70, fontSize: 12)),
           ]),
         ]),
       ),
@@ -460,7 +463,7 @@ class _ViewSectionState extends State<_ViewSection> {
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: _kBorder),
+      border: Border.all(color: _kBorder(context)),
       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 8, offset: const Offset(0, 2))],
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -480,7 +483,7 @@ class _ViewSectionState extends State<_ViewSection> {
             ),
             const SizedBox(width: 10),
             Text(widget.title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context))),
             const Spacer(),
             AnimatedRotation(
               turns: _open ? 0.5 : 0,
@@ -508,9 +511,9 @@ class _VField extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 10),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label.toUpperCase(),
-          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _kMuted, letterSpacing: 0.7)),
+          style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _kMuted(context), letterSpacing: 0.7)),
       const SizedBox(height: 5),
-      Text(value, style: const TextStyle(fontSize: 13, color: _kNavy, height: 1.5)),
+      Text(value, style: TextStyle(fontSize: 13, color: _kNavy(context), height: 1.5)),
     ]),
   );
 }
@@ -524,7 +527,7 @@ class _PhotoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(label.toUpperCase(),
-        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _kMuted, letterSpacing: 0.7)),
+        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: _kMuted(context), letterSpacing: 0.7)),
     const SizedBox(height: 8),
     PhotoGalleryWidget(photos: photos),
   ]);

@@ -15,15 +15,18 @@ import '../../../photos/presentation/widgets/photo_upload_widget.dart';
 import '../../domain/entities/surgery_entity.dart';
 import '../providers/surgery_provider.dart';
 
-// ── Palette ───────────────────────────────────────────────────────────────────
+// ── Fixed accent colours ───────────────────────────────────────────────────────
 const _kPrimary = Color(0xFF4B55CC);
-const _kRed   = Color(0xFF8A4430);
-const _kRedL  = Color(0xFFF0E4DE);
-const _kBg    = Color(0xFFF8F6F2);
-const _kText2 = Color(0xFF6E6A63);
-const _kGrey  = Color(0xFF979088);
-const _kLine  = Color(0xFFE0DDD7);
-const _kNavy  = Color(0xFF302D28);
+const _kRed     = Color(0xFF8A4430);
+const _kRedL    = Color(0xFFF0E4DE);
+
+// ── Theme-aware surface / text colours ────────────────────────────────────────
+bool  _isDarkCtx(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+Color _kBg   (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF171629) : const Color(0xFFF8F6F2);
+Color _kNavy (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFEEECFF) : const Color(0xFF302D28);
+Color _kText2(BuildContext c) => _isDarkCtx(c) ? const Color(0xFFCCCAE8) : const Color(0xFF6E6A63);
+Color _kGrey (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF9896B8) : const Color(0xFF979088);
+Color _kLine (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7);
 
 const _kSLabels = ['Patient', 'Details', 'Preop', 'Intraop', 'Postop', 'Review'];
 const _kSTitles = [
@@ -236,7 +239,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
     }
 
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: _kBg(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -268,7 +271,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
     child: Row(
       children: [
         IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white, size: 22),
+          icon: Icon(Icons.arrow_back, color: Colors.white, size: 22),
           onPressed: _back,
           padding: const EdgeInsets.all(8),
         ),
@@ -276,14 +279,14 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('New Surgery',
+              Text('New Surgery',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
               Text('Step ${_step + 1} of 6  ·  ${_kSTitles[_step]}',
-                  style: const TextStyle(color: Colors.white70, fontSize: 11)),
+                  style: TextStyle(color: Colors.white70, fontSize: 11)),
             ],
           ),
         ),
-        const Icon(Icons.search, color: Colors.white70, size: 22),
+        Icon(Icons.search, color: Colors.white70, size: 22),
       ],
     ),
   );
@@ -298,9 +301,9 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
         return Expanded(
           child: Row(
             children: [
-              if (i > 0) Expanded(child: Container(height: 1.5, color: i <= _step ? _kRed : _kLine)),
+              if (i > 0) Expanded(child: Container(height: 1.5, color: i <= _step ? _kRed : _kLine(context))),
               _SWizStepCircle(index: i, done: done, active: active, label: _kSLabels[i]),
-              if (i < 5) Expanded(child: Container(height: 1.5, color: i < _step ? _kRed : _kLine)),
+              if (i < 5) Expanded(child: Container(height: 1.5, color: i < _step ? _kRed : _kLine(context))),
             ],
           ),
         );
@@ -360,8 +363,8 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
 
   Widget _buildBottomNav() => Container(
     padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-    decoration: const BoxDecoration(
-      color: Colors.white, border: Border(top: BorderSide(color: _kLine)),
+    decoration: BoxDecoration(
+      color: Colors.white, border: Border(top: BorderSide(color: _kLine(context))),
     ),
     child: Row(
       children: [
@@ -370,12 +373,12 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
             child: OutlinedButton(
               onPressed: _saving ? null : _back,
               style: OutlinedButton.styleFrom(
-                foregroundColor: _kText2,
-                side: const BorderSide(color: _kLine),
+                foregroundColor: _kText2(context),
+                side: BorderSide(color: _kLine(context)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text('Back', style: TextStyle(fontWeight: FontWeight.w600)),
+              child: Text('Back', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
           ),
           const SizedBox(width: 12),
@@ -395,7 +398,7 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
                     width: 18, height: 18,
                     child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : Text(_step == 5 ? 'Save Surgery' : 'Next',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
           ),
         ),
       ],
@@ -421,19 +424,19 @@ class _SWizStepCircle extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: done || active ? _kRed : Colors.white,
-          border: Border.all(color: done || active ? _kRed : _kLine, width: 1.5),
+          border: Border.all(color: done || active ? _kRed : _kLine(context), width: 1.5),
         ),
         alignment: Alignment.center,
         child: done
-            ? const Icon(Icons.check, color: Colors.white, size: 14)
+            ? Icon(Icons.check, color: Colors.white, size: 14)
             : Text('${index + 1}', style: TextStyle(
-                color: active ? Colors.white : _kGrey,
+                color: active ? Colors.white : _kGrey(context),
                 fontWeight: FontWeight.w700, fontSize: 11)),
       ),
       const SizedBox(height: 3),
       Text(label, style: TextStyle(
           fontSize: 8,
-          color: active ? _kRed : _kGrey,
+          color: active ? _kRed : _kGrey(context),
           fontWeight: active ? FontWeight.w700 : FontWeight.normal)),
     ],
   );
@@ -449,7 +452,7 @@ class _SWizCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 14),
     decoration: BoxDecoration(
       color: Colors.white, borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: _kLine),
+      border: Border.all(color: _kLine(context)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -457,8 +460,8 @@ class _SWizCard extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Text(title.toUpperCase(),
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                  color: _kGrey, letterSpacing: 0.8)),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                  color: _kGrey(context), letterSpacing: 0.8)),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
@@ -478,21 +481,21 @@ class _SWizLabel extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
     child: Row(children: [
-      Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kText2)),
-      if (req) const Text(' *', style: TextStyle(color: Colors.red, fontSize: 13)),
+      Text(text, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kText2(context))),
+      if (req) Text(' *', style: TextStyle(color: Colors.red, fontSize: 13)),
     ]),
   );
 }
 
-InputDecoration _sDec(String hint, {Widget? suffix}) => InputDecoration(
+InputDecoration _sDec(BuildContext context, String hint, {Widget? suffix}) => InputDecoration(
   hintText: hint,
-  hintStyle: const TextStyle(color: _kGrey, fontSize: 13),
+  hintStyle: TextStyle(color: _kGrey(context), fontSize: 13),
   suffixIcon: suffix,
-  filled: true, fillColor: _kBg,
+  filled: true, fillColor: _kBg(context),
   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _kLine)),
-  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _kLine)),
-  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _kRed, width: 1.5)),
+  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kLine(context))),
+  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: _kLine(context))),
+  focusedBorder: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(8)), borderSide: BorderSide(color: _kRed, width: 1.5)),
 );
 
 class _SWizDropdown<T> extends StatelessWidget {
@@ -510,13 +513,13 @@ class _SWizDropdown<T> extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12),
     decoration: BoxDecoration(
-      color: _kBg, borderRadius: BorderRadius.circular(8), border: Border.all(color: _kLine),
+      color: _kBg(context), borderRadius: BorderRadius.circular(8), border: Border.all(color: _kLine(context)),
     ),
     child: DropdownButton<T>(
       value: value, isExpanded: true, underline: const SizedBox(),
-      hint: hint != null ? Text(hint!, style: const TextStyle(color: _kGrey, fontSize: 13)) : null,
-      icon: const Icon(Icons.keyboard_arrow_down, color: _kGrey),
-      style: const TextStyle(fontSize: 13, color: Color(0xFF302D28)),
+      hint: hint != null ? Text(hint!, style: TextStyle(color: _kGrey(context), fontSize: 13)) : null,
+      icon: Icon(Icons.keyboard_arrow_down, color: _kGrey(context)),
+      style: TextStyle(fontSize: 13, color: Color(0xFF302D28)),
       items: items.map((i) => DropdownMenuItem(value: i, child: Text(label(i)))).toList(),
       onChanged: onChanged,
     ),
@@ -536,12 +539,12 @@ class _STappableField extends StatelessWidget {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: _kBg, borderRadius: BorderRadius.circular(8), border: Border.all(color: _kLine),
+        color: _kBg(context), borderRadius: BorderRadius.circular(8), border: Border.all(color: _kLine(context)),
       ),
       child: Row(children: [
-        Icon(icon, size: 16, color: _kGrey),
+        Icon(icon, size: 16, color: _kGrey(context)),
         const SizedBox(width: 8),
-        Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF302D28))),
+        Text(label, style: TextStyle(fontSize: 13, color: Color(0xFF302D28))),
       ]),
     ),
   );
@@ -573,12 +576,12 @@ class _SStep1Patient extends ConsumerWidget {
             readOnly: true,
             decoration: InputDecoration(
               hintText: 'Search by name, phone or UHID',
-              hintStyle: const TextStyle(color: _kGrey, fontSize: 13),
-              prefixIcon: const Icon(Icons.search, color: _kGrey, size: 20),
+              hintStyle: TextStyle(color: _kGrey(context), fontSize: 13),
+              prefixIcon: Icon(Icons.search, color: _kGrey(context), size: 20),
               filled: true, fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kLine)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kLine)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kLine(context))),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kLine(context))),
             ),
           ),
           const SizedBox(height: 16),
@@ -589,8 +592,8 @@ class _SStep1Patient extends ConsumerWidget {
             data: (p) => p == null ? const SizedBox() : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Selected Patient',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _kText2, letterSpacing: 0.3)),
+                Text('Selected Patient',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _kText2(context), letterSpacing: 0.3)),
                 const SizedBox(height: 8),
                 _SPatientCard(patient: p, selected: true, colors: _colors),
                 const SizedBox(height: 16),
@@ -598,8 +601,8 @@ class _SStep1Patient extends ConsumerWidget {
             ),
           ),
 
-          const Text('Recent Patients',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _kText2, letterSpacing: 0.3)),
+          Text('Recent Patients',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _kText2(context), letterSpacing: 0.3)),
           const SizedBox(height: 8),
           ...recent.map((p) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -609,11 +612,11 @@ class _SStep1Patient extends ConsumerWidget {
           const SizedBox(height: 4),
           OutlinedButton.icon(
             onPressed: () => context.push('/patients/register'),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Add New Patient'),
+            icon: Icon(Icons.add, size: 18),
+            label: Text('Add New Patient'),
             style: OutlinedButton.styleFrom(
               foregroundColor: _kRed,
-              side: const BorderSide(color: _kRed),
+              side: BorderSide(color: _kRed),
               padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
@@ -638,7 +641,7 @@ class _SPatientCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? _kRedL : Colors.white,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: selected ? _kRed : _kLine, width: selected ? 1.5 : 1),
+        border: Border.all(color: selected ? _kRed : _kLine(context), width: selected ? 1.5 : 1),
       ),
       child: Row(
         children: [
@@ -657,14 +660,14 @@ class _SPatientCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(patient.fullName,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF302D28))),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF302D28))),
                 const SizedBox(height: 2),
                 Text('${patient.ageSex}  ·  UHID: ${patient.prn}',
-                    style: const TextStyle(color: _kGrey, fontSize: 11)),
+                    style: TextStyle(color: _kGrey(context), fontSize: 11)),
               ],
             ),
           ),
-          if (selected) const Icon(Icons.check_circle_rounded, color: _kRed, size: 20),
+          if (selected) Icon(Icons.check_circle_rounded, color: _kRed, size: 20),
         ],
       ),
     );
@@ -769,12 +772,12 @@ class _SStep2Details extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: sel ? _kRed : Colors.white,
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: sel ? _kRed : _kLine),
+                          border: Border.all(color: sel ? _kRed : _kLine(context)),
                         ),
                         alignment: Alignment.center,
                         child: Text(r, style: TextStyle(
                           fontSize: 11, fontWeight: FontWeight.w700,
-                          color: sel ? Colors.white : _kText2,
+                          color: sel ? Colors.white : _kText2(context),
                         ), textAlign: TextAlign.center),
                       ),
                     ),
@@ -790,7 +793,7 @@ class _SStep2Details extends StatelessWidget {
                 const _SWizLabel('Assistant (Optional)'),
                 TextField(
                   controller: assistantCtrl,
-                  decoration: _sDec('Dr. Name'),
+                  decoration: _sDec(context,'Dr. Name'),
                 ),
               ],
             ),
@@ -810,7 +813,7 @@ class _SStep2Details extends StatelessWidget {
                 const _SWizLabel('Anesthesiologist (Optional)'),
                 TextField(
                   controller: anesthCtrl,
-                  decoration: _sDec('Dr. Name'),
+                  decoration: _sDec(context,'Dr. Name'),
                 ),
               ],
             ),
@@ -841,8 +844,8 @@ class _SStep3Preop extends StatelessWidget {
               const _SWizLabel('Preoperative Diagnosis', req: true),
               TextField(
                 controller: diagCtrl,
-                decoration: _sDec('Enter diagnosis or ICD code...',
-                    suffix: const Icon(Icons.search, color: _kGrey, size: 20)),
+                decoration: _sDec(context,'Enter diagnosis or ICD code...',
+                    suffix: Icon(Icons.search, color: _kGrey(context), size: 20)),
               ),
             ],
           ),
@@ -856,7 +859,7 @@ class _SStep3Preop extends StatelessWidget {
               const _SWizLabel('Preoperative Notes'),
               TextField(
                 controller: notesCtrl,
-                decoration: _sDec('Enter preoperative notes...'),
+                decoration: _sDec(context,'Enter preoperative notes...'),
                 maxLines: 5, maxLength: 1000,
               ),
             ],
@@ -901,7 +904,7 @@ class _SStep4Intraop extends StatelessWidget {
               const _SWizLabel('Operative Findings', req: true),
               TextField(
                 controller: findingsCtrl,
-                decoration: _sDec('Enter operative findings...'),
+                decoration: _sDec(context,'Enter operative findings...'),
                 maxLines: 5, maxLength: 1500,
               ),
             ],
@@ -916,7 +919,7 @@ class _SStep4Intraop extends StatelessWidget {
               const _SWizLabel('Procedure Performed', req: true),
               TextField(
                 controller: procedureCtrl,
-                decoration: _sDec('Describe procedure step by step...'),
+                decoration: _sDec(context,'Describe procedure step by step...'),
                 maxLines: 5, maxLength: 3000,
               ),
             ],
@@ -938,7 +941,7 @@ class _SStep4Intraop extends StatelessWidget {
                       child: CheckboxListTile(
                         value: investigations.contains(inv),
                         onChanged: (_) => onInvToggle(inv),
-                        title: Text(inv, style: const TextStyle(fontSize: 12)),
+                        title: Text(inv, style: TextStyle(fontSize: 12)),
                         activeColor: _kRed,
                         contentPadding: EdgeInsets.zero,
                         dense: true,
@@ -964,9 +967,9 @@ class _SStep4Intraop extends StatelessWidget {
                     TextField(
                       controller: eblCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: _sDec('50'),
+                      decoration: _sDec(context,'50'),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
@@ -1008,7 +1011,7 @@ class _SStep4Intraop extends StatelessWidget {
               const _SWizLabel('OT Notes'),
               TextField(
                 controller: otNotesCtrl,
-                decoration: _sDec('Theatre notes, observations, implant details...'),
+                decoration: _sDec(context,'Theatre notes, observations, implant details...'),
                 maxLines: 5,
               ),
               const SizedBox(height: 12),
@@ -1054,9 +1057,9 @@ class _SStep5Postop extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text('Same as preoperative',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kText2)),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _kText2(context))),
                   ),
                   Switch(
                     value: sameAsPreop,
@@ -1069,7 +1072,7 @@ class _SStep5Postop extends StatelessWidget {
                 const SizedBox(height: 10),
                 TextField(
                   controller: postDiagCtrl,
-                  decoration: _sDec('Enter postoperative diagnosis...'),
+                  decoration: _sDec(context,'Enter postoperative diagnosis...'),
                 ),
               ],
             ],
@@ -1084,7 +1087,7 @@ class _SStep5Postop extends StatelessWidget {
               const _SWizLabel('Complications (if any)'),
               TextField(
                 controller: complicationsCtrl,
-                decoration: _sDec('Enter complications...'),
+                decoration: _sDec(context,'Enter complications...'),
                 maxLines: 3,
               ),
             ],
@@ -1099,7 +1102,7 @@ class _SStep5Postop extends StatelessWidget {
               const _SWizLabel('Postoperative Notes'),
               TextField(
                 controller: postNotesCtrl,
-                decoration: _sDec('Enter postoperative notes...'),
+                decoration: _sDec(context,'Enter postoperative notes...'),
                 maxLines: 4, maxLength: 1000,
               ),
               const SizedBox(height: 10),
@@ -1154,7 +1157,7 @@ class _SStep6Review extends ConsumerWidget {
               color: _kRedL, borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _kRed.withOpacity(0.35)),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.assignment_turned_in_outlined, color: _kRed, size: 20),
                 SizedBox(width: 10),
@@ -1206,7 +1209,7 @@ class _SReviewCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 12),
     decoration: BoxDecoration(
-      color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _kLine),
+      color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: _kLine(context)),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1215,18 +1218,18 @@ class _SReviewCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
           child: Row(children: [
             Text(title.toUpperCase(),
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                    color: _kGrey, letterSpacing: 0.8)),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                    color: _kGrey(context), letterSpacing: 0.8)),
             const Spacer(),
             TextButton.icon(
               onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined, size: 14),
-              label: const Text('Edit', style: TextStyle(fontSize: 12)),
+              icon: Icon(Icons.edit_outlined, size: 14),
+              label: Text('Edit', style: TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(foregroundColor: _kRed),
             ),
           ]),
         ),
-        const Divider(height: 1, color: _kLine),
+        Divider(height: 1, color: _kLine(context)),
         ...rows.map((r) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
           child: Row(
@@ -1234,12 +1237,12 @@ class _SReviewCard extends StatelessWidget {
             children: [
               SizedBox(
                 width: 110,
-                child: Text(r.k, style: const TextStyle(fontSize: 12, color: _kGrey, fontWeight: FontWeight.w500)),
+                child: Text(r.k, style: TextStyle(fontSize: 12, color: _kGrey(context), fontWeight: FontWeight.w500)),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(r.v,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF302D28), fontWeight: FontWeight.w600)),
+                    style: TextStyle(fontSize: 13, color: Color(0xFF302D28), fontWeight: FontWeight.w600)),
               ),
             ],
           ),

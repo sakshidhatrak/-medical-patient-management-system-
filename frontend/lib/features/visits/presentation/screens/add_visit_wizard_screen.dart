@@ -23,20 +23,23 @@ import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
 
-// ── Design tokens (matches patient registration dark theme) ───────────────────
-const _kBlue   = Color(0xFF5B5ECC);   // indigo primary (dark-bg variant)
-const _kBlue2  = Color(0xFF4B55CC);   // indigo darker
-const _kGreen  = Color(0xFF4EC080);   // soft green on dark
-const _kRed    = Color(0xFFE07878);   // soft red on dark
-const _kAmber  = Color(0xFFD4A855);   // warm amber on dark
-const _kP1     = Color(0xFF5B5ECC);   // same as primary
-const _kBg     = Color(0xFF171629);   // dark navy scaffold
-const _kCard   = Color(0xFF252545);   // dark card bg
-const _kWiz    = Color(0xFF1E1C35);   // dark surface / input bg
-const _kNavy   = Color(0xFFEEECFF);   // light lavender text
-const _kSlate  = Color(0xFFCCCAE8);   // muted lavender text
-const _kMuted  = Color(0xFF9896B8);   // very muted text
-const _kBorder = Color(0xFF3A3865);   // dark border
+// ── Fixed accent colours ───────────────────────────────────────────────────────
+const _kBlue  = Color(0xFF5B5ECC);
+const _kBlue2 = Color(0xFF4B55CC);
+const _kGreen = Color(0xFF4EC080);
+const _kRed   = Color(0xFFE07878);
+const _kAmber = Color(0xFFD4A855);
+const _kP1    = Color(0xFF5B5ECC);
+
+// ── Theme-aware surface / text colours ────────────────────────────────────────
+bool  _isDarkCtx(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+Color _kBg    (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF171629) : const Color(0xFFF8F6F2);
+Color _kCard  (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF252545) : Colors.white;
+Color _kWiz   (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF1E1C35) : const Color(0xFFECEAE4);
+Color _kNavy  (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFEEECFF) : const Color(0xFF302D28);
+Color _kSlate (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFCCCAE8) : const Color(0xFF6E6A63);
+Color _kMuted (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF9896B8) : const Color(0xFF979088);
+Color _kBorder(BuildContext c) => _isDarkCtx(c) ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7);
 
 const _kVisitTypeLabels = ['OPD', 'Emergency', 'Follow-up'];
 
@@ -297,11 +300,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('$uploaded file(s) uploaded. ${failed.length} failed:',
-                style: const TextStyle(fontWeight: FontWeight.w700,
+                style: TextStyle(fontWeight: FontWeight.w700,
                     color: Colors.white, fontSize: 13)),
             const SizedBox(height: 4),
             ...failed.map((e) => Text(e,
-                style: const TextStyle(color: Colors.white70, fontSize: 11))),
+                style: TextStyle(color: Colors.white70, fontSize: 11))),
           ],
         ),
         backgroundColor: const Color(0xFFDC2626),
@@ -312,7 +315,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     } else if (uploaded > 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('$uploaded file(s) uploaded successfully',
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+            style: TextStyle(fontWeight: FontWeight.w600)),
         backgroundColor: _kGreen,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
@@ -333,7 +336,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     if (isNew && !_hasAnyTreatmentData()) {
       _saving = false;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Row(children: [
+        content: Row(children: [
           Icon(Icons.info_outline, color: Colors.white, size: 18),
           SizedBox(width: 10),
           Text('Please fill at least one treatment field to save the visit.',
@@ -388,11 +391,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 10),
               Expanded(child: Text(
                 'Visit saved  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: FontWeight.w600),
               )),
             ]),
             backgroundColor: _kGreen,
@@ -454,11 +457,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 10),
               Expanded(child: Text(
                 'Visit updated  ·  ${DateFormat('dd MMM yyyy').format(_visitDate)}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: FontWeight.w600),
               )),
             ]),
             backgroundColor: _kGreen,
@@ -466,10 +469,16 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 3),
           ));
+          final updatedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
+          // Push the updated entity into the visits list so the patient detail
+          // card reflects the new data without requiring navigation away.
+          if (updatedVisit != null) {
+            ref.read(visitsProvider(widget.patientId).notifier).replaceInList(updatedVisit);
+          }
           setState(() {
             _saving    = false;
             _justSaved  = true;
-            _savedVisit = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
+            _savedVisit = updatedVisit;
             _step       = 2;
           });
           unawaited(_pageCtrl.animateToPage(2,
@@ -580,13 +589,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       border: Border.all(color: _kGreen.withValues(alpha: 0.25)),
     ),
     child: Row(children: [
-      const Icon(Icons.insert_drive_file_rounded, color: _kGreen, size: 14),
+      Icon(Icons.insert_drive_file_rounded, color: _kGreen, size: 14),
       const SizedBox(width: 6),
       Expanded(child: Text(name,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy(context)),
           overflow: TextOverflow.ellipsis)),
       GestureDetector(onTap: onClear,
-          child: const Icon(Icons.close_rounded, size: 14, color: _kMuted)),
+          child: Icon(Icons.close_rounded, size: 14, color: _kMuted(context))),
     ]),
   );
 
@@ -619,17 +628,17 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     String hint = '',
   }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(
-          fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+      Text(label, style: TextStyle(
+          fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
       const SizedBox(height: 6),
       TextFormField(
         controller: controller,
         maxLines: maxLines,
-        style: const TextStyle(fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+        style: TextStyle(fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-          prefixIcon: Icon(prefixIcon, size: 17, color: _kMuted),
+          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+          prefixIcon: Icon(prefixIcon, size: 17, color: _kMuted(context)),
           suffixIcon: Tooltip(
             message: 'Upload files',
             child: Stack(
@@ -638,7 +647,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               children: [
                 IconButton(
                   icon: Icon(Icons.upload_file_rounded, size: 20,
-                      color: files.isNotEmpty ? _kGreen : _kMuted),
+                      color: files.isNotEmpty ? _kGreen : _kMuted(context)),
                   onPressed: () => _pickFiles((picked) =>
                       setState(() => onFilesChange([...files, ...picked]))),
                 ),
@@ -647,11 +656,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     right: 6, top: 6,
                     child: Container(
                       width: 15, height: 15,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                           color: _kGreen, shape: BoxShape.circle),
                       alignment: Alignment.center,
                       child: Text('${files.length}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: Colors.white, fontSize: 8,
                               fontWeight: FontWeight.w800)),
                     ),
@@ -659,18 +668,18 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ],
             ),
           ),
-          filled: true, fillColor: _kBg,
+          filled: true, fillColor: _kBg(context),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: _kBorder)),
+              borderSide: BorderSide(color: _kBorder(context))),
           enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: _kBorder)),
+              borderSide: BorderSide(color: _kBorder(context))),
           focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: _kP1, width: 1.5)),
+              borderSide: BorderSide(color: _kP1, width: 1.5)),
         ),
       ),
       if (files.isNotEmpty) ...[
@@ -718,7 +727,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     final isLast    = _step == 1;
     final isPreview = _step == 2;
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: _kBg(context),
       resizeToAvoidBottomInset: false,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: isPreview ? null : Padding(
@@ -735,7 +744,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               elevation: 6,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
-              textStyle: const TextStyle(
+              textStyle: TextStyle(
                   fontSize: 16, fontWeight: FontWeight.w700),
             ),
             icon: _saving
@@ -778,11 +787,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Wizard header ─────────────────────────────────────────────────────────
   Widget _buildWizardHeader() => Container(
-    color: _kCard,
+    color: _kCard(context),
     padding: const EdgeInsets.fromLTRB(8, 8, 16, 10),
     child: Row(children: [
       IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy),
+        icon: Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy(context)),
         onPressed: () {
           if (_step == 2) {
             // If saved/edit mode: go to patient timeline; if unsaved draft: go back to treatment
@@ -804,12 +813,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             widget.visitId == null ? 'New Visit' : 'Visit Details',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 18, fontWeight: FontWeight.w800,
-                color: _kNavy, letterSpacing: -0.3),
+                color: _kNavy(context), letterSpacing: -0.3),
           ),
           Text(_stepSubtitles[_step],
-              style: const TextStyle(fontSize: 12, color: _kMuted)),
+              style: TextStyle(fontSize: 12, color: _kMuted(context))),
         ]),
       ),
       Container(
@@ -819,7 +828,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text('Step ${_step + 1} of 3',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
       ),
     ]),
@@ -827,7 +836,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Step bar ──────────────────────────────────────────────────────────────
   Widget _buildStepBar() => Container(
-    color: _kCard,
+    color: _kCard(context),
     padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -839,7 +848,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               child: Container(
                 height: 2,
                 margin: const EdgeInsets.only(top: 15),
-                color: segIdx < _step ? _kBlue : _kBorder,
+                color: segIdx < _step ? _kBlue : _kBorder(context),
               ),
             );
           }
@@ -854,11 +863,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 duration: const Duration(milliseconds: 250),
                 width: 36, height: 36,
                 decoration: BoxDecoration(
-                  color: (isDone || isCurrent) ? _kBlue : _kCard,
+                  color: (isDone || isCurrent) ? _kBlue : _kCard(context),
                   shape: BoxShape.circle,
                   border: (isDone || isCurrent)
                       ? null
-                      : Border.all(color: _kBorder, width: 1.5),
+                      : Border.all(color: _kBorder(context), width: 1.5),
                   boxShadow: (isDone || isCurrent)
                       ? [BoxShadow(
                           color: _kBlue.withValues(alpha: 0.4),
@@ -867,19 +876,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
                 alignment: Alignment.center,
                 child: isDone
-                    ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                    ? Icon(Icons.check_rounded, size: 16, color: Colors.white)
                     : idx == 2
-                        ? const Icon(Icons.print_outlined, size: 16, color: Colors.white)
+                        ? Icon(Icons.print_outlined, size: 16, color: Colors.white)
                         : Text('${idx + 1}',
                             style: TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w800,
-                                color: isCurrent ? Colors.white : _kMuted)),
+                                color: isCurrent ? Colors.white : _kMuted(context))),
               ),
               const SizedBox(height: 4),
               Text(_stepLabels[idx],
                   style: TextStyle(
                       fontSize: 9, fontWeight: FontWeight.w600,
-                      color: isCurrent ? _kBlue : isDone ? _kSlate : _kMuted,
+                      color: isCurrent ? _kBlue : isDone ? _kSlate(context) : _kMuted(context),
                       letterSpacing: 0.1)),
             ]),
           );
@@ -893,14 +902,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             decoration: BoxDecoration(
               color: _step == 2
                   ? _kBlue.withValues(alpha: 0.15)
-                  : _kWiz,
+                  : _kWiz(context),
               shape: BoxShape.circle,
               border: Border.all(
-                  color: _step == 2 ? _kBlue : _kBorder, width: 1.5),
+                  color: _step == 2 ? _kBlue : _kBorder(context), width: 1.5),
             ),
             alignment: Alignment.center,
             child: Icon(Icons.open_in_new_rounded, size: 14,
-                color: _step == 2 ? _kBlue : _kMuted),
+                color: _step == 2 ? _kBlue : _kMuted(context)),
           ),
         ),
       ],
@@ -912,7 +921,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     final isPreview = _step == 2;
 
     return Container(
-      color: _kCard,
+      color: _kCard(context),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (!isPreview) ...[
@@ -921,7 +930,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             child: LinearProgressIndicator(
               value: (_step + 1) / 3,
               minHeight: 3,
-              backgroundColor: _kBorder,
+              backgroundColor: _kBorder(context),
               color: _kBlue,
             ),
           ),
@@ -936,15 +945,15 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     setState(() => _step = 1);
                     _pageCtrl.jumpToPage(1);
                   },
-                  icon: const Icon(Icons.edit_outlined, size: 16),
-                  label: const Text('Edit'),
+                  icon: Icon(Icons.edit_outlined, size: 16),
+                  label: Text('Edit'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _kSlate,
-                    side: const BorderSide(color: _kBorder, width: 1.5),
+                    foregroundColor: _kSlate(context),
+                    side: BorderSide(color: _kBorder(context), width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
-                    textStyle: const TextStyle(
+                    textStyle: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -954,15 +963,15 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _openPrint,
-                icon: const Icon(Icons.print_outlined, size: 17),
-                label: const Text('Print'),
+                icon: Icon(Icons.print_outlined, size: 17),
+                label: Text('Print'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _kBlue,
-                  side: const BorderSide(color: _kBlue, width: 1.5),
+                  side: BorderSide(color: _kBlue, width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w700),
                 ),
               ),
@@ -971,14 +980,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             Expanded(
               child: FilledButton.icon(
                 onPressed: () => context.go('/patients/${widget.patientId}'),
-                icon: const Icon(Icons.person_outlined, size: 17),
-                label: const Text('Patient'),
+                icon: Icon(Icons.person_outlined, size: 17),
+                label: Text('Patient'),
                 style: FilledButton.styleFrom(
                   backgroundColor: _kBlue,
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
-                  textStyle: const TextStyle(
+                  textStyle: TextStyle(
                       fontSize: 13, fontWeight: FontWeight.w700),
                 ),
               ),
@@ -990,15 +999,15 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             child: OutlinedButton.icon(
               onPressed: _saving ? null : _prevStep,
               style: OutlinedButton.styleFrom(
-                foregroundColor: _kSlate,
-                side: const BorderSide(color: _kBorder, width: 1.5),
+                foregroundColor: _kSlate(context),
+                side: BorderSide(color: _kBorder(context), width: 1.5),
                 padding: const EdgeInsets.symmetric(
                     horizontal: 20, vertical: 12),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
-              icon: const Icon(Icons.arrow_back_ios_new, size: 16),
-              label: const Text('Back'),
+              icon: Icon(Icons.arrow_back_ios_new, size: 16),
+              label: Text('Back'),
             ),
           ),
         // Spacer so FAB doesn't overlap the Back button
@@ -1063,31 +1072,31 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   },
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Visit Date',
+                    Text('Visit Date',
                         style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.w600,
-                            color: _kSlate)),
+                            color: _kSlate(context))),
                     const SizedBox(height: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 13),
                       decoration: BoxDecoration(
-                        color: _kWiz,
+                        color: _kWiz(context),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _kBorder),
+                        border: Border.all(color: _kBorder(context)),
                       ),
                       child: Row(children: [
-                        const Icon(Icons.calendar_today_outlined,
-                            size: 17, color: _kMuted),
+                        Icon(Icons.calendar_today_outlined,
+                            size: 17, color: _kMuted(context)),
                         const SizedBox(width: 10),
                         Text(
                           DateFormat('dd MMMM yyyy').format(_visitDate),
-                          style: const TextStyle(
-                              fontSize: 14, color: _kNavy,
+                          style: TextStyle(
+                              fontSize: 14, color: _kNavy(context),
                               fontWeight: FontWeight.w500),
                         ),
                         const Spacer(),
-                        const Icon(Icons.edit_outlined, size: 15, color: _kMuted),
+                        Icon(Icons.edit_outlined, size: 15, color: _kMuted(context)),
                       ]),
                     ),
                   ]),
@@ -1095,21 +1104,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 const SizedBox(height: 12),
                 // Visit Type
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Visit Type',
+                  Text('Visit Type',
                       style: TextStyle(
                           fontSize: 12, fontWeight: FontWeight.w600,
-                          color: _kSlate)),
+                          color: _kSlate(context))),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     value: _visitType.label,
-                    dropdownColor: _kCard,
-                    iconEnabledColor: _kMuted,
+                    dropdownColor: _kCard(context),
+                    iconEnabledColor: _kMuted(context),
                     items: _kVisitTypeLabels
                         .map((l) => DropdownMenuItem(
                               value: l,
                               child: Text(l,
-                                  style: const TextStyle(
-                                      color: _kNavy, fontSize: 14)),
+                                  style: TextStyle(
+                                      color: _kNavy(context), fontSize: 14)),
                             ))
                         .toList(),
                     onChanged: (v) {
@@ -1121,24 +1130,24 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       });
                     },
                     decoration: InputDecoration(
-                      prefixIcon: const Icon(
-                          Icons.local_hospital_outlined, size: 17, color: _kMuted),
-                      filled: true, fillColor: _kWiz,
+                      prefixIcon: Icon(
+                          Icons.local_hospital_outlined, size: 17, color: _kMuted(context)),
+                      filled: true, fillColor: _kWiz(context),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 12),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: _kBorder)),
+                          borderSide: BorderSide(color: _kBorder(context))),
                       enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: _kBorder)),
+                          borderSide: BorderSide(color: _kBorder(context))),
                       focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                           borderSide:
-                              const BorderSide(color: _kBlue, width: 1.5)),
+                              BorderSide(color: _kBlue, width: 1.5)),
                     ),
-                    style: const TextStyle(
-                        fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
                   ),
                 ]),
               ]),
@@ -1208,20 +1217,20 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   Widget _roRow(String label, String value) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label, style: const TextStyle(
-          fontSize: 11, fontWeight: FontWeight.w600, color: _kMuted)),
+      Text(label, style: TextStyle(
+          fontSize: 11, fontWeight: FontWeight.w600, color: _kMuted(context))),
       const SizedBox(height: 4),
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: _kWiz,
+          color: _kWiz(context),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: _kBorder),
+          border: Border.all(color: _kBorder(context)),
         ),
         child: Text(value,
-            style: const TextStyle(
-                fontSize: 13, color: _kNavy, fontWeight: FontWeight.w500)),
+            style: TextStyle(
+                fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w500)),
       ),
     ],
   );
@@ -1302,12 +1311,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'general' ? _kBlue : _kCard,
+                    color: _examTab == 'general' ? _kBlue : _kCard(context),
                     borderRadius: const BorderRadius.only(
                         topLeft: Radius.circular(10),
                         bottomLeft: Radius.circular(10)),
                     border: Border.all(
-                        color: _examTab == 'general' ? _kBlue : _kBorder),
+                        color: _examTab == 'general' ? _kBlue : _kBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text('General',
@@ -1315,7 +1324,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                           fontSize: 13, fontWeight: FontWeight.w600,
                           color: _examTab == 'general'
                               ? Colors.white
-                              : _kSlate)),
+                              : _kSlate(context))),
                 ),
               ),
             ),
@@ -1326,14 +1335,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'neurological' ? _kBlue : _kCard,
+                    color: _examTab == 'neurological' ? _kBlue : _kCard(context),
                     borderRadius: const BorderRadius.only(
                         topRight: Radius.circular(10),
                         bottomRight: Radius.circular(10)),
                     border: Border.all(
                         color: _examTab == 'neurological'
                             ? _kBlue
-                            : _kBorder),
+                            : _kBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text('Neurological',
@@ -1341,7 +1350,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                           fontSize: 13, fontWeight: FontWeight.w600,
                           color: _examTab == 'neurological'
                               ? Colors.white
-                              : _kSlate)),
+                              : _kSlate(context))),
                 ),
               ),
             ),
@@ -1351,13 +1360,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             TextFormField(
               controller: _examGeneralCtrl,
               maxLines: 3,
-              style: const TextStyle(
-                  fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                  fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'General examination findings…',
-                hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                prefixIcon: const Icon(Icons.person_search_outlined,
-                    size: 17, color: _kMuted),
+                hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                prefixIcon: Icon(Icons.person_search_outlined,
+                    size: 17, color: _kMuted(context)),
                 suffixIcon: Tooltip(
                   message: 'Upload files',
                   child: Stack(alignment: Alignment.center,
@@ -1366,7 +1375,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       icon: Icon(Icons.upload_file_rounded, size: 20,
                           color: _examGeneralFiles.isNotEmpty
                               ? _kGreen
-                              : _kMuted),
+                              : _kMuted(context)),
                       onPressed: () => _pickFiles((picked) =>
                           setState(() => _examGeneralFiles.addAll(picked))),
                     ),
@@ -1374,30 +1383,30 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       Positioned(right: 6, top: 6,
                         child: Container(
                           width: 15, height: 15,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                               color: _kGreen, shape: BoxShape.circle),
                           alignment: Alignment.center,
                           child: Text('${_examGeneralFiles.length}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: Colors.white, fontSize: 8,
                                   fontWeight: FontWeight.w800)),
                         ),
                       ),
                   ]),
                 ),
-                filled: true, fillColor: _kBg,
+                filled: true, fillColor: _kBg(context),
                 contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: _kBorder)),
+                    borderSide: BorderSide(color: _kBorder(context))),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: _kBorder)),
+                    borderSide: BorderSide(color: _kBorder(context))),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide:
-                        const BorderSide(color: _kP1, width: 1.5)),
+                        BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examGeneralFiles.isNotEmpty) ...[
@@ -1411,13 +1420,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             TextFormField(
               controller: _examNeurologicalCtrl,
               maxLines: 3,
-              style: const TextStyle(
-                  fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                  fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'Neurological examination findings…',
-                hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                prefixIcon: const Icon(Icons.psychology_outlined,
-                    size: 17, color: _kMuted),
+                hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                prefixIcon: Icon(Icons.psychology_outlined,
+                    size: 17, color: _kMuted(context)),
                 suffixIcon: Tooltip(
                   message: 'Upload files',
                   child: Stack(alignment: Alignment.center,
@@ -1426,7 +1435,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       icon: Icon(Icons.upload_file_rounded, size: 20,
                           color: _examNeurologicalFiles.isNotEmpty
                               ? _kGreen
-                              : _kMuted),
+                              : _kMuted(context)),
                       onPressed: () => _pickFiles((picked) =>
                           setState(() =>
                               _examNeurologicalFiles.addAll(picked))),
@@ -1435,30 +1444,30 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       Positioned(right: 6, top: 6,
                         child: Container(
                           width: 15, height: 15,
-                          decoration: const BoxDecoration(
+                          decoration: BoxDecoration(
                               color: _kGreen, shape: BoxShape.circle),
                           alignment: Alignment.center,
                           child: Text('${_examNeurologicalFiles.length}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: Colors.white, fontSize: 8,
                                   fontWeight: FontWeight.w800)),
                         ),
                       ),
                   ]),
                 ),
-                filled: true, fillColor: _kBg,
+                filled: true, fillColor: _kBg(context),
                 contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 12),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: _kBorder)),
+                    borderSide: BorderSide(color: _kBorder(context))),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: _kBorder)),
+                    borderSide: BorderSide(color: _kBorder(context))),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                     borderSide:
-                        const BorderSide(color: _kP1, width: 1.5)),
+                        BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examNeurologicalFiles.isNotEmpty) ...[
@@ -1567,15 +1576,15 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   Widget _buildMedicationTable() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Text('Treatment / Medications',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+        Text('Treatment / Medications',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
         const Spacer(),
         GestureDetector(
           onTap: _showAddMedicineSheet,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(color: _kBlue, borderRadius: BorderRadius.circular(8)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.add_rounded, size: 14, color: Colors.white),
               SizedBox(width: 4),
               Text('Add Medicine', style: TextStyle(
@@ -1590,17 +1599,17 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 22),
           decoration: BoxDecoration(
-            color: _kBg,
+            color: _kBg(context),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(children: [
-            const Icon(Icons.medication_outlined, color: _kMuted, size: 28),
+            Icon(Icons.medication_outlined, color: _kMuted(context), size: 28),
             const SizedBox(height: 6),
-            const Text('No medicines added', style: TextStyle(fontSize: 12, color: _kMuted)),
+            Text('No medicines added', style: TextStyle(fontSize: 12, color: _kMuted(context))),
             const SizedBox(height: 2),
             Text('Tap "Add Medicine" to prescribe',
-                style: TextStyle(fontSize: 11, color: _kMuted.withValues(alpha: 0.7))),
+                style: TextStyle(fontSize: 11, color: _kMuted(context).withValues(alpha: 0.7))),
           ]),
         )
       else ...[
@@ -1612,26 +1621,26 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(10), topRight: Radius.circular(10)),
           ),
-          child: const Row(children: [
+          child: Row(children: [
             Expanded(flex: 3, child: Text('Medicine',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Dose',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Route',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Freq.',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Duration',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             SizedBox(width: 24),
           ]),
         ),
         Container(
           decoration: BoxDecoration(
-            color: _kBg,
+            color: _kBg(context),
             borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(
             children: List.generate(_prescriptionRows.length, (idx) {
@@ -1639,30 +1648,30 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               return Container(
                 decoration: BoxDecoration(
                   border: idx > 0
-                      ? const Border(top: BorderSide(color: _kBorder, width: 0.5))
+                      ? Border(top: BorderSide(color: _kBorder(context), width: 0.5))
                       : null,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                 child: Row(children: [
                   Expanded(flex: 3, child: Text(row.medicine,
-                      style: const TextStyle(fontSize: 12, color: _kNavy,
+                      style: TextStyle(fontSize: 12, color: _kNavy(context),
                           fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.route,
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.frequency,
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   GestureDetector(
                     onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
-                    child: const Icon(Icons.close_rounded, size: 16, color: _kMuted),
+                    child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
                   ),
                 ]),
               );
@@ -1696,32 +1705,32 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     IconData? prefixIcon,
     String? hint,
   }) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(label, style: const TextStyle(
-        fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+    Text(label, style: TextStyle(
+        fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
     const SizedBox(height: 6),
     TextFormField(
       controller: controller,
       maxLines: maxLines,
-      style: const TextStyle(
-          fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+      style: TextStyle(
+          fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+        hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
         prefixIcon: prefixIcon != null
-            ? Icon(prefixIcon, size: 17, color: _kMuted)
+            ? Icon(prefixIcon, size: 17, color: _kMuted(context))
             : null,
-        filled: true, fillColor: _kBg,
+        filled: true, fillColor: _kBg(context),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kBorder)),
+            borderSide: BorderSide(color: _kBorder(context))),
         enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kBorder)),
+            borderSide: BorderSide(color: _kBorder(context))),
         focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kP1, width: 1.5)),
+            borderSide: BorderSide(color: _kP1, width: 1.5)),
       ),
     ),
   ]);
@@ -1753,13 +1762,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 9, color: _kMuted,
+            style: TextStyle(
+                fontSize: 9, color: _kMuted(context),
                 fontWeight: FontWeight.w700, letterSpacing: 0.4)),
         const SizedBox(height: 3),
         Text(value,
-            style: const TextStyle(
-                fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w600)),
       ]),
     );
 
@@ -1768,17 +1777,17 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: const TextStyle(
-                fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 10, color: _kMuted(context), fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         if (value.isNotEmpty)
           Text(value,
-              style: const TextStyle(
-                  fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600))
-        else if (files.isEmpty)
-          const Text('—',
               style: TextStyle(
-                  fontSize: 13, color: _kMuted, fontWeight: FontWeight.w500)),
+                  fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w600))
+        else if (files.isEmpty)
+          Text('—',
+              style: TextStyle(
+                  fontSize: 13, color: _kMuted(context), fontWeight: FontWeight.w500)),
         if (files.isNotEmpty) ...[
           if (value.isNotEmpty) const SizedBox(height: 4),
           Wrap(spacing: 6, runSpacing: 4,
@@ -1792,21 +1801,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: const TextStyle(
-                fontSize: 10, color: _kMuted, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 10, color: _kMuted(context), fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(value,
-            style: const TextStyle(
-                fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w600)),
       ]),
     );
 
     Widget sCard(String title, IconData icon, Color color, Widget body) =>
         Container(
           decoration: BoxDecoration(
-            color: _kCard,
+            color: _kCard(context),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1822,12 +1831,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
                 const SizedBox(width: 9),
                 Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700,
-                        color: _kNavy)),
+                        color: _kNavy(context))),
               ]),
             ),
-            const Divider(height: 1, color: _kBorder),
+            Divider(height: 1, color: _kBorder(context)),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               child: body,
@@ -1890,25 +1899,25 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(bannerTitle,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, color: _kNavy,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800, color: _kNavy(context),
                         fontSize: 15)),
                 RichText(text: TextSpan(children: [
-                  const TextSpan(text: 'Date: ',
-                      style: TextStyle(color: _kMuted, fontSize: 11)),
+                  TextSpan(text: 'Date: ',
+                      style: TextStyle(color: _kMuted(context), fontSize: 11)),
                   TextSpan(
                     text: DateFormat('dd MMM yyyy').format(_visitDate),
                     style: TextStyle(
                         color: bannerColor, fontWeight: FontWeight.w700,
                         fontSize: 11),
                   ),
-                  const TextSpan(text: '  ·  ',
-                      style: TextStyle(color: _kMuted, fontSize: 11)),
+                  TextSpan(text: '  ·  ',
+                      style: TextStyle(color: _kMuted(context), fontSize: 11)),
                   TextSpan(text: fullName,
-                      style: const TextStyle(
-                          color: _kNavy, fontSize: 11)),
-                  const TextSpan(text: '  ·  ',
-                      style: TextStyle(color: _kMuted, fontSize: 11)),
+                      style: TextStyle(
+                          color: _kNavy(context), fontSize: 11)),
+                  TextSpan(text: '  ·  ',
+                      style: TextStyle(color: _kMuted(context), fontSize: 11)),
                   TextSpan(text: _visitType.label,
                       style: TextStyle(
                           color: bannerColor, fontWeight: FontWeight.w600,
@@ -1924,7 +1933,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   width: 17, height: 17,
                   decoration: BoxDecoration(
                       color: bannerColor, shape: BoxShape.circle),
-                  child: const Icon(Icons.check_rounded,
+                  child: Icon(Icons.check_rounded,
                       color: Colors.white, size: 11),
                 ),
             ]),
@@ -2014,8 +2023,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   _diagnosisCtrl.text.trim(), _impressionFiles),
               eRow('Plan', _treatmentCtrl.text.trim(), _planFiles),
               if (_prescriptionRows.isNotEmpty) ...[
-                const Text('Prescriptions',
-                    style: TextStyle(fontSize: 10, color: _kMuted,
+                Text('Prescriptions',
+                    style: TextStyle(fontSize: 10, color: _kMuted(context),
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
                 ...List.generate(_prescriptionRows.length, (idx) {
@@ -2030,7 +2039,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                             shape: BoxShape.circle),
                         alignment: Alignment.center,
                         child: Text('${idx + 1}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 9, fontWeight: FontWeight.w800,
                                 color: _kBlue)),
                       ),
@@ -2038,23 +2047,23 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       Expanded(
                         child: RichText(
                           text: TextSpan(
-                            style: const TextStyle(
-                                fontSize: 12, color: _kNavy,
+                            style: TextStyle(
+                                fontSize: 12, color: _kNavy(context),
                                 fontWeight: FontWeight.w600),
                             children: [
                               TextSpan(text: r.medicine),
                               if (r.dose.isNotEmpty)
                                 TextSpan(text: '  ${r.dose}',
-                                    style: const TextStyle(
-                                        color: _kSlate, fontWeight: FontWeight.w500)),
+                                    style: TextStyle(
+                                        color: _kSlate(context), fontWeight: FontWeight.w500)),
                               TextSpan(text: '  ·  ${r.route}  ·  ${r.frequency}',
-                                  style: const TextStyle(
-                                      color: _kMuted, fontSize: 11,
+                                  style: TextStyle(
+                                      color: _kMuted(context), fontSize: 11,
                                       fontWeight: FontWeight.w500)),
                               if (r.duration.isNotEmpty)
                                 TextSpan(text: '  ×  ${r.duration}',
-                                    style: const TextStyle(
-                                        color: _kMuted, fontSize: 11,
+                                    style: TextStyle(
+                                        color: _kMuted(context), fontSize: 11,
                                         fontWeight: FontWeight.w500)),
                             ],
                           ),
@@ -2097,12 +2106,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 160),
             child: Text(f.name,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy),
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy(context)),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 6),
-          const Icon(Icons.visibility_outlined, color: _kBlue, size: 14),
+          Icon(Icons.visibility_outlined, color: _kBlue, size: 14),
         ]),
       ),
     );
@@ -2120,12 +2129,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-              decoration: const BoxDecoration(
-                color: _kWiz,
+              decoration: BoxDecoration(
+                color: _kWiz(context),
                 borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16)),
-                border: Border(bottom: BorderSide(color: _kBorder)),
+                border: Border(bottom: BorderSide(color: _kBorder(context))),
               ),
               child: Row(children: [
                 Icon(isImage
@@ -2135,14 +2144,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(f.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, color: _kNavy,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: _kNavy(context),
                           fontSize: 14),
                       overflow: TextOverflow.ellipsis),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  color: _kMuted,
+                  icon: Icon(Icons.close_rounded, size: 18),
+                  color: _kMuted(context),
                   onPressed: () => Navigator.pop(ctx),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(
@@ -2160,22 +2169,22 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   : Padding(
                       padding: const EdgeInsets.all(32),
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.insert_drive_file_rounded,
-                            size: 72, color: _kMuted),
+                        Icon(Icons.insert_drive_file_rounded,
+                            size: 72, color: _kMuted(context)),
                         const SizedBox(height: 16),
                         Text(f.name,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w700,
-                                color: _kNavy),
+                                color: _kNavy(context)),
                             textAlign: TextAlign.center),
                         const SizedBox(height: 8),
                         Text('${(f.bytes.length / 1024).toStringAsFixed(1)} KB',
-                            style: const TextStyle(
-                                fontSize: 12, color: _kMuted)),
+                            style: TextStyle(
+                                fontSize: 12, color: _kMuted(context))),
                         const SizedBox(height: 16),
-                        const Text(
+                        Text(
                           'Preview not available for this file type.',
-                          style: TextStyle(fontSize: 12, color: _kMuted),
+                          style: TextStyle(fontSize: 12, color: _kMuted(context)),
                           textAlign: TextAlign.center,
                         ),
                       ]),
@@ -2310,8 +2319,8 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: _kCard,
+        decoration: BoxDecoration(
+          color: _kCard(context),
           borderRadius: BorderRadius.only(
               topLeft: Radius.circular(20), topRight: Radius.circular(20)),
         ),
@@ -2321,7 +2330,7 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
             margin: const EdgeInsets.only(top: 10, bottom: 16),
             width: 36, height: 4,
             decoration: BoxDecoration(
-                color: _kBorder, borderRadius: BorderRadius.circular(2)),
+                color: _kBorder(context), borderRadius: BorderRadius.circular(2)),
           ),
           // Title
           Padding(
@@ -2332,58 +2341,58 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 decoration: BoxDecoration(
                     color: _kBlue.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.medication_rounded, color: _kBlue, size: 17),
+                child: Icon(Icons.medication_rounded, color: _kBlue, size: 17),
               ),
               const SizedBox(width: 10),
-              const Text('Add Medicine',
+              Text('Add Medicine',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                      color: _kNavy)),
+                      color: _kNavy(context))),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
-                child: const Icon(Icons.close_rounded, color: _kMuted, size: 20),
+                child: Icon(Icons.close_rounded, color: _kMuted(context), size: 20),
               ),
             ]),
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: _kBorder),
+          Divider(height: 1, color: _kBorder(context)),
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 // ── Medicine name with autocomplete ────────────────────────────
-                const Text('Medicine Name *',
+                Text('Medicine Name *',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                        color: _kSlate)),
+                        color: _kSlate(context))),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _nameCtrl,
                   focusNode: _nameFocus,
                   autofocus: true,
-                  style: const TextStyle(fontSize: 14, color: _kNavy,
+                  style: TextStyle(fontSize: 14, color: _kNavy(context),
                       fontWeight: FontWeight.w500),
                   decoration: InputDecoration(
                     hintText: 'Type medicine name…',
-                    hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                    prefixIcon: const Icon(Icons.medication_outlined, size: 17, color: _kMuted),
+                    hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                    prefixIcon: Icon(Icons.medication_outlined, size: 17, color: _kMuted(context)),
                     suffixIcon: _nameCtrl.text.isNotEmpty
                         ? GestureDetector(
                             onTap: () { _nameCtrl.clear();
                               setState(() { _suggestions = []; _showSugg = false; }); },
-                            child: const Icon(Icons.close_rounded, size: 16, color: _kMuted))
+                            child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)))
                         : null,
-                    filled: true, fillColor: _kBg,
+                    filled: true, fillColor: _kBg(context),
                     contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 12),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _kBorder)),
+                        borderSide: BorderSide(color: _kBorder(context))),
                     enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _kBorder)),
+                        borderSide: BorderSide(color: _kBorder(context))),
                     focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                        borderSide: BorderSide(color: _kBlue, width: 1.5)),
                   ),
                 ),
                 // Suggestions dropdown
@@ -2392,16 +2401,16 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   Container(
                     constraints: const BoxConstraints(maxHeight: 160),
                     decoration: BoxDecoration(
-                      color: _kWiz,
+                      color: _kWiz(context),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _kBorder),
+                      border: Border.all(color: _kBorder(context)),
                     ),
                     child: ListView.separated(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: _suggestions.length,
                       separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: _kBorder),
+                          Divider(height: 1, color: _kBorder(context)),
                       itemBuilder: (_, i) {
                         final s = _suggestions[i];
                         return InkWell(
@@ -2423,14 +2432,14 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                   Text(s.name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 13, fontWeight: FontWeight.w600,
-                                          color: _kNavy)),
+                                          color: _kNavy(context))),
                                   if (s.subtitle.isNotEmpty)
                                     Text(s.subtitle,
                                         style: TextStyle(
                                             fontSize: 11,
-                                            color: s.isHistory ? _kGreen : _kMuted)),
+                                            color: s.isHistory ? _kGreen : _kMuted(context))),
                                 ]),
                               ),
                             ]),
@@ -2447,29 +2456,29 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Dose',
+                      Text('Dose',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: _kSlate)),
+                              color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _doseCtrl,
-                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                        style: TextStyle(fontSize: 14, color: _kNavy(context),
                             fontWeight: FontWeight.w500),
                         decoration: InputDecoration(
                           hintText: '500mg',
-                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                          filled: true, fillColor: _kBg,
+                          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                          filled: true, fillColor: _kBg(context),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                              borderSide: BorderSide(color: _kBlue, width: 1.5)),
                         ),
                       ),
                     ]),
@@ -2477,29 +2486,29 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Route',
+                      Text('Route',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: _kSlate)),
+                              color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _routeCtrl,
-                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                        style: TextStyle(fontSize: 14, color: _kNavy(context),
                             fontWeight: FontWeight.w500),
                         decoration: InputDecoration(
                           hintText: 'Oral / IV / IM…',
-                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                          filled: true, fillColor: _kBg,
+                          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                          filled: true, fillColor: _kBg(context),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                              borderSide: BorderSide(color: _kBlue, width: 1.5)),
                         ),
                       ),
                     ]),
@@ -2512,29 +2521,29 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Frequency',
+                      Text('Frequency',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: _kSlate)),
+                              color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _freqCtrl,
-                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                        style: TextStyle(fontSize: 14, color: _kNavy(context),
                             fontWeight: FontWeight.w500),
                         decoration: InputDecoration(
                           hintText: 'e.g. 1-0-1',
-                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                          filled: true, fillColor: _kBg,
+                          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                          filled: true, fillColor: _kBg(context),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                              borderSide: BorderSide(color: _kBlue, width: 1.5)),
                         ),
                       ),
                     ]),
@@ -2542,29 +2551,29 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const Text('Duration',
+                      Text('Duration',
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                              color: _kSlate)),
+                              color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(
                         controller: _durCtrl,
-                        style: const TextStyle(fontSize: 14, color: _kNavy,
+                        style: TextStyle(fontSize: 14, color: _kNavy(context),
                             fontWeight: FontWeight.w500),
                         decoration: InputDecoration(
                           hintText: '5 days',
-                          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                          filled: true, fillColor: _kBg,
+                          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                          filled: true, fillColor: _kBg(context),
                           contentPadding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 12),
                           border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBorder)),
+                              borderSide: BorderSide(color: _kBorder(context))),
                           focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+                              borderSide: BorderSide(color: _kBlue, width: 1.5)),
                         ),
                       ),
                     ]),
@@ -2579,8 +2588,8 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   height: 50,
                   child: ElevatedButton.icon(
                     onPressed: _submit,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Add Medicine',
+                    icon: Icon(Icons.add_rounded, size: 18),
+                    label: Text('Add Medicine',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kBlue,
@@ -2622,9 +2631,9 @@ class _WizardCard extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 14),
     child: Container(
       decoration: BoxDecoration(
-        color: _kCard,
+        color: _kCard(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: _kBorder(context)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
@@ -2640,7 +2649,7 @@ class _WizardCard extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 14, fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A))),
             if (badge != null) ...[
@@ -2660,7 +2669,7 @@ class _WizardCard extends StatelessWidget {
             ],
           ]),
         ),
-        const Divider(height: 1, color: Color(0xFFE2E8F0)),
+        Divider(height: 1, color: Color(0xFFE2E8F0)),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
           child: child,

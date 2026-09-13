@@ -49,7 +49,8 @@ class _Clinic {
 const _kClinicPurple = PdfColor.fromInt(0xFF994E89); // clinic name  #994E89
 const _kNavy         = PdfColor.fromInt(0xFF333980); // doctor name  #333980
 const _kTagline      = PdfColor.fromInt(0xFF40427A); // tagline      #40427A
-const _kSidebarText  = PdfColor.fromInt(0xFF4B4C77); // sidebar list #4B4C77
+const _kSidebarText  = PdfColor.fromInt(0xFF00ACC1); // sidebar list teal #00ACC1
+const _kSidebarDiv   = PdfColor.fromInt(0xFF4DD0E1); // sidebar divider teal #4DD0E1
 const _kLabel        = PdfColor.fromInt(0xFF373737); // patient labels #373737
 const _kText         = PdfColor.fromInt(0xFF494949); // credentials  #494949
 const _kBannerBg     = PdfColor.fromInt(0xFFD1EBFB); // header bg    #D1EBFB
@@ -167,7 +168,7 @@ pw.Widget _buildHeader(
   pw.Font doctorFont,
   pw.Font taglineFont,
 ) {
-  const double logoW    = 118.0;
+  const double logoW    = 121.5;
   const double nameRowH = 52.0;
   const double blueH    = 155.0;
   const double triH     = 18.0;
@@ -212,12 +213,18 @@ pw.Widget _buildHeader(
               top: 4, left: 200, right: 0, bottom: blueH - nameRowH + 4,
               child: _buildDots(),
             ),
-            // Logo panel — width matches sidebar (121.5pt) to align with green vertical line
+            // Logo panel — cream bg + right border to visually join the sidebar green line
             pw.Positioned(
               top: nameRowH, left: 0, bottom: 0,
               child: pw.Container(
-                width: 121.5,
-                padding: const pw.EdgeInsets.all(2),
+                width: logoW,
+                decoration: const pw.BoxDecoration(
+                  color: _kLeftBg,
+                  border: pw.Border(
+                    right: pw.BorderSide(color: _kSidebarBrd, width: 1.5),
+                  ),
+                ),
+                padding: const pw.EdgeInsets.all(6),
                 child: logo != null
                     ? pw.Image(logo, fit: pw.BoxFit.contain)
                     : pw.Center(
@@ -370,17 +377,39 @@ pw.Widget _pdfGlobeRow(String text, pw.Font font, double fontSize) {
 // Red bar starts at top of item 1: 27.8pt ≈ 28pt
 // Items 1-7 = 7 items × 27.8pt = 194.6pt ≈ 195pt
 
+// Sidebar dot pattern (smaller grid to fit 121.5pt width)
+pw.Widget _buildSidebarDots() {
+  final children = <pw.Widget>[];
+  const sp = 8.0;
+  for (int r = 0; r < 100; r++) {
+    for (int c = 0; c < 15; c++) {
+      children.add(pw.Positioned(
+        left: c * sp, top: r * sp,
+        child: pw.Container(
+          width: 1.2, height: 1.2,
+          decoration: const pw.BoxDecoration(
+              color: _kDot, shape: pw.BoxShape.circle),
+        ),
+      ));
+    }
+  }
+  return pw.Stack(children: children);
+}
+
 pw.Widget _buildSidebar(pw.Font font, pw.Font fontBold) {
   return pw.Container(
     width: 121.5,
     decoration: const pw.BoxDecoration(
+      color: PdfColors.white,
       border: pw.Border(
         right: pw.BorderSide(color: _kSidebarBrd, width: 1.5),
       ),
     ),
     child: pw.Stack(
       children: [
-        // Red vertical bar — Vascular Neurosurgery (item 1) → Slip disc (item 7)
+        // Subtle dot pattern background
+        pw.Positioned.fill(child: _buildSidebarDots()),
+        // Red vertical bar — items 1–7 (Vascular Neurosurgery → Slip disc)
         pw.Positioned(
           left: 4, top: 35,
           child: pw.Container(width: 3, height: 245, color: _kRedBar),
@@ -394,7 +423,7 @@ pw.Widget _buildSidebar(pw.Font font, pw.Font fontBold) {
               ..._Clinic.specialisations.map(
                 (s) => pw.Container(
                   width: double.infinity,
-                  padding: const pw.EdgeInsets.fromLTRB(0, 14, 0, 13),
+                  padding: const pw.EdgeInsets.fromLTRB(0, 12, 0, 11),
                   decoration: const pw.BoxDecoration(
                     border: pw.Border(
                       bottom: pw.BorderSide(color: _kGreenDiv, width: 0.8),
@@ -498,6 +527,12 @@ pw.Widget _buildSections(
       ]));
     }
   }
+
+  // KNOWN ALLERGIES
+  if (d('allergies').isNotEmpty)
+    sections.add(_section('KNOWN ALLERGIES', fontBold, [
+      _fieldRow('Allergies', d('allergies'), font, fontBold),
+    ]));
 
   // PRESENTING COMPLAINTS
   {
@@ -674,7 +709,7 @@ pw.Widget _fieldRow(
   return pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 4),
     child: pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.end,
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         if (label.isNotEmpty) ...[
           pw.SizedBox(
@@ -875,6 +910,7 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Weight',              'weight');
   addRow('Blood Pressure',      'bloodPressure');
   addRow('Temperature',         'temperature');
+  addRow('Known Allergies',     'allergies');
   addRow('Chief Complaint',     'chiefComplaint');
   addRow('Previous History',    'previousHistory');
   addRow('General Examination', 'examGeneral');

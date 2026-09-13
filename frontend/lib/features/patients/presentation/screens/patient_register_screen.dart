@@ -20,20 +20,23 @@ import '../../../visits/domain/entities/visit_entity.dart';
 import '../../../visits/presentation/providers/visit_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const _kBlue   = Color(0xFF5B5ECC);   // indigo primary (dark-bg variant)
-const _kBlue2  = Color(0xFF4B55CC);   // indigo darker
-const _kP1     = Color(0xFF5B5ECC);   // same as primary
-const _kRed    = Color(0xFFE07878);   // soft red on dark
-const _kAmber  = Color(0xFFD4A855);   // warm amber on dark
-const _kGreen  = Color(0xFF4EC080);   // soft green on dark
-const _kBg     = Color(0xFF171629);   // dark navy scaffold
-const _kCard   = Color(0xFF252545);   // dark card bg
-const _kInput  = Color(0xFF1E1C35);   // dark input bg
-const _kNavy   = Color(0xFFEEECFF);   // light lavender text
-const _kSlate  = Color(0xFFCCCAE8);   // muted lavender text
-const _kMuted  = Color(0xFF9896B8);   // very muted text
-const _kBorder = Color(0xFF3A3865);   // dark border
+// ── Fixed accent colours ───────────────────────────────────────────────────────
+const _kBlue  = Color(0xFF5B5ECC);
+const _kBlue2 = Color(0xFF4B55CC);
+const _kP1    = Color(0xFF5B5ECC);
+const _kRed   = Color(0xFFE07878);
+const _kAmber = Color(0xFFD4A855);
+const _kGreen = Color(0xFF4EC080);
+
+// ── Theme-aware surface / text colours ────────────────────────────────────────
+bool  _isDarkCtx(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+Color _kBg    (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF171629) : const Color(0xFFF8F6F2);
+Color _kCard  (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF252545) : Colors.white;
+Color _kInput (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF1E1C35) : const Color(0xFFECEAE4);
+Color _kNavy  (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFEEECFF) : const Color(0xFF302D28);
+Color _kSlate (BuildContext c) => _isDarkCtx(c) ? const Color(0xFFCCCAE8) : const Color(0xFF6E6A63);
+Color _kMuted (BuildContext c) => _isDarkCtx(c) ? const Color(0xFF9896B8) : const Color(0xFF979088);
+Color _kBorder(BuildContext c) => _isDarkCtx(c) ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7);
 
 
 class PatientRegisterScreen extends ConsumerStatefulWidget {
@@ -270,10 +273,10 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Row(children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+            Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
             const SizedBox(width: 10),
             Expanded(child: Text('Patient registered  ·  UHID: ${patient.prn}',
-                style: const TextStyle(fontWeight: FontWeight.w600))),
+                style: TextStyle(fontWeight: FontWeight.w600))),
           ]),
           backgroundColor: _kGreen,
           behavior: SnackBarBehavior.floating,
@@ -337,15 +340,15 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   Widget _buildMedicationTable() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        const Text('Treatment / Medications',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+        Text('Treatment / Medications',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
         const Spacer(),
         GestureDetector(
           onTap: _showAddMedicineSheet,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(color: _kBlue, borderRadius: BorderRadius.circular(8)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.add_rounded, size: 14, color: Colors.white),
               SizedBox(width: 4),
               Text('Add Medicine', style: TextStyle(
@@ -360,18 +363,18 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 22),
           decoration: BoxDecoration(
-            color: _kInput,
+            color: _kInput(context),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(children: [
-            const Icon(Icons.medication_outlined, color: _kMuted, size: 28),
+            Icon(Icons.medication_outlined, color: _kMuted(context), size: 28),
             const SizedBox(height: 6),
-            const Text('No medicines added',
-                style: TextStyle(fontSize: 12, color: _kMuted)),
+            Text('No medicines added',
+                style: TextStyle(fontSize: 12, color: _kMuted(context))),
             const SizedBox(height: 2),
             Text('Tap "Add Medicine" to prescribe',
-                style: TextStyle(fontSize: 11, color: _kMuted.withValues(alpha: 0.7))),
+                style: TextStyle(fontSize: 11, color: _kMuted(context).withValues(alpha: 0.7))),
           ]),
         )
       else ...[
@@ -382,26 +385,26 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(10), topRight: Radius.circular(10)),
           ),
-          child: const Row(children: [
+          child: Row(children: [
             Expanded(flex: 3, child: Text('Medicine',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Dose',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Route',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Freq.',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             Expanded(flex: 2, child: Text('Duration',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate))),
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _kSlate(context)))),
             SizedBox(width: 24),
           ]),
         ),
         Container(
           decoration: BoxDecoration(
-            color: _kInput,
+            color: _kInput(context),
             borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(10), bottomRight: Radius.circular(10)),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(
             children: List.generate(_prescriptionRows.length, (idx) {
@@ -409,30 +412,30 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               return Container(
                 decoration: BoxDecoration(
                   border: idx > 0
-                      ? const Border(top: BorderSide(color: _kBorder, width: 0.5))
+                      ? Border(top: BorderSide(color: _kBorder(context), width: 0.5))
                       : null,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                 child: Row(children: [
                   Expanded(flex: 3, child: Text(row.medicine,
-                      style: const TextStyle(fontSize: 12, color: _kNavy,
+                      style: TextStyle(fontSize: 12, color: _kNavy(context),
                           fontWeight: FontWeight.w600),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.route,
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.frequency,
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
-                      style: const TextStyle(fontSize: 12, color: _kSlate),
+                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
                       overflow: TextOverflow.ellipsis)),
                   GestureDetector(
                     onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
-                    child: const Icon(Icons.close_rounded, size: 16, color: _kMuted),
+                    child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
                   ),
                 ]),
               );
@@ -466,12 +469,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       border: Border.all(color: _kGreen.withValues(alpha: 0.25)),
     ),
     child: Row(children: [
-      const Icon(Icons.insert_drive_file_rounded, color: _kGreen, size: 14),
+      Icon(Icons.insert_drive_file_rounded, color: _kGreen, size: 14),
       const SizedBox(width: 6),
       Expanded(child: Text(name,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy(context)),
           overflow: TextOverflow.ellipsis)),
-      GestureDetector(onTap: onClear, child: const Icon(Icons.close_rounded, size: 14, color: _kMuted)),
+      GestureDetector(onTap: onClear, child: Icon(Icons.close_rounded, size: 14, color: _kMuted(context))),
     ]),
   );
 
@@ -505,16 +508,16 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     String hint = '',
   }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+      Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
       const SizedBox(height: 6),
       TextFormField(
         controller: controller,
         maxLines: maxLines,
-        style: const TextStyle(fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+        style: TextStyle(fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-          prefixIcon: Icon(prefixIcon, size: 17, color: _kMuted),
+          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+          prefixIcon: Icon(prefixIcon, size: 17, color: _kMuted(context)),
           suffixIcon: Tooltip(
             message: 'Upload files',
             child: Stack(
@@ -523,7 +526,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               children: [
                 IconButton(
                   icon: Icon(Icons.upload_file_rounded, size: 20,
-                      color: files.isNotEmpty ? _kGreen : _kMuted),
+                      color: files.isNotEmpty ? _kGreen : _kMuted(context)),
                   onPressed: () => _pickFiles((picked) =>
                       setState(() => onFilesChange([...files, ...picked]))),
                 ),
@@ -532,10 +535,10 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     right: 6, top: 6,
                     child: Container(
                       width: 15, height: 15,
-                      decoration: const BoxDecoration(color: _kGreen, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: _kGreen, shape: BoxShape.circle),
                       alignment: Alignment.center,
                       child: Text('${files.length}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
                     ),
                   ),
@@ -543,11 +546,11 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             ),
           ),
           filled: true,
-          fillColor: _kInput,
+          fillColor: _kInput(context),
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kP1, width: 1.5)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kP1, width: 1.5)),
         ),
       ),
       if (files.isNotEmpty) ...[
@@ -571,7 +574,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _kBg,
+      backgroundColor: _kBg(context),
       body: SafeArea(
         child: Column(children: [
           _buildWizardHeader(),
@@ -606,19 +609,19 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   ];
 
   Widget _buildWizardHeader() => Container(
-    color: _kCard,
+    color: _kCard(context),
     padding: const EdgeInsets.fromLTRB(4, 8, 16, 14),
     child: Row(children: [
       IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, color: _kNavy, size: 18),
+        icon: Icon(Icons.arrow_back_ios_new, color: _kNavy(context), size: 18),
         onPressed: _prevStep,
       ),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('New Patient Registration',
-              style: TextStyle(color: _kNavy, fontWeight: FontWeight.w800, fontSize: 17)),
+          Text('New Patient Registration',
+              style: TextStyle(color: _kNavy(context), fontWeight: FontWeight.w800, fontSize: 17)),
           Text(_stepSubtitles[_step],
-              style: const TextStyle(color: _kMuted, fontSize: 12)),
+              style: TextStyle(color: _kMuted(context), fontSize: 12)),
         ]),
       ),
       Container(
@@ -628,14 +631,14 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text('Step ${_step + 1} of 3',
-            style: const TextStyle(
+            style: TextStyle(
                 color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
       ),
     ]),
   );
 
   Widget _buildStepBar() => Container(
-    color: _kCard,
+    color: _kCard(context),
     padding: const EdgeInsets.fromLTRB(20, 0, 16, 16),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -649,52 +652,60 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   child: Container(
                     height: 2,
                     margin: const EdgeInsets.only(bottom: 22),
-                    color: segIdx < _step ? _kBlue : _kBorder,
+                    color: segIdx < _step ? _kBlue : _kBorder(context),
                   ),
                 );
               }
               final idx = i ~/ 2;
               final isDone    = idx < _step;
               final isCurrent = idx == _step;
-              return Column(mainAxisSize: MainAxisSize.min, children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(
-                    color: (isDone || isCurrent) ? _kBlue : _kCard,
-                    shape: BoxShape.circle,
-                    border: (isDone || isCurrent)
-                        ? null
-                        : Border.all(color: _kBorder, width: 1.5),
-                    boxShadow: (isDone || isCurrent)
-                        ? [BoxShadow(
-                            color: _kBlue.withValues(alpha: 0.4),
-                            blurRadius: 8, offset: const Offset(0, 3))]
-                        : null,
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _step = idx);
+                  _pageCtrl.animateToPage(idx,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut);
+                },
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: (isDone || isCurrent) ? _kBlue : _kCard(context),
+                      shape: BoxShape.circle,
+                      border: (isDone || isCurrent)
+                          ? null
+                          : Border.all(color: _kBorder(context), width: 1.5),
+                      boxShadow: (isDone || isCurrent)
+                          ? [BoxShadow(
+                              color: _kBlue.withValues(alpha: 0.4),
+                              blurRadius: 8, offset: const Offset(0, 3))]
+                          : null,
+                    ),
+                    child: Center(
+                      child: isDone
+                          ? Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                          : idx == 2
+                              ? Icon(Icons.print_outlined,
+                                    color: Colors.white, size: 16)
+                              : Text('${idx + 1}',
+                                  style: TextStyle(
+                                    color: isCurrent ? Colors.white : _kMuted(context),
+                                    fontSize: 14, fontWeight: FontWeight.w700,
+                                  )),
+                    ),
                   ),
-                  child: Center(
-                    child: isDone
-                        ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
-                        : idx == 2
-                            ? const Icon(Icons.print_outlined,
-                                  color: Colors.white, size: 16)
-                            : Text('${idx + 1}',
-                                style: TextStyle(
-                                  color: isCurrent ? Colors.white : _kMuted,
-                                  fontSize: 14, fontWeight: FontWeight.w700,
-                                )),
+                  const SizedBox(height: 4),
+                  Text(
+                    _stepLabels[idx],
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                      color: isCurrent ? _kBlue : (isDone ? _kSlate(context) : _kMuted(context)),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _stepLabels[idx],
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-                    color: isCurrent ? _kBlue : (isDone ? _kSlate : _kMuted),
-                  ),
-                ),
-              ]);
+                ]),
+              );
             }),
           ),
         ),
@@ -706,14 +717,14 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               duration: const Duration(milliseconds: 200),
               width: 36, height: 36,
               decoration: BoxDecoration(
-                color: _step == 2 ? _kBlue.withValues(alpha: 0.15) : _kInput,
+                color: _step == 2 ? _kBlue.withValues(alpha: 0.15) : _kInput(context),
                 borderRadius: BorderRadius.circular(9),
                 border: Border.all(
-                  color: _step == 2 ? _kBlue : _kBorder,
+                  color: _step == 2 ? _kBlue : _kBorder(context),
                 ),
               ),
               child: Icon(Icons.print_outlined, size: 16,
-                  color: _step == 2 ? _kBlue : _kMuted),
+                  color: _step == 2 ? _kBlue : _kMuted(context)),
             ),
           ),
           const SizedBox(height: 26),
@@ -726,14 +737,14 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     final isLast    = _step == 1;   // Treatment → triggers save → goes to preview
     final isPreview = _step == 2;   // Preview & Print step
     return Container(
-      color: _kCard,
+      color: _kCard(context),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
           child: LinearProgressIndicator(
             value: (_step + 1) / 3,
-            backgroundColor: _kBorder,
+            backgroundColor: _kBorder(context),
             valueColor: const AlwaysStoppedAnimation<Color>(_kBlue),
             minHeight: 4,
           ),
@@ -744,12 +755,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _openPrint,
-                icon: const Icon(Icons.print_outlined, size: 15),
-                label: const Text('Print / Export',
+                icon: Icon(Icons.print_outlined, size: 15),
+                label: Text('Print / Export',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _kBlue,
-                  side: const BorderSide(color: _kBlue, width: 1.5),
+                  side: BorderSide(color: _kBlue, width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -759,12 +770,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _openPrint,
-                icon: const Icon(Icons.download_outlined, size: 15),
-                label: const Text('Download PDF',
+                icon: Icon(Icons.download_outlined, size: 15),
+                label: Text('Download PDF',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _kBlue,
-                  side: const BorderSide(color: _kBlue, width: 1.5),
+                  side: BorderSide(color: _kBlue, width: 1.5),
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -777,8 +788,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   final p = _savedPatient;
                   if (p != null) context.go('/patients/${p.id}');
                 },
-                icon: const Icon(Icons.person_outline_rounded, size: 15),
-                label: const Text('View Patient Profile',
+                icon: Icon(Icons.person_outline_rounded, size: 15),
+                label: Text('View Patient Profile',
                     style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _kBlue,
@@ -798,13 +809,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 child: OutlinedButton(
                   onPressed: () => context.pop(),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _kSlate,
-                    side: BorderSide(color: _kBorder, width: 1.5),
-                    backgroundColor: _kInput,
+                    foregroundColor: _kSlate(context),
+                    side: BorderSide(color: _kBorder(context), width: 1.5),
+                    backgroundColor: _kInput(context),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -814,13 +825,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 child: OutlinedButton(
                   onPressed: _saving ? null : _prevStep,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: _kSlate,
-                    side: BorderSide(color: _kBorder, width: 1.5),
-                    backgroundColor: _kInput,
+                    foregroundColor: _kSlate(context),
+                    side: BorderSide(color: _kBorder(context), width: 1.5),
+                    backgroundColor: _kInput(context),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Back', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text('Back', style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ),
               const SizedBox(width: 12),
@@ -833,7 +844,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 200),
                   height: 50,
                   decoration: BoxDecoration(
-                    color: _saving ? _kBorder : _kBlue,
+                    color: _saving ? _kBorder(context) : _kBlue,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: _saving
                         ? null
@@ -850,7 +861,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                               color: Colors.white, size: 18),
                           const SizedBox(width: 8),
                           Text(isLast ? 'Register Patient' : 'Next',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
                         ]),
                 ),
@@ -970,8 +981,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
               Expanded(
                 flex: 2,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Gender',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+                  Text('Gender',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
                   const SizedBox(height: 6),
                   Row(children: _sexOptions.asMap().entries.map((e) {
                     final isFirst = e.key == 0;
@@ -984,18 +995,18 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                           duration: const Duration(milliseconds: 150),
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           decoration: BoxDecoration(
-                            color: selected ? _kBlue : _kInput,
+                            color: selected ? _kBlue : _kInput(context),
                             borderRadius: BorderRadius.horizontal(
                               left: isFirst ? const Radius.circular(10) : Radius.zero,
                               right: isLast  ? const Radius.circular(10) : Radius.zero,
                             ),
-                            border: Border.all(color: selected ? _kBlue : _kBorder),
+                            border: Border.all(color: selected ? _kBlue : _kBorder(context)),
                           ),
                           alignment: Alignment.center,
                           child: Text(e.value,
                               style: TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w600,
-                                color: selected ? Colors.white : _kSlate,
+                                color: selected ? Colors.white : _kSlate(context),
                               )),
                         ),
                       ),
@@ -1020,8 +1031,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           color: _kGreen,
           child: Column(children: [
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('ID Type',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+              Text('ID Type',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
               const SizedBox(height: 6),
               Row(children: _idProofOptions.asMap().entries.map((e) {
                 final isFirst = e.key == 0;
@@ -1034,18 +1045,18 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                       duration: const Duration(milliseconds: 150),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
-                        color: selected ? _kBlue : _kInput,
+                        color: selected ? _kBlue : _kInput(context),
                         borderRadius: BorderRadius.horizontal(
                           left: isFirst ? const Radius.circular(10) : Radius.zero,
                           right: isLast  ? const Radius.circular(10) : Radius.zero,
                         ),
-                        border: Border.all(color: selected ? _kBlue : _kBorder),
+                        border: Border.all(color: selected ? _kBlue : _kBorder(context)),
                       ),
                       alignment: Alignment.center,
                       child: Text(e.value,
                           style: TextStyle(
                             fontSize: 12, fontWeight: FontWeight.w600,
-                            color: selected ? Colors.white : _kSlate,
+                            color: selected ? Colors.white : _kSlate(context),
                           )),
                     ),
                   ),
@@ -1208,17 +1219,17 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'general' ? _kBlue : _kInput,
+                    color: _examTab == 'general' ? _kBlue : _kInput(context),
                     borderRadius: const BorderRadius.only(
                       topLeft: Radius.circular(10), bottomLeft: Radius.circular(10)),
                     border: Border.all(
-                        color: _examTab == 'general' ? _kBlue : _kBorder),
+                        color: _examTab == 'general' ? _kBlue : _kBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text('General',
                       style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w600,
-                        color: _examTab == 'general' ? Colors.white : _kSlate,
+                        color: _examTab == 'general' ? Colors.white : _kSlate(context),
                       )),
                 ),
               ),
@@ -1230,17 +1241,17 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   duration: const Duration(milliseconds: 150),
                   padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _examTab == 'neurological' ? _kBlue : _kInput,
+                    color: _examTab == 'neurological' ? _kBlue : _kInput(context),
                     borderRadius: const BorderRadius.only(
                       topRight: Radius.circular(10), bottomRight: Radius.circular(10)),
                     border: Border.all(
-                        color: _examTab == 'neurological' ? _kBlue : _kBorder),
+                        color: _examTab == 'neurological' ? _kBlue : _kBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text('Neurological',
                       style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w600,
-                        color: _examTab == 'neurological' ? Colors.white : _kSlate,
+                        color: _examTab == 'neurological' ? Colors.white : _kSlate(context),
                       )),
                 ),
               ),
@@ -1251,11 +1262,11 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             TextFormField(
               controller: _examGeneralCtrl,
               maxLines: 3,
-              style: const TextStyle(fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'General examination findings…',
-                hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                prefixIcon: const Icon(Icons.person_search_outlined, size: 17, color: _kMuted),
+                hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                prefixIcon: Icon(Icons.person_search_outlined, size: 17, color: _kMuted(context)),
                 suffixIcon: Tooltip(
                   message: 'Upload files',
                   child: Stack(
@@ -1264,7 +1275,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     children: [
                       IconButton(
                         icon: Icon(Icons.upload_file_rounded, size: 20,
-                            color: _examGeneralFiles.isNotEmpty ? _kGreen : _kMuted),
+                            color: _examGeneralFiles.isNotEmpty ? _kGreen : _kMuted(context)),
                         onPressed: () => _pickFiles((picked) => setState(() =>
                             _examGeneralFiles.addAll(picked))),
                       ),
@@ -1273,20 +1284,20 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                           right: 6, top: 6,
                           child: Container(
                             width: 15, height: 15,
-                            decoration: const BoxDecoration(color: _kGreen, shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: _kGreen, shape: BoxShape.circle),
                             alignment: Alignment.center,
                             child: Text('${_examGeneralFiles.length}',
-                                style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
+                                style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
                           ),
                         ),
                     ],
                   ),
                 ),
-                filled: true, fillColor: _kInput,
+                filled: true, fillColor: _kInput(context),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kP1, width: 1.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examGeneralFiles.isNotEmpty) ...[
@@ -1302,11 +1313,11 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             TextFormField(
               controller: _examNeurologicalCtrl,
               maxLines: 3,
-              style: const TextStyle(fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
               decoration: InputDecoration(
                 hintText: 'Neurological examination findings…',
-                hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-                prefixIcon: const Icon(Icons.psychology_outlined, size: 17, color: _kMuted),
+                hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                prefixIcon: Icon(Icons.psychology_outlined, size: 17, color: _kMuted(context)),
                 suffixIcon: Tooltip(
                   message: 'Upload files',
                   child: Stack(
@@ -1315,7 +1326,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     children: [
                       IconButton(
                         icon: Icon(Icons.upload_file_rounded, size: 20,
-                            color: _examNeurologicalFiles.isNotEmpty ? _kGreen : _kMuted),
+                            color: _examNeurologicalFiles.isNotEmpty ? _kGreen : _kMuted(context)),
                         onPressed: () => _pickFiles((picked) => setState(() =>
                             _examNeurologicalFiles.addAll(picked))),
                       ),
@@ -1324,20 +1335,20 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                           right: 6, top: 6,
                           child: Container(
                             width: 15, height: 15,
-                            decoration: const BoxDecoration(color: _kGreen, shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: _kGreen, shape: BoxShape.circle),
                             alignment: Alignment.center,
                             child: Text('${_examNeurologicalFiles.length}',
-                                style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
+                                style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
                           ),
                         ),
                     ],
                   ),
                 ),
-                filled: true, fillColor: _kInput,
+                filled: true, fillColor: _kInput(context),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _kP1, width: 1.5)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kBorder(context))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examNeurologicalFiles.isNotEmpty) ...[
@@ -1450,13 +1461,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 9, color: _kMuted,
+            style: TextStyle(
+                fontSize: 9, color: _kMuted(context),
                 fontWeight: FontWeight.w700, letterSpacing: 0.4)),
         const SizedBox(height: 3),
         Text(value,
-            style: const TextStyle(
-                fontSize: 13, color: _kNavy, fontWeight: FontWeight.w600)),
+            style: TextStyle(
+                fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w600)),
       ]),
     );
 
@@ -1468,19 +1479,19 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         SizedBox(
           width: 124,
           child: Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: _kMuted, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 11, color: _kMuted(context), fontWeight: FontWeight.w600)),
         ),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (value.isNotEmpty)
               Text(value,
-                  style: const TextStyle(
-                      fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600))
-            else if (files.isEmpty)
-              const Text('—',
                   style: TextStyle(
-                      fontSize: 12, color: _kMuted, fontWeight: FontWeight.w500)),
+                      fontSize: 12, color: _kNavy(context), fontWeight: FontWeight.w600))
+            else if (files.isEmpty)
+              Text('—',
+                  style: TextStyle(
+                      fontSize: 12, color: _kMuted(context), fontWeight: FontWeight.w500)),
             if (files.isNotEmpty) ...[
               if (value.isNotEmpty) const SizedBox(height: 4),
               Wrap(spacing: 6, runSpacing: 4,
@@ -1498,13 +1509,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         SizedBox(
           width: 124,
           child: Text(label,
-              style: const TextStyle(
-                  fontSize: 11, color: _kMuted, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 11, color: _kMuted(context), fontWeight: FontWeight.w600)),
         ),
         Expanded(
           child: Text(value,
-              style: const TextStyle(
-                  fontSize: 12, color: _kNavy, fontWeight: FontWeight.w600)),
+              style: TextStyle(
+                  fontSize: 12, color: _kNavy(context), fontWeight: FontWeight.w600)),
         ),
       ]),
     );
@@ -1513,9 +1524,9 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     Widget sCard(String title, IconData icon, Color color, Widget body) =>
         Container(
           decoration: BoxDecoration(
-            color: _kCard,
+            color: _kCard(context),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: _kBorder),
+            border: Border.all(color: _kBorder(context)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Padding(
@@ -1529,11 +1540,11 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 ),
                 const SizedBox(width: 9),
                 Text(title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context))),
               ]),
             ),
-            const Divider(height: 1, color: _kBorder),
+            Divider(height: 1, color: _kBorder(context)),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               child: body,
@@ -1554,9 +1565,9 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     );
 
     // Thin vertical divider for inner 2-col
-    const vDiv = SizedBox(
+    final vDiv = SizedBox(
       width: 28,
-      child: Center(child: VerticalDivider(thickness: 1, color: _kBorder, width: 1)),
+      child: Center(child: VerticalDivider(thickness: 1, color: _kBorder(context), width: 1)),
     );
 
     return ListView(
@@ -1573,25 +1584,25 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           child: Row(children: [
             Container(
               width: 40, height: 40,
-              decoration: const BoxDecoration(color: _kGreen, shape: BoxShape.circle),
-              child: const Icon(Icons.check_rounded, color: Colors.white, size: 22),
+              decoration: BoxDecoration(color: _kGreen, shape: BoxShape.circle),
+              child: Icon(Icons.check_rounded, color: Colors.white, size: 22),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Patient Registered Successfully!',
-                    style: TextStyle(fontWeight: FontWeight.w800, color: _kNavy, fontSize: 15)),
+                Text('Patient Registered Successfully!',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: _kNavy(context), fontSize: 15)),
                 if (p != null)
                   RichText(text: TextSpan(children: [
-                    const TextSpan(text: 'UHID: ',
-                        style: TextStyle(color: _kMuted, fontSize: 11)),
+                    TextSpan(text: 'UHID: ',
+                        style: TextStyle(color: _kMuted(context), fontSize: 11)),
                     TextSpan(text: p.prn,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: _kGreen, fontWeight: FontWeight.w700, fontSize: 11)),
-                    const TextSpan(text: '  ·  ',
-                        style: TextStyle(color: _kMuted, fontSize: 11)),
+                    TextSpan(text: '  ·  ',
+                        style: TextStyle(color: _kMuted(context), fontSize: 11)),
                     TextSpan(text: fullName,
-                        style: const TextStyle(color: _kNavy, fontSize: 11)),
+                        style: TextStyle(color: _kNavy(context), fontSize: 11)),
                   ])),
               ]),
             ),
@@ -1600,8 +1611,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   color: _kGreen.withValues(alpha: 0.3)),
               Container(
                 width: 17, height: 17,
-                decoration: const BoxDecoration(color: _kGreen, shape: BoxShape.circle),
-                child: const Icon(Icons.check_rounded, color: Colors.white, size: 11),
+                decoration: BoxDecoration(color: _kGreen, shape: BoxShape.circle),
+                child: Icon(Icons.check_rounded, color: Colors.white, size: 11),
               ),
             ]),
           ]),
@@ -1693,8 +1704,8 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    const Text('Prescriptions',
-                        style: TextStyle(fontSize: 11, color: _kMuted,
+                    Text('Prescriptions',
+                        style: TextStyle(fontSize: 11, color: _kMuted(context),
                             fontWeight: FontWeight.w600)),
                     const SizedBox(height: 4),
                     ...List.generate(_prescriptionRows.length, (idx) {
@@ -1709,13 +1720,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                                 shape: BoxShape.circle),
                             alignment: Alignment.center,
                             child: Text('${idx + 1}',
-                                style: const TextStyle(fontSize: 8,
+                                style: TextStyle(fontSize: 8,
                                     fontWeight: FontWeight.w800, color: _kBlue)),
                           ),
                           const SizedBox(width: 6),
                           Expanded(child: Text(
                             '${r.medicine}${r.dose.isNotEmpty ? "  ${r.dose}" : ""}  ·  ${r.route}  ·  ${r.frequency}${r.duration.isNotEmpty ? "  ×  ${r.duration}" : ""}',
-                            style: const TextStyle(fontSize: 11, color: _kNavy,
+                            style: TextStyle(fontSize: 11, color: _kNavy(context),
                                 fontWeight: FontWeight.w600),
                           )),
                         ]),
@@ -1755,12 +1766,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 160),
             child: Text(f.name,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy),
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy(context)),
                 overflow: TextOverflow.ellipsis),
           ),
           const SizedBox(width: 6),
-          const Icon(Icons.visibility_outlined, color: _kBlue, size: 14),
+          Icon(Icons.visibility_outlined, color: _kBlue, size: 14),
         ]),
       ),
     );
@@ -1780,13 +1791,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-                decoration: const BoxDecoration(
-                  color: _kCard,
+                decoration: BoxDecoration(
+                  color: _kCard(context),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(16),
                     topRight: Radius.circular(16),
                   ),
-                  border: Border(bottom: BorderSide(color: _kBorder)),
+                  border: Border(bottom: BorderSide(color: _kBorder(context))),
                 ),
                 child: Row(children: [
                   Icon(isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
@@ -1794,13 +1805,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(f.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, color: _kNavy, fontSize: 14),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, color: _kNavy(context), fontSize: 14),
                         overflow: TextOverflow.ellipsis),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    color: _kMuted,
+                    icon: Icon(Icons.close_rounded, size: 18),
+                    color: _kMuted(context),
                     onPressed: () => Navigator.pop(ctx),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -1818,19 +1829,19 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                     : Padding(
                         padding: const EdgeInsets.all(32),
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.insert_drive_file_rounded, size: 72, color: _kMuted),
+                          Icon(Icons.insert_drive_file_rounded, size: 72, color: _kMuted(context)),
                           const SizedBox(height: 16),
                           Text(f.name,
-                              style: const TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy),
+                              style: TextStyle(
+                                  fontSize: 16, fontWeight: FontWeight.w700, color: _kNavy(context)),
                               textAlign: TextAlign.center),
                           const SizedBox(height: 8),
                           Text('${(f.bytes.length / 1024).toStringAsFixed(1)} KB',
-                              style: const TextStyle(fontSize: 12, color: _kMuted)),
+                              style: TextStyle(fontSize: 12, color: _kMuted(context))),
                           const SizedBox(height: 16),
-                          const Text(
+                          Text(
                             'Preview not available for this file type.\nThe file has been uploaded successfully.',
-                            style: TextStyle(fontSize: 12, color: _kMuted),
+                            style: TextStyle(fontSize: 12, color: _kMuted(context)),
                             textAlign: TextAlign.center,
                           ),
                         ]),
@@ -1953,15 +1964,15 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
 
   InputDecoration _dec({String? hint}) => InputDecoration(
     hintText: hint,
-    hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
-    filled: true, fillColor: _kInput,
+    hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+    filled: true, fillColor: _kInput(context),
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _kBorder)),
+        borderSide: BorderSide(color: _kBorder(context))),
     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _kBorder)),
+        borderSide: BorderSide(color: _kBorder(context))),
     focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: _kBlue, width: 1.5)),
+        borderSide: BorderSide(color: _kBlue, width: 1.5)),
   );
 
   @override
@@ -1970,8 +1981,8 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: _kCard,
+        decoration: BoxDecoration(
+          color: _kCard(context),
           borderRadius: BorderRadius.only(
               topLeft: Radius.circular(20), topRight: Radius.circular(20)),
         ),
@@ -1980,7 +1991,7 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
             margin: const EdgeInsets.only(top: 10, bottom: 16),
             width: 36, height: 4,
             decoration: BoxDecoration(
-                color: _kBorder, borderRadius: BorderRadius.circular(2)),
+                color: _kBorder(context), borderRadius: BorderRadius.circular(2)),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1990,44 +2001,44 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 decoration: BoxDecoration(
                     color: _kBlue.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.medication_rounded, color: _kBlue, size: 17),
+                child: Icon(Icons.medication_rounded, color: _kBlue, size: 17),
               ),
               const SizedBox(width: 10),
-              const Text('Add Medicine',
+              Text('Add Medicine',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-                      color: _kNavy)),
+                      color: _kNavy(context))),
               const Spacer(),
               GestureDetector(
                 onTap: () => Navigator.of(context).pop(),
-                child: const Icon(Icons.close_rounded, color: _kMuted, size: 20),
+                child: Icon(Icons.close_rounded, color: _kMuted(context), size: 20),
               ),
             ]),
           ),
           const SizedBox(height: 14),
-          const Divider(height: 1, color: _kBorder),
+          Divider(height: 1, color: _kBorder(context)),
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 // Medicine name
-                const Text('Medicine Name *',
+                Text('Medicine Name *',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                        color: _kSlate)),
+                        color: _kSlate(context))),
                 const SizedBox(height: 6),
                 TextField(
                   controller: _nameCtrl,
                   autofocus: true,
-                  style: const TextStyle(fontSize: 14, color: _kNavy,
+                  style: TextStyle(fontSize: 14, color: _kNavy(context),
                       fontWeight: FontWeight.w500),
                   decoration: _dec(hint: 'Type medicine name…').copyWith(
-                    prefixIcon: const Icon(Icons.medication_outlined,
-                        size: 17, color: _kMuted),
+                    prefixIcon: Icon(Icons.medication_outlined,
+                        size: 17, color: _kMuted(context)),
                     suffixIcon: _nameCtrl.text.isNotEmpty
                         ? GestureDetector(
                             onTap: () { _nameCtrl.clear();
                               setState(() { _suggestions = []; _showSugg = false; }); },
-                            child: const Icon(Icons.close_rounded,
-                                size: 16, color: _kMuted))
+                            child: Icon(Icons.close_rounded,
+                                size: 16, color: _kMuted(context)))
                         : null,
                   ),
                 ),
@@ -2036,16 +2047,16 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   Container(
                     constraints: const BoxConstraints(maxHeight: 160),
                     decoration: BoxDecoration(
-                      color: _kInput,
+                      color: _kInput(context),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _kBorder),
+                      border: Border.all(color: _kBorder(context)),
                     ),
                     child: ListView.separated(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       itemCount: _suggestions.length,
                       separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: _kBorder),
+                          Divider(height: 1, color: _kBorder(context)),
                       itemBuilder: (_, i) {
                         final s = _suggestions[i];
                         return InkWell(
@@ -2064,12 +2075,12 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(s.name,
-                                      style: const TextStyle(fontSize: 13,
-                                          fontWeight: FontWeight.w600, color: _kNavy)),
+                                      style: TextStyle(fontSize: 13,
+                                          fontWeight: FontWeight.w600, color: _kNavy(context))),
                                   if (s.subtitle.isNotEmpty)
                                     Text(s.subtitle,
                                         style: TextStyle(fontSize: 11,
-                                            color: s.isHistory ? _kGreen : _kMuted)),
+                                            color: s.isHistory ? _kGreen : _kMuted(context))),
                                 ],
                               )),
                             ]),
@@ -2083,22 +2094,22 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Dose', style: TextStyle(fontSize: 12,
-                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      Text('Dose', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(controller: _doseCtrl,
-                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                          style: TextStyle(fontSize: 14, color: _kNavy(context),
                               fontWeight: FontWeight.w500),
                           decoration: _dec(hint: '500mg')),
                     ])),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Route', style: TextStyle(fontSize: 12,
-                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      Text('Route', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(controller: _routeCtrl,
-                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                          style: TextStyle(fontSize: 14, color: _kNavy(context),
                               fontWeight: FontWeight.w500),
                           decoration: _dec(hint: 'Oral / IV / IM…')),
                     ])),
@@ -2107,22 +2118,22 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Frequency', style: TextStyle(fontSize: 12,
-                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      Text('Frequency', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(controller: _freqCtrl,
-                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                          style: TextStyle(fontSize: 14, color: _kNavy(context),
                               fontWeight: FontWeight.w500),
                           decoration: _dec(hint: 'e.g. 1-0-1')),
                     ])),
                   const SizedBox(width: 10),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Duration', style: TextStyle(fontSize: 12,
-                          fontWeight: FontWeight.w600, color: _kSlate)),
+                      Text('Duration', style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w600, color: _kSlate(context))),
                       const SizedBox(height: 6),
                       TextField(controller: _durCtrl,
-                          style: const TextStyle(fontSize: 14, color: _kNavy,
+                          style: TextStyle(fontSize: 14, color: _kNavy(context),
                               fontWeight: FontWeight.w500),
                           decoration: _dec(hint: '5 days')),
                     ])),
@@ -2132,8 +2143,8 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                   width: double.infinity, height: 50,
                   child: ElevatedButton.icon(
                     onPressed: _submit,
-                    icon: const Icon(Icons.add_rounded, size: 18),
-                    label: const Text('Add Medicine',
+                    icon: Icon(Icons.add_rounded, size: 18),
+                    label: Text('Add Medicine',
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kBlue,
@@ -2173,9 +2184,9 @@ class _WizardCard extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 14),
     child: Container(
       decoration: BoxDecoration(
-        color: _kCard,
+        color: _kCard(context),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _kBorder),
+        border: Border.all(color: _kBorder(context)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Padding(
@@ -2191,11 +2202,11 @@ class _WizardCard extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Text(title,
-                style: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy)),
+                style: TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context))),
           ]),
         ),
-        Divider(height: 1, color: _kBorder),
+        Divider(height: 1, color: _kBorder(context)),
         Padding(
           padding: const EdgeInsets.all(14),
           child: child,
@@ -2220,7 +2231,7 @@ class _DuplicateWarning extends StatelessWidget {
       border: Border.all(color: _kAmber.withValues(alpha: 0.3)),
     ),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [
+      Row(children: [
         Icon(Icons.warning_amber_rounded, color: _kAmber, size: 18),
         SizedBox(width: 8),
         Text('Similar patients found',
@@ -2233,7 +2244,7 @@ class _DuplicateWarning extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: _kCard,
+            color: _kCard(context),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: _kAmber.withValues(alpha: 0.3)),
           ),
@@ -2246,26 +2257,26 @@ class _DuplicateWarning extends StatelessWidget {
               ),
               alignment: Alignment.center,
               child: Text(p.initials,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: _kAmber, fontWeight: FontWeight.w900, fontSize: 12)),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(p.fullName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13, color: _kNavy)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 13, color: _kNavy(context))),
                 Text('${p.ageSex}  ·  UHID: ${p.prn}',
-                    style: const TextStyle(fontSize: 11, color: _kMuted)),
+                    style: TextStyle(fontSize: 11, color: _kMuted(context))),
               ]),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 12, color: _kMuted),
+            Icon(Icons.arrow_forward_ios, size: 12, color: _kMuted(context)),
           ]),
         ),
       )),
       const SizedBox(height: 4),
-      const Text('You can still continue registering a new patient.',
-          style: TextStyle(fontSize: 11, color: _kMuted)),
+      Text('You can still continue registering a new patient.',
+          style: TextStyle(fontSize: 11, color: _kMuted(context))),
     ]),
   );
 }
@@ -2299,8 +2310,8 @@ class _RegField extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(label,
-          style: const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
       const SizedBox(height: 6),
       TextFormField(
         controller: controller,
@@ -2309,33 +2320,33 @@ class _RegField extends StatelessWidget {
         onEditingComplete: onEditingComplete,
         maxLines: maxLines,
         textCapitalization: textCapitalization,
-        style: const TextStyle(
-            fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+        style: TextStyle(
+            fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(color: _kMuted, fontSize: 13),
+          hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
           prefixIcon: prefixIcon != null
-              ? Icon(prefixIcon, size: 17, color: _kMuted)
+              ? Icon(prefixIcon, size: 17, color: _kMuted(context))
               : null,
           filled: true,
-          fillColor: _kInput,
+          fillColor: _kInput(context),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kBorder),
+            borderSide: BorderSide(color: _kBorder(context)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kBorder),
+            borderSide: BorderSide(color: _kBorder(context)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kP1, width: 1.5),
+            borderSide: BorderSide(color: _kP1, width: 1.5),
           ),
           errorBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: _kRed),
+            borderSide: BorderSide(color: _kRed),
           ),
         ),
       ),
@@ -2364,26 +2375,26 @@ class _DropdownField extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(label,
-          style: const TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate)),
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w600, color: _kSlate(context))),
       const SizedBox(height: 6),
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: _kInput,
+          color: _kInput(context),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _kBorder),
+          border: Border.all(color: _kBorder(context)),
         ),
         child: DropdownButton<String>(
           value: value,
           isExpanded: true,
           underline: const SizedBox(),
-          dropdownColor: _kCard,
+          dropdownColor: _kCard(context),
           hint: Text(hint,
-              style: const TextStyle(fontSize: 14, color: _kMuted)),
-          icon: const Icon(Icons.keyboard_arrow_down, color: _kMuted),
-          style: const TextStyle(
-              fontSize: 14, color: _kNavy, fontWeight: FontWeight.w500),
+              style: TextStyle(fontSize: 14, color: _kMuted(context))),
+          icon: Icon(Icons.keyboard_arrow_down, color: _kMuted(context)),
+          style: TextStyle(
+              fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
           items: options
               .map((s) => DropdownMenuItem(value: s, child: Text(s)))
               .toList(),
