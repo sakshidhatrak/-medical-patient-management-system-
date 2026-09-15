@@ -165,6 +165,11 @@ class OfflineQueue {
 /// turns green without the user needing to navigate away.
 final visitSyncEventProvider = StateProvider<int>((ref) => 0);
 
+/// Incremented each time SyncEngine successfully syncs a patient.
+/// patientsProvider listens to this and reloads from SQLite so the pending
+/// indicator turns green without the user needing to pull-to-refresh.
+final patientSyncEventProvider = StateProvider<int>((ref) => 0);
+
 /// Emits (count, timestamp) after a sync run that pushed ≥1 item to the server.
 /// UI listens to this to show a "X records synced" success message.
 final syncSuccessProvider =
@@ -258,6 +263,16 @@ class SyncEngine {
               await _queue.remapPatientIdInQueue(item.entityId, newId);
               remapped = true;
             }
+            // Upsert the server-returned patient into SQLite (with numeric ID and
+            // sync_status='synced') and purge the old UUID row so the next read
+            // from LocalPatientCache returns the correct server entity.
+            if (dataMap != null) {
+              await _ref.read(localPatientCacheProvider).upsert(dataMap);
+            }
+            await _ref.read(localPatientCacheProvider).purge(item.entityId);
+            // Notify patientsProvider to reload from SQLite — the pending grey dot
+            // disappears and the patient merges cleanly on any subsequent refresh.
+            _ref.read(patientSyncEventProvider.notifier).state++;
           } else if (item.entityType == 'visits') {
             // Parse response to get server visit ID, then replace the local
             // UUID visit row with the server-confirmed entry.

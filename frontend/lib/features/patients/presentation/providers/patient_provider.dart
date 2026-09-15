@@ -72,6 +72,9 @@ class PatientsNotifier extends Notifier<PatientsState> {
 
   @override
   PatientsState build() {
+    // When SyncEngine syncs an offline-created patient, reload from SQLite so
+    // the pending indicator turns green without requiring a manual pull-to-refresh.
+    ref.listen(patientSyncEventProvider, (_, __) => _loadLocal());
     Future.microtask(_init);
     return const PatientsState(isLoading: true);
   }
@@ -156,6 +159,17 @@ class PatientsNotifier extends Notifier<PatientsState> {
             if (queuedIds.contains(p.id) || _inflightIds.contains(p.id)) {
               keepPending.add(p); // Genuinely pending — keep
             } else {
+              // Check if SyncEngine already synced this patient (UUID → numeric ID
+              // mapping exists). The server entity is in entities; just purge the
+              // stale UUID row. No PRN lookup needed — the backend generates its
+              // own PRN which differs from the client's offline timestamp PRN.
+              final mappedId =
+                  await ref.read(patientIdMapProvider).resolve(p.id);
+              if (mappedId != p.id) {
+                // Already synced by SyncEngine — server entity is in entities.
+                await _local.purge(p.id);
+                continue;
+              }
               // Orphan: the backend already has this patient under a different
               // (numeric) ID. This happens when the user logs out before
               // _syncPatientToApi() completes. Match by PRN to find the
