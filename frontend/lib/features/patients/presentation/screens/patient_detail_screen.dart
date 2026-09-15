@@ -642,7 +642,7 @@ class _TimelineRowState extends State<_TimelineRow> {
                             margin: const EdgeInsets.symmetric(horizontal: 12),
                             color: accentColor.withValues(alpha: 0.18),
                           ),
-                          // Visit type + status chips
+                          // Visit type + status chips + action buttons — all one line
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,65 +657,61 @@ class _TimelineRowState extends State<_TimelineRow> {
                                       color: context.textPrimary),
                                 ),
                                 const SizedBox(height: 6),
-                                Wrap(spacing: 6, runSpacing: 4, children: [
-                                  if (item.visit != null)
-                                    _Chip(label: item.visit!.visitType.label, color: accentColor),
-                                  _Chip(
-                                    label: item.isDraft ? 'Draft' : 'Completed',
-                                    color: item.isDraft
-                                        ? const Color(0xFFD97706)
-                                        : const Color(0xFF059669),
-                                  ),
-                                  SyncStatusBadge(syncStatus: item.syncStatus),
-                                ]),
+                                Row(
+                                  children: [
+                                    if (item.visit != null) ...[
+                                      _Chip(label: item.visit!.visitType.label, color: accentColor),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    SyncStatusBadge(syncStatus: item.syncStatus),
+                                    const Spacer(),
+                                    _ActionBtn(
+                                      icon: Icons.remove_red_eye_outlined,
+                                      label: 'View',
+                                      onTap: widget.onDocTap,
+                                      color: accentColor,
+                                    ),
+                                    if (widget.onPrint != null) ...[
+                                      const SizedBox(width: 6),
+                                      _ActionBtn(
+                                        icon: Icons.print_outlined,
+                                        label: 'Print',
+                                        onTap: widget.onPrint!,
+                                        color: accentColor,
+                                      ),
+                                    ],
+                                    if (widget.canWrite) ...[
+                                      const SizedBox(width: 6),
+                                      _ActionBtn(
+                                        icon: Icons.edit_outlined,
+                                        label: 'Edit',
+                                        onTap: widget.onDocTap,
+                                        color: accentColor,
+                                      ),
+                                    ],
+                                    if (hasBody) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        width: 28,
+                                        height: 28,
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(alpha: 0.08),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          _expanded
+                                              ? Icons.keyboard_arrow_up_rounded
+                                              : Icons.keyboard_arrow_down_rounded,
+                                          size: 18,
+                                          color: accentColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
                               ],
                             ),
                           ),
-                          // View / Print / Edit buttons
-                          Row(mainAxisSize: MainAxisSize.min, children: [
-                            _ActionBtn(
-                              icon: Icons.remove_red_eye_outlined,
-                              label: 'View',
-                              onTap: widget.onDocTap,
-                              color: accentColor,
-                            ),
-                            if (widget.onPrint != null) ...[
-                              const SizedBox(width: 6),
-                              _ActionBtn(
-                                icon: Icons.print_outlined,
-                                label: 'Print',
-                                onTap: widget.onPrint!,
-                                color: accentColor,
-                              ),
-                            ],
-                            if (widget.canWrite) ...[
-                              const SizedBox(width: 6),
-                              _ActionBtn(
-                                icon: Icons.edit_outlined,
-                                label: 'Edit',
-                                onTap: widget.onDocTap,
-                                color: accentColor,
-                              ),
-                            ],
-                            if (hasBody) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  color: accentColor.withValues(alpha: 0.08),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _expanded
-                                      ? Icons.keyboard_arrow_up_rounded
-                                      : Icons.keyboard_arrow_down_rounded,
-                                  size: 18,
-                                  color: accentColor,
-                                ),
-                              ),
-                            ],
-                          ]),
                         ],
                       ),
                     ),
