@@ -665,7 +665,7 @@ pw.Widget _buildMedicinesTable(String raw, pw.Font font, pw.Font fontBold) {
 
   pw.Widget dataCell(String t) => pw.Padding(
         padding: const pw.EdgeInsets.all(4),
-        child: pw.Text(t.isEmpty ? '—' : t,
+        child: pw.Text(t.trim().isEmpty ? '-' : t.trim(),
             style: pw.TextStyle(font: font, fontSize: 8.5, color: _kText)),
       );
 
