@@ -833,9 +833,14 @@ class _Chip extends StatelessWidget {
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+        child: Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w700, color: color),
+        ),
       );
 }
 
@@ -880,24 +885,18 @@ class _ActionBtn extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withValues(alpha: 0.22)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: color),
-              const SizedBox(height: 2),
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 9, fontWeight: FontWeight.w600, color: color)),
-            ],
+  Widget build(BuildContext context) => Tooltip(
+        message: label,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withValues(alpha: 0.22)),
+            ),
+            child: Icon(icon, size: 16, color: color),
           ),
         ),
       );
@@ -1168,7 +1167,7 @@ class _MedicinesTable extends StatelessWidget {
     final meds = _parseMeds(raw);
     if (meds.isEmpty) return const SizedBox.shrink();
 
-    const cols = ['Medicine', 'Dose', 'Route', 'Frequency', 'Duration'];
+    const cols = ['Medicine', 'Dose', 'Route', 'Freq', 'Duration'];
     const weights = [3, 2, 2, 2, 2];
 
     Widget headerCell(String t) => Expanded(
