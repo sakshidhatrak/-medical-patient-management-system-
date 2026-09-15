@@ -213,18 +213,17 @@ pw.Widget _buildHeader(
               top: 4, left: 200, right: 0, bottom: blueH - nameRowH + 4,
               child: _buildDots(),
             ),
-            // Logo panel — cream bg + right border to visually join the sidebar green line
+            // Logo panel — no background, logo fills full width to the green border line
             pw.Positioned(
               top: nameRowH, left: 0, bottom: 0,
               child: pw.Container(
                 width: logoW,
                 decoration: const pw.BoxDecoration(
-                  color: _kLeftBg,
                   border: pw.Border(
                     right: pw.BorderSide(color: _kSidebarBrd, width: 1.5),
                   ),
                 ),
-                padding: const pw.EdgeInsets.all(6),
+                padding: pw.EdgeInsets.zero,
                 child: logo != null
                     ? pw.Image(logo, fit: pw.BoxFit.contain)
                     : pw.Center(
