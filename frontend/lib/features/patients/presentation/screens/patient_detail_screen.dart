@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/entities/patient_entity.dart';
@@ -547,13 +550,13 @@ class _TimelineRowState extends State<_TimelineRow> {
     if (item.visit != null) {
       add('Chief Complaint',     item.visit!.complaints ?? '',        Icons.description_outlined,       const Color(0xFF4B55CC));
       add('Previous History',    ex('previousHistory'),               Icons.history_outlined,            const Color(0xFF8B5CF6));
-      add('General Exam',        ex('examGeneral'),                   Icons.search_outlined,             const Color(0xFF06B6D4));
-      add('Neurological Exam',   ex('examNeurological'),              Icons.psychology_outlined,         const Color(0xFF10B981));
+      add('General Examination',     ex('examGeneral'),                   Icons.search_outlined,             const Color(0xFF06B6D4));
+      add('Neurological Examination', ex('examNeurological'),           Icons.psychology_outlined,         const Color(0xFF10B981));
       add('Clinical Diagnosis',  ex('clinicalDiagnosis'),             Icons.assignment_outlined,         const Color(0xFF3B82F6));
       add('Imaging',             ex('imaging'),                       Icons.image_outlined,              const Color(0xFF0EA5E9));
       add('Other Investigation', ex('otherInvestigation'),            Icons.science_outlined,            const Color(0xFF14B8A6));
       add('Impression',          item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline,          const Color(0xFFF59E0B));
-      add('Plan',                item.visit!.plan ?? '',              Icons.map_outlined,                const Color(0xFF6366F1));
+      add('Treatment Plan',      item.visit!.plan ?? '',              Icons.map_outlined,                const Color(0xFF6366F1));
       add('Notes',               item.visit!.notes ?? '',             Icons.notes_rounded,               const Color(0xFF64748B));
       add('Advice',              ex('advice'),                        Icons.chat_bubble_outline_rounded, const Color(0xFF3B82F6));
     } else {
@@ -1299,12 +1302,47 @@ bool _isImageFile(PhotoEntity p) {
 Future<void> _openAttachment(PhotoEntity p) async {
   if (p.url != null && p.url!.isNotEmpty) {
     try {
-      await launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication);
-    } catch (_) {}
+      final ok = await launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication);
+      if (!ok) await launchUrl(Uri.parse(p.url!), mode: LaunchMode.inAppBrowserView);
+    } catch (_) {
+      try { await launchUrl(Uri.parse(p.url!), mode: LaunchMode.inAppBrowserView); } catch (_) {}
+    }
   } else if (p.localPath != null) {
     try {
       await launchUrl(Uri.file(p.localPath!), mode: LaunchMode.externalApplication);
     } catch (_) {}
+  }
+}
+
+Future<void> _downloadAttachment(BuildContext ctx, PhotoEntity p) async {
+  final messenger = ScaffoldMessenger.of(ctx);
+  // For local-only files, share directly.
+  if (p.url == null || p.url!.isEmpty) {
+    if (p.localPath != null) {
+      await Share.shareXFiles([XFile(p.localPath!)], text: _attachFilename(p));
+    }
+    return;
+  }
+  messenger.showSnackBar(const SnackBar(
+    content: Text('Downloading…'),
+    duration: Duration(seconds: 60),
+  ));
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = _attachFilename(p);
+    final savePath = '${dir.path}/$filename';
+    await Dio().download(p.url!, savePath);
+    messenger.hideCurrentSnackBar();
+    await Share.shareXFiles([XFile(savePath)], text: filename);
+  } catch (_) {
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      content: const Text('Download failed — opening in browser'),
+      action: SnackBarAction(
+        label: 'Open',
+        onPressed: () => launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication),
+      ),
+    ));
   }
 }
 
@@ -1520,7 +1558,9 @@ class _AttachmentRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               InkWell(
-                onTap: (photo.url != null || photo.localPath != null) ? () => _openAttachment(photo) : null,
+                onTap: (photo.url != null || photo.localPath != null)
+                    ? () => _downloadAttachment(context, photo)
+                    : null,
                 borderRadius: BorderRadius.circular(6),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
@@ -1954,7 +1994,7 @@ class _ImageViewerDialog extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.download_rounded, color: Colors.white),
             tooltip: 'Open / Download',
-            onPressed: () => _openAttachment(photo),
+            onPressed: () => _downloadAttachment(context, photo),
           ),
         ],
       ),

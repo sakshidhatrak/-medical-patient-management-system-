@@ -544,10 +544,15 @@ pw.Widget _buildSections(
   }
 
   // EXAMINATION FINDINGS
-  if (d('examGeneral').isNotEmpty)
-    sections.add(_section('EXAMINATION FINDINGS', fontBold, [
-      _fieldRow('General', d('examGeneral'), font, fontBold),
-    ]));
+  {
+    final items = <pw.Widget>[
+      if (d('examGeneral').isNotEmpty)
+        _fieldRow('General Examination', d('examGeneral'), font, fontBold),
+      if (d('examNeurological').isNotEmpty)
+        _fieldRow('Neurological Examination', d('examNeurological'), font, fontBold),
+    ];
+    if (items.isNotEmpty) sections.add(_section('EXAMINATION FINDINGS', fontBold, items));
+  }
 
   // ADVICE
   if (d('advice').isNotEmpty)
@@ -914,7 +919,7 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Chief Complaint',     'chiefComplaint');
   addRow('Previous History',    'previousHistory');
   addRow('General Examination', 'examGeneral');
-  addRow('Neurological Exam',   'examNeurological');
+  addRow('Neurological Examination', 'examNeurological');
   addRow('Clinical Diagnosis',  'clinicalDiagnosis');
   addRow('Imaging',             'imaging');
   addRow('Other Investigation', 'otherInvestigation');
