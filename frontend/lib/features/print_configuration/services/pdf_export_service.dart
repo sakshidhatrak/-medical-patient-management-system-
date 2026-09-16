@@ -114,8 +114,6 @@ Future<Uint8List> _assemblePdf(
           children: [
             // ── Two-column letterhead header ───────────────────────────────
             _buildHeader(font, fontBold, fontItal, logo, clinicFont, doctorFont, taglineFont),
-            // ── Separator — green #D5DDAE matches HTML .header-divider ───
-            pw.Container(height: 1.5, color: _kGreenDiv),
             // ── Body: sidebar LEFT, patient row + sections RIGHT ──────────
             pw.Expanded(
               child: pw.Row(
@@ -225,7 +223,8 @@ pw.Widget _buildHeader(
                 ),
                 padding: pw.EdgeInsets.zero,
                 child: logo != null
-                    ? pw.Image(logo, fit: pw.BoxFit.contain)
+                    ? pw.Image(logo, fit: pw.BoxFit.contain,
+                        alignment: pw.Alignment.center)
                     : pw.Center(
                         child: pw.Text('BSC',
                             style: pw.TextStyle(
