@@ -425,16 +425,10 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
                   ],
                 ),
 
-                // 3. Investigation
+                // 3. Previous Investigations
                 _SectionCard(
-                  title: 'Investigation',
+                  title: 'Previous Investigations',
                   children: [
-                    _ExpandField(
-                      hint: 'Clinical diagnosis — e.g. Viral Fever',
-                      controller: _clinDiagCtrl,
-                      label: 'Clinical Diagnosis',
-                    ),
-                    const SizedBox(height: 10),
                     _ExpandField(
                       hint: 'Imaging findings (X-Ray, MRI, CT)',
                       controller: _imagingCtrl,
@@ -1223,14 +1217,26 @@ class _AdviceSection extends StatelessWidget {
       ),
       const SizedBox(height: 14),
 
-      Text('Notes',
-          style: TextStyle(color: context.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+      Row(children: [
+        Text("Doctor's Notes",
+            style: TextStyle(color: context.textSecondary, fontSize: 12, fontWeight: FontWeight.w500)),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text('Private · Not printed',
+              style: TextStyle(fontSize: 10, color: Colors.grey)),
+        ),
+      ]),
       const SizedBox(height: 6),
       TextField(
         controller: notesCtrl,
         maxLines: 3,
         style: TextStyle(color: context.textPrimary, fontSize: 13),
-        decoration: _dec(context, 'Take medicines after food'),
+        decoration: _dec(context, 'Admin reference only — not visible on patient sheet'),
       ),
       const SizedBox(height: 14),
 

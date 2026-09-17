@@ -37,7 +37,7 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 5,
+      version: 6,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -250,6 +250,12 @@ class OfflineDatabase {
           // Ignore — column likely already exists from a prior schema version.
         }
       }
+    }
+    if (oldVersion < 6) {
+      // Add caption column to photos — was missing from prior migration scripts.
+      try {
+        await db.execute('ALTER TABLE photos ADD COLUMN caption TEXT');
+      } catch (_) {}
     }
   }
 

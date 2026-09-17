@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +23,7 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
 
   @override
   List<SurgeryEntity> build(String arg) {
+    ref.listen(surgerySyncEventProvider, (_, __) => _loadLocal(arg));
     Future.microtask(() => _init(arg));
     return [];
   }
@@ -77,7 +79,22 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
       for (final m in models) {
         await _local.upsert(m.toFullJson());
       }
-      state = models.map((m) => m.toEntity()).toList();
+      final apiIds = models.map((m) => m.id).toSet();
+      final pendingRows = await _local.getPendingForPatient(patientId);
+      final pendingLocal = <SurgeryEntity>[];
+      for (final row in pendingRows) {
+        final id = row['id'] as String;
+        if (apiIds.contains(id)) continue;
+        final js = row['data_json'] as String?;
+        if (js != null) {
+          try {
+            final decoded = jsonDecode(js) as Map<String, dynamic>;
+            decoded['syncStatus'] = 'pending';
+            pendingLocal.add(SurgeryModel.fromJson(decoded).toEntity());
+          } catch (_) {}
+        }
+      }
+      state = [...models.map((m) => m.toEntity()), ...pendingLocal];
     } catch (_) {}
   }
 
@@ -109,35 +126,8 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
 
   Future<SurgeryEntity?> _persistSurgery(SurgeryModel model,
       {required bool isNew}) async {
-    // Always cache locally first (works on both web and mobile)
+    // Always cache locally first — works on both web and mobile.
     await _local.upsert(model.toFullJson());
-
-    if (_online) {
-      try {
-        final saved = isNew
-            ? await _ds.createSurgery(model)
-            : await _ds.updateSurgery(model);
-        await _local.upsert(saved.toFullJson());
-        final entity = saved.toEntity();
-        if (isNew) {
-          state = [entity, ...state];
-        } else {
-          state = state.map((s) => s.id == entity.id ? entity : s).toList();
-        }
-        return entity;
-      } catch (e) {
-        debugPrint('[SurgeryProvider] API error: $e');
-        return null;
-      }
-    }
-
-    // Offline: enqueue for sync when connection restores
-    await _queue.enqueue(
-      entityType: 'surgeries',
-      entityId: model.id,
-      operation: isNew ? 'insert' : 'update',
-      payload: {...model.toFullJson(), 'patientId': model.patientId},
-    );
     await _local.markPending(model.id);
     final pendingEntity = model.toEntity().copyWith(syncStatus: 'pending');
     if (isNew) {
@@ -145,14 +135,57 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
     } else {
       state = state.map((s) => s.id == model.id ? pendingEntity : s).toList();
     }
+
+    if (_online) {
+      unawaited(_syncToApi(model, isNew: isNew));
+    } else {
+      await _queue.enqueue(
+        entityType: 'surgeries',
+        entityId: model.id,
+        operation: isNew ? 'insert' : 'update',
+        payload: {...model.toFullJson(), 'patientId': model.patientId},
+      );
+    }
     return pendingEntity;
   }
 
+  Future<void> _syncToApi(SurgeryModel model, {required bool isNew}) async {
+    try {
+      final saved = isNew
+          ? await _ds.createSurgery(model)
+          : await _ds.updateSurgery(model);
+      await _local.upsert(saved.toFullJson());
+      final entity = saved.toEntity();
+      if (isNew) {
+        state = [entity, ...state.where((s) => s.id != model.id && s.id != entity.id)];
+      } else {
+        state = state.map((s) => s.id == entity.id ? entity : s).toList();
+      }
+    } catch (e) {
+      debugPrint('[SurgeryProvider] Background sync failed, queuing: $e');
+      await _queue.enqueue(
+        entityType: 'surgeries',
+        entityId: model.id,
+        operation: isNew ? 'insert' : 'update',
+        payload: {...model.toFullJson(), 'patientId': model.patientId},
+      );
+    }
+  }
+
   Future<void> deleteSurgery(String id) async {
+    await _local.delete(id);
+    state = state.where((s) => s.id != id).toList();
     if (_online) {
       try {
         await _ds.deleteSurgery('$arg/$id');
-      } catch (_) {}
+      } catch (_) {
+        await _queue.enqueue(
+          entityType: 'surgeries',
+          entityId: id,
+          operation: 'delete',
+          payload: {'patientId': arg},
+        );
+      }
     } else {
       await _queue.enqueue(
         entityType: 'surgeries',
@@ -161,8 +194,6 @@ class SurgeriesNotifier extends FamilyNotifier<List<SurgeryEntity>, String> {
         payload: {'patientId': arg},
       );
     }
-    await _local.delete(id);
-    state = state.where((s) => s.id != id).toList();
   }
 }
 
@@ -213,6 +244,7 @@ class SurgeryEditNotifier extends FamilyNotifier<SurgeryEntity?, String> {
     if (state == null) return false;
     final model = SurgeryModel.fromEntity(state!);
     await _local.upsert(model.toFullJson());
+    await _local.markPending(model.id);
 
     if (_online) {
       try {
@@ -221,8 +253,7 @@ class SurgeryEditNotifier extends FamilyNotifier<SurgeryEntity?, String> {
         state = saved.toEntity();
         return true;
       } catch (e) {
-        debugPrint('[SurgeryEditProvider] API error: $e');
-        return false;
+        debugPrint('[SurgeryEditProvider] API error, queuing: $e');
       }
     }
 

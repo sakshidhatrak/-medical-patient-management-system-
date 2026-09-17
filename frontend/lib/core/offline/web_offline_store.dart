@@ -208,6 +208,14 @@ class WebOfflineStore {
     await _setList('visits_$patientId', list);
   }
 
+  Future<void> deleteVisitsForPatient(String patientId) async {
+    final list = _getList('visits_$patientId');
+    for (final v in list) {
+      await _removeItem('visit_${v['id']}');
+    }
+    await _setList('visits_$patientId', []);
+  }
+
   // ── Surgeries ─────────────────────────────────────────────────────
 
   Future<void> upsertSurgery(Map<String, dynamic> apiJson) async {
@@ -256,7 +264,9 @@ class WebOfflineStore {
   }
 
   List<Map<String, dynamic>> getSurgeriesForPatient(String patientId) {
-    final list = _getList('surgeries_$patientId');
+    final list = _getList('surgeries_$patientId')
+        .where((s) => s['is_active'] != 0)
+        .toList();
     list.sort((a, b) => (b['surgery_date'] as String)
         .compareTo(a['surgery_date'] as String));
     return list;
@@ -272,6 +282,14 @@ class WebOfflineStore {
     final list = _getList('surgeries_$patientId')
       ..removeWhere((s) => s['id'] == id);
     await _setList('surgeries_$patientId', list);
+  }
+
+  Future<void> deleteSurgeriesForPatient(String patientId) async {
+    final list = _getList('surgeries_$patientId');
+    for (final s in list) {
+      await _removeItem('surgery_${s['id']}');
+    }
+    await _setList('surgeries_$patientId', []);
   }
 
   // ── Examinations ──────────────────────────────────────────────────

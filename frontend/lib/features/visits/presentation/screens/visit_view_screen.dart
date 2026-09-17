@@ -208,10 +208,10 @@ class VisitViewScreen extends ConsumerWidget {
                     ]),
                   ),
 
-                // ── Radiology ───────────────────────────────────────
+                // ── Previous Investigations ──────────────────────────
                 if (radiology.isNotEmpty || radioPhotos.isNotEmpty)
                   _ViewSection(
-                    title: 'Radiology & Investigations',
+                    title: 'Previous Investigations',
                     icon: Icons.biotech_outlined,
                     color: _kP2,
                     child: Column(children: [
@@ -223,13 +223,13 @@ class VisitViewScreen extends ConsumerWidget {
                     ]),
                   ),
 
-                // ── Clinical Impression ─────────────────────────────
+                // ── Impression ──────────────────────────────────────
                 if (visit.clinicalImpression?.isNotEmpty == true)
                   _ViewSection(
-                    title: 'Clinical Impression',
+                    title: 'Impression',
                     icon: Icons.lightbulb_outline_rounded,
                     color: _kGreen,
-                    child: _VField('Diagnosis / Impression', visit.clinicalImpression!),
+                    child: _VField('Impression', visit.clinicalImpression!),
                   ),
 
                 // ── Plan ────────────────────────────────────────────

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -60,54 +61,106 @@ class UploadFormSectionState extends State<UploadFormSection> {
 
   Future<void> _pick() async {
     if (_picking) return;
-    setState(() {
-      _picking = true;
-      _lastError = null;
-    });
 
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          const Text('Upload from', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: _SourceTile(ctx, 'Camera', Icons.camera_alt_rounded, const Color(0xFF4B55CC), 'camera')),
+            const SizedBox(width: 12),
+            Expanded(child: _SourceTile(ctx, 'Gallery / Files', Icons.photo_library_rounded, const Color(0xFF059669), 'gallery')),
+          ]),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    setState(() { _picking = true; _lastError = null; });
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-        allowMultiple: true,
-        withData: true,
-      );
-
-      if (result == null || !mounted) return;
-
-      final oversized = <String>[];
-      for (final f in result.files) {
-        if (f.bytes == null) continue;
-        if (f.size > _kMaxFileSizeBytes) {
-          oversized.add(f.name);
-          continue;
+      if (choice == 'camera') {
+        final img = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
+        if (img == null || !mounted) return;
+        final bytes = await img.readAsBytes();
+        if (bytes.length > _kMaxFileSizeBytes) {
+          setState(() => _lastError = 'Photo exceeds the 10 MB limit.');
+          return;
         }
-        final existing = _files.any((x) => x.name == f.name && x.type == _selectedType);
-        if (existing) continue;
-
+        final name = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
         setState(() {
           _files.add(UploadedFile(
             id: const Uuid().v4(),
-            name: f.name,
-            extension: (f.extension ?? 'bin').toLowerCase(),
-            sizeBytes: f.size,
-            bytes: f.bytes!,
+            name: name,
+            extension: 'jpg',
+            sizeBytes: bytes.length,
+            bytes: bytes,
             type: _selectedType,
           ));
         });
-      }
-
-      if (oversized.isNotEmpty) {
-        setState(() => _lastError =
-            '${oversized.join(', ')} exceeded the 10 MB limit and were skipped.');
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+          allowMultiple: true,
+          withData: true,
+        );
+        if (result == null || !mounted) return;
+        final oversized = <String>[];
+        for (final f in result.files) {
+          if (f.bytes == null) continue;
+          if (f.size > _kMaxFileSizeBytes) { oversized.add(f.name); continue; }
+          if (_files.any((x) => x.name == f.name && x.type == _selectedType)) continue;
+          setState(() {
+            _files.add(UploadedFile(
+              id: const Uuid().v4(),
+              name: f.name,
+              extension: (f.extension ?? 'bin').toLowerCase(),
+              sizeBytes: f.size,
+              bytes: f.bytes!,
+              type: _selectedType,
+            ));
+          });
+        }
+        if (oversized.isNotEmpty) {
+          setState(() => _lastError = '${oversized.join(', ')} exceeded the 10 MB limit and were skipped.');
+        }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _lastError = 'Could not pick files: $e');
-      }
+      if (mounted) setState(() => _lastError = 'Could not pick files: $e');
     } finally {
       if (mounted) setState(() => _picking = false);
     }
+  }
+
+  Widget _SourceTile(BuildContext ctx, String label, IconData icon, Color color, String value) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(ctx, value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+        ]),
+      ),
+    );
   }
 
   void _remove(String id) => setState(() => _files.removeWhere((f) => f.id == id));
@@ -240,7 +293,7 @@ class _DropZoneState extends State<_DropZone> {
                     ),
                     const SizedBox(height: AppDimensions.sm),
                     Text(
-                      'Click to upload or drag & drop',
+                      'Tap to capture or upload',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -251,7 +304,7 @@ class _DropZoneState extends State<_DropZone> {
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'PDF · JPG · PNG    ·    Max 10 MB per file',
+                      'Camera · Gallery · PDF · JPG · PNG    ·    Max 10 MB',
                       style: TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,

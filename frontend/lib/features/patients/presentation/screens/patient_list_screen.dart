@@ -568,7 +568,7 @@ class _PatientCard extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: _avatarColor(patient.initials),
+                  backgroundColor: const Color(0xFF4B55CC),
                   child: Text(
                     patient.initials,
                     style: const TextStyle(

@@ -552,10 +552,28 @@ pw.Widget _buildSections(
     if (items.isNotEmpty) sections.add(_section('EXAMINATION FINDINGS', fontBold, items));
   }
 
-  // ADVICE
-  if (d('advice').isNotEmpty)
-    sections.add(_section('ADVICE', fontBold, [
-      pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+  // PREVIOUS INVESTIGATIONS
+  {
+    final items = <pw.Widget>[
+      if (d('imaging').isNotEmpty)            _fieldRow('Imaging',             d('imaging'),             font, fontBold),
+      if (d('otherInvestigation').isNotEmpty) _fieldRow('Other Investigation', d('otherInvestigation'),  font, fontBold),
+    ];
+    if (items.isNotEmpty) sections.add(_section('PREVIOUS INVESTIGATIONS', fontBold, items));
+  }
+
+  // IMPRESSION
+  {
+    final items = <pw.Widget>[
+      if (d('clinicalDiagnosis').isNotEmpty) _fieldRow('Clinical Diagnosis', d('clinicalDiagnosis'), font, fontBold),
+      if (d('diagnosis').isNotEmpty)         _fieldRow('Impression',         d('diagnosis'),         font, fontBold),
+    ];
+    if (items.isNotEmpty) sections.add(_section('IMPRESSION', fontBold, items));
+  }
+
+  // TREATMENT PLAN
+  if (d('treatmentPlan').isNotEmpty)
+    sections.add(_section('TREATMENT PLAN', fontBold, [
+      _fieldRow('Treatment Plan', d('treatmentPlan'), font, fontBold),
     ]));
 
   // TREATMENT (MEDICINES) — only shown when there is data
@@ -564,25 +582,17 @@ pw.Widget _buildSections(
       _buildMedicinesTable(d('medications'), font, fontBold),
     ]));
 
-  // INVESTIGATIONS
-  {
-    final items = <pw.Widget>[
-      if (d('clinicalDiagnosis').isNotEmpty)    _fieldRow('Clinical Diagnosis',    d('clinicalDiagnosis'),    font, fontBold),
-      if (d('imaging').isNotEmpty)              _fieldRow('Imaging',               d('imaging'),              font, fontBold),
-      if (d('otherInvestigation').isNotEmpty)   _fieldRow('Other Investigation',   d('otherInvestigation'),   font, fontBold),
-      if (d('diagnosis').isNotEmpty)            _fieldRow('Impression',            d('diagnosis'),            font, fontBold),
-    ];
-    if (items.isNotEmpty) sections.add(_section('INVESTIGATIONS', fontBold, items));
-  }
+  // ADVICE — after treatment
+  if (d('advice').isNotEmpty)
+    sections.add(_section('ADVICE', fontBold, [
+      pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+    ]));
 
   // CROSS REFERENCE
-  {
-    final v = d('crossConsultation').isNotEmpty ? d('crossConsultation') : d('notes');
-    if (v.isNotEmpty)
-      sections.add(_section('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', fontBold, [
-        _fieldRow('Additional Clinical diagnosis', v, font, fontBold),
-      ]));
-  }
+  if (d('crossConsultation').isNotEmpty)
+    sections.add(_section('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', fontBold, [
+      _fieldRow('Cross Consultation', d('crossConsultation'), font, fontBold),
+    ]));
 
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -628,14 +638,19 @@ class _MedRow {
   final String route;
   final String frequency;
   final String duration;
-  const _MedRow({required this.medicine, required this.dose, required this.route, required this.frequency, required this.duration});
+  final String specialInstruction;
+  const _MedRow({required this.medicine, required this.dose, required this.route, required this.frequency, required this.duration, this.specialInstruction = ''});
 }
 
 List<_MedRow> _parseMedsForPdf(String raw) {
   return raw.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
-    final doseMatch   = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+    // Extract special instruction (anything after last " | ")
+    final pipeIdx = line.lastIndexOf(' | ');
+    final lineMain = pipeIdx >= 0 ? line.substring(0, pipeIdx).trim() : line;
+    final specialInstruction = pipeIdx >= 0 ? line.substring(pipeIdx + 3).trim() : '';
+    final doseMatch   = RegExp(r'\[([^\]]+)\]').firstMatch(lineMain);
     final dose        = doseMatch?.group(1) ?? '';
-    final withoutDose = line.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
+    final withoutDose = lineMain.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
     final routeMatch  = RegExp(r'\(([^)]+)\)').firstMatch(withoutDose);
     final route       = routeMatch?.group(1) ?? '';
     final withoutRoute = withoutDose.replaceFirst(routeMatch?.group(0) ?? '', '').trim();
@@ -645,7 +660,7 @@ List<_MedRow> _parseMedsForPdf(String raw) {
     final mulIdx   = right.indexOf(' × ');
     final frequency = mulIdx >= 0 ? right.substring(0, mulIdx).trim() : right;
     final duration  = mulIdx >= 0 ? right.substring(mulIdx + 3).trim() : '';
-    return _MedRow(medicine: medicine, dose: dose, route: route, frequency: frequency, duration: duration);
+    return _MedRow(medicine: medicine, dose: dose, route: route, frequency: frequency, duration: duration, specialInstruction: specialInstruction);
   }).toList();
 }
 
@@ -689,7 +704,23 @@ pw.Widget _buildMedicinesTable(String raw, pw.Font font, pw.Font fontBold) {
         return pw.TableRow(
           decoration: bg != null ? pw.BoxDecoration(color: bg) : null,
           children: [
-            dataCell(m.medicine),
+            // Medicine cell shows special instruction as italic note below name
+            pw.Padding(
+              padding: const pw.EdgeInsets.all(4),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(m.medicine.trim().isEmpty ? '-' : m.medicine.trim(),
+                      style: pw.TextStyle(font: font, fontSize: 8.5, color: _kText)),
+                  if (m.specialInstruction.isNotEmpty)
+                    pw.Text('* ${m.specialInstruction}',
+                        style: pw.TextStyle(
+                            font: font, fontSize: 7.5,
+                            color: const PdfColor.fromInt(0xFFB07D2A),
+                            fontStyle: pw.FontStyle.italic)),
+                ],
+              ),
+            ),
             dataCell(m.dose),
             dataCell(m.route),
             dataCell(m.frequency),

@@ -170,6 +170,9 @@ final visitSyncEventProvider = StateProvider<int>((ref) => 0);
 /// indicator turns green without the user needing to pull-to-refresh.
 final patientSyncEventProvider = StateProvider<int>((ref) => 0);
 
+/// Incremented each time SyncEngine successfully syncs a surgery.
+final surgerySyncEventProvider = StateProvider<int>((ref) => 0);
+
 /// Emits (count, timestamp) after a sync run that pushed ≥1 item to the server.
 /// UI listens to this to show a "X records synced" success message.
 final syncSuccessProvider =
@@ -290,9 +293,17 @@ class SyncEngine {
             _ref.read(visitSyncEventProvider.notifier).state++;
           } else {
             await _api.post<void>(path, data: payload);
+            if (item.entityType == 'surgeries') {
+              _ref.read(surgerySyncEventProvider.notifier).state++;
+            }
           }
         case 'update':
           await _api.put<void>(path, data: payload);
+          if (item.entityType == 'surgeries') {
+            _ref.read(surgerySyncEventProvider.notifier).state++;
+          }
+        case 'patch':
+          await _api.patch<void>(path, data: payload);
         case 'delete':
           await _api.delete<void>(path);
       }
@@ -452,6 +463,13 @@ class LocalPatientCache {
     final db = await _db.database;
     await db.delete('patients', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<Set<String>> getDeletedIds() async {
+    if (kIsWeb) return {};
+    final db = await _db.database;
+    final rows = await db.query('patients', columns: ['id'], where: 'is_active = 0');
+    return rows.map((r) => r['id'] as String).toSet();
+  }
 }
 
 // ── Local visit cache ─────────────────────────────────────────────
@@ -566,6 +584,16 @@ class LocalVisitCache {
     final db = await _db.database;
     await db.update('visits', {'is_active': 0, 'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> softDeleteAllForPatient(String patientId) async {
+    if (kIsWeb) {
+      await _web?.deleteVisitsForPatient(patientId);
+      return;
+    }
+    final db = await _db.database;
+    await db.update('visits', {'is_active': 0, 'sync_status': 'pending'},
+        where: 'patient_id = ?', whereArgs: [patientId]);
   }
 
   // Called at load time for numeric patient IDs: finds any visits still stored
@@ -735,9 +763,20 @@ class LocalSurgeryCache {
     final db = await _db.database;
     return db.query(
       'surgeries',
-      where: 'patient_id = ?',
+      where: 'patient_id = ? AND is_active = 1',
       whereArgs: [patientId],
       orderBy: 'surgery_date DESC',
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getPendingForPatient(
+      String patientId) async {
+    if (kIsWeb) return [];
+    final db = await _db.database;
+    return db.query(
+      'surgeries',
+      where: 'patient_id = ? AND is_active = 1 AND sync_status = ?',
+      whereArgs: [patientId, 'pending'],
     );
   }
 
@@ -764,6 +803,16 @@ class LocalSurgeryCache {
     final db = await _db.database;
     await db.update('surgeries', {'is_active': 0, 'sync_status': 'pending'},
         where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> softDeleteAllForPatient(String patientId) async {
+    if (kIsWeb) {
+      await _web?.deleteSurgeriesForPatient(patientId);
+      return;
+    }
+    final db = await _db.database;
+    await db.update('surgeries', {'is_active': 0, 'sync_status': 'pending'},
+        where: 'patient_id = ?', whereArgs: [patientId]);
   }
 
   Future<void> remapPatientId(
