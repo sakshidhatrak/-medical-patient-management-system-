@@ -102,7 +102,7 @@ Map<String, String> _buildVisitPrintMap(
     'diagnosis':          _pick(visit.clinicalImpression,  pn('diagnosis')),
     'treatmentPlan':      _pick(visit.plan,                pn('treatmentPlan')),
     'medications':        _pick(vex(ex('medications'), 'medications'), pn('medications')),
-    'notes':              _pick(ex('crossConsultation'),    pn('crossConsultation')),
+    'crossConsultation':  _pick(ex('crossConsultation'),    pn('crossConsultation')),
     'advice':             _pick(ex('advice'),              pn('advice')),
     'visitType':          visit.visitType.label,
   }..removeWhere((_, v) => v.isEmpty);
@@ -161,11 +161,8 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
         final sortedVisits = visits.toList()
           ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
 
-        // Hard cap: show only the latest 2 visits
-        final latestVisits = sortedVisits.take(2).toList();
-
         final timeline = <_TimelineItem>[
-          ...latestVisits.map((v) => _TimelineItem.fromVisit(v)),
+          ...sortedVisits.map((v) => _TimelineItem.fromVisit(v)),
           ...surgeries.map((s) => _TimelineItem.fromSurgery(s)),
         ]..sort((a, b) => b.date.compareTo(a.date));
 
@@ -181,6 +178,36 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
               child: _PatientHeaderCard(
                 patient: patient,
                 canEditPatient: canEditPatient,
+                onDeletePatient: canWrite
+                    ? () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Delete Patient'),
+                            content: const Text(
+                                'Are you sure you want to delete this patient? All associated visits and surgeries will also be deleted. This cannot be undone.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFFEF4444)),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true && context.mounted) {
+                          await ref
+                              .read(patientsProvider.notifier)
+                              .deletePatient(patientId);
+                          if (context.mounted) context.go('/patients');
+                        }
+                      }
+                    : null,
               ),
             ),
 
@@ -207,6 +234,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                       itemBuilder: (ctx, i) {
                         return _TimelineRow(
                           item: timeline[i],
+                          patient: patient,
                           isLast: i == timeline.length - 1,
                           initiallyExpanded: i == 0,
                           canWrite: canWrite,
@@ -224,6 +252,35 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                                   '/patients/$patientId/surgeries/${timeline[i].id}');
                             }
                           },
+                          onDelete: canWrite && timeline[i].type == 'visit'
+                              ? () async {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Visit'),
+                                      content: const Text(
+                                          'Are you sure you want to delete this visit entry? This cannot be undone.'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          style: TextButton.styleFrom(
+                                              foregroundColor: const Color(0xFFEF4444)),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed == true && context.mounted) {
+                                    await ref
+                                        .read(visitsProvider(patientId).notifier)
+                                        .deleteVisit(timeline[i].id);
+                                  }
+                                }
+                              : null,
                           onPrint: timeline[i].visit != null
                               ? () {
                                   final visitPhotos = allPhotos
@@ -362,7 +419,8 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 class _PatientHeaderCard extends StatelessWidget {
   final PatientEntity patient;
   final bool canEditPatient;
-  const _PatientHeaderCard({required this.patient, this.canEditPatient = false});
+  final VoidCallback? onDeletePatient;
+  const _PatientHeaderCard({required this.patient, this.canEditPatient = false, this.onDeletePatient});
 
   @override
   Widget build(BuildContext context) {
@@ -450,17 +508,20 @@ class _PatientHeaderCard extends StatelessWidget {
                 ),
               ),
             const SizedBox(width: 8),
-            // Delete button (icon only — no action yet)
-            Container(
-              width: 36,
-              height: 36,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFEBEB),
-                shape: BoxShape.circle,
+            if (onDeletePatient != null)
+              GestureDetector(
+                onTap: onDeletePatient,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFEBEB),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.delete_outline_rounded,
+                      color: Color(0xFFE53935), size: 17),
+                ),
               ),
-              child: const Icon(Icons.delete_outline_rounded,
-                  color: Color(0xFFE53935), size: 17),
-            ),
             const SizedBox(width: 14),
           ],
         ),
@@ -474,19 +535,23 @@ class _PatientHeaderCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 class _TimelineRow extends StatefulWidget {
   final _TimelineItem item;
+  final PatientEntity patient;
   final bool isLast;
   final bool canWrite;
   final List<PhotoEntity> photos;
   final VoidCallback onDocTap;
   final VoidCallback? onPrint;
+  final VoidCallback? onDelete;
   final bool initiallyExpanded;
   const _TimelineRow({
     required this.item,
+    required this.patient,
     required this.isLast,
     required this.canWrite,
     required this.photos,
     required this.onDocTap,
     this.onPrint,
+    this.onDelete,
     this.initiallyExpanded = false,
   });
 
@@ -548,20 +613,21 @@ class _TimelineRowState extends State<_TimelineRow> {
     }
 
     if (item.visit != null) {
-      add('Chief Complaint',     item.visit!.complaints ?? '',        Icons.description_outlined,       const Color(0xFF4B55CC));
-      add('Previous History',    ex('previousHistory'),               Icons.history_outlined,            const Color(0xFF8B5CF6));
-      add('General Examination',     ex('examGeneral'),                   Icons.search_outlined,             const Color(0xFF06B6D4));
-      add('Neurological Examination', ex('examNeurological'),           Icons.psychology_outlined,         const Color(0xFF10B981));
-      add('Clinical Diagnosis',  ex('clinicalDiagnosis'),             Icons.assignment_outlined,         const Color(0xFF3B82F6));
-      add('Imaging',             ex('imaging'),                       Icons.image_outlined,              const Color(0xFF0EA5E9));
-      add('Other Investigation', ex('otherInvestigation'),            Icons.science_outlined,            const Color(0xFF14B8A6));
-      add('Impression',          item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline,          const Color(0xFFF59E0B));
-      add('Treatment Plan',      item.visit!.plan ?? '',              Icons.map_outlined,                const Color(0xFF6366F1));
-      add('Notes',               item.visit!.notes ?? '',             Icons.notes_rounded,               const Color(0xFF64748B));
-      add('Advice',              ex('advice'),                        Icons.chat_bubble_outline_rounded, const Color(0xFF3B82F6));
+      add('Known Allergies',          widget.patient.allergies ?? '',      Icons.warning_amber_rounded,       _kAccent);
+      add('Medical History',          widget.patient.medicalHistory ?? '', Icons.history_outlined,            _kAccent);
+      add('Chief Complaint',          item.visit!.complaints ?? '',        Icons.description_outlined,        _kAccent);
+      add('Previous History',         ex('previousHistory'),               Icons.history_edu_outlined,        _kAccent);
+      add('General Examination',      ex('examGeneral'),                   Icons.search_outlined,             _kAccent);
+      add('Neurological Examination', ex('examNeurological'),              Icons.psychology_outlined,         _kAccent);
+      add('Imaging',                  ex('imaging'),                       Icons.image_outlined,              _kAccent);
+      add('Other Investigation',      ex('otherInvestigation'),            Icons.science_outlined,            _kAccent);
+      add('Impression',               item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline,         _kAccent);
+      add('Treatment Plan',           item.visit!.plan ?? '',              Icons.map_outlined,                _kAccent);
+      add('Advice',                   ex('advice'),                        Icons.chat_bubble_outline_rounded, _kAccent);
+      add('Notes',                    item.visit!.notes ?? '',             Icons.lock_outline_rounded,        _kAccent);
     } else {
-      add('Procedure',        item.title,    Icons.medical_services_outlined, _kRed);
-      add('Pre-op Diagnosis', item.subtitle, Icons.assignment_outlined,       const Color(0xFF3B82F6));
+      add('Procedure',        item.title,    Icons.medical_services_outlined, _kAccent);
+      add('Pre-op Diagnosis', item.subtitle, Icons.assignment_outlined,       _kAccent);
     }
 
     final bp   = (item.visit?.bp?.isNotEmpty == true)   ? item.visit!.bp!   : ex('bp');
@@ -577,9 +643,19 @@ class _TimelineRowState extends State<_TimelineRow> {
 
     final hasBody = hasVitals || dataRows.isNotEmpty || hasMeds || photos.isNotEmpty;
 
-    return IntrinsicHeight(
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // Timeline dot + line
+    return Stack(
+      children: [
+        // Timeline vertical line — drawn behind everything, full height of row
+        if (!isLast)
+          Positioned(
+            left: 13,
+            top: 22,
+            bottom: 0,
+            child: Container(width: 1.5, color: context.borderColor),
+          ),
+
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Timeline dot
         SizedBox(
           width: 28,
           child: Column(
@@ -597,10 +673,6 @@ class _TimelineRowState extends State<_TimelineRow> {
                   )],
                 ),
               ),
-              if (!isLast)
-                Expanded(child: Center(
-                  child: Container(width: 1.5, color: context.borderColor),
-                )),
             ],
           ),
         ),
@@ -659,12 +731,6 @@ class _TimelineRowState extends State<_TimelineRow> {
                                 const SizedBox(height: 6),
                                 Row(
                                   children: [
-                                    if (item.visit != null) ...[
-                                      _Chip(label: item.visit!.visitType.label, color: accentColor),
-                                      const SizedBox(width: 6),
-                                    ],
-                                    SyncStatusBadge(syncStatus: item.syncStatus),
-                                    const Spacer(),
                                     _ActionBtn(
                                       icon: Icons.remove_red_eye_outlined,
                                       label: 'View',
@@ -672,7 +738,7 @@ class _TimelineRowState extends State<_TimelineRow> {
                                       color: accentColor,
                                     ),
                                     if (widget.onPrint != null) ...[
-                                      const SizedBox(width: 6),
+                                      const SizedBox(width: 8),
                                       _ActionBtn(
                                         icon: Icons.print_outlined,
                                         label: 'Print',
@@ -681,32 +747,35 @@ class _TimelineRowState extends State<_TimelineRow> {
                                       ),
                                     ],
                                     if (widget.canWrite) ...[
-                                      const SizedBox(width: 6),
+                                      const SizedBox(width: 8),
                                       _ActionBtn(
                                         icon: Icons.edit_outlined,
                                         label: 'Edit',
                                         onTap: widget.onDocTap,
                                         color: accentColor,
                                       ),
+                                      if (widget.onDelete != null) ...[
+                                        const SizedBox(width: 8),
+                                        _ActionBtn(
+                                          icon: Icons.delete_outline_rounded,
+                                          label: 'Delete',
+                                          onTap: widget.onDelete!,
+                                          color: const Color(0xFFEF4444),
+                                        ),
+                                      ],
                                     ],
                                     if (hasBody) ...[
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        width: 28,
-                                        height: 28,
-                                        decoration: BoxDecoration(
-                                          color: accentColor.withValues(alpha: 0.08),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          _expanded
-                                              ? Icons.keyboard_arrow_up_rounded
-                                              : Icons.keyboard_arrow_down_rounded,
-                                          size: 18,
-                                          color: accentColor,
-                                        ),
+                                      const SizedBox(width: 8),
+                                      Icon(
+                                        _expanded
+                                            ? Icons.keyboard_arrow_up_rounded
+                                            : Icons.keyboard_arrow_down_rounded,
+                                        size: 20,
+                                        color: accentColor,
                                       ),
                                     ],
+                                    const Spacer(),
+                                    SyncStatusBadge(syncStatus: item.syncStatus),
                                   ],
                                 ),
                               ],
@@ -726,7 +795,7 @@ class _TimelineRowState extends State<_TimelineRow> {
                     if (hasVitals)
                       _SectionRow(
                         icon: Icons.favorite_border_rounded,
-                        iconColor: const Color(0xFFEF4444),
+                        iconColor: _kAccent,
                         title: 'Vitals',
                         value: [
                           if (bp.isNotEmpty)   'SP: $bp',
@@ -754,36 +823,21 @@ class _TimelineRowState extends State<_TimelineRow> {
                     if (hasMeds)
                       _SectionRow(
                         icon: Icons.medication_outlined,
-                        iconColor: const Color(0xFFF97316),
+                        iconColor: _kAccent,
                         title: 'Treatment / Medicines',
                         value: '$medsCount item${medsCount == 1 ? '' : 's'} added',
                         isLast: photos.isEmpty && !_showMeds,
                         trailingWidget: GestureDetector(
                           onTap: () => setState(() => _showMeds = !_showMeds),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 5),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFFF97316)),
-                              borderRadius: BorderRadius.circular(7),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(
+                              _showMeds
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.remove_red_eye_outlined,
+                              size: 18,
+                              color: _kAccent,
                             ),
-                            child: Row(mainAxisSize: MainAxisSize.min, children: [
-                              Icon(
-                                _showMeds
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.remove_red_eye_outlined,
-                                size: 13,
-                                color: const Color(0xFFF97316),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _showMeds ? 'Hide' : 'View',
-                                style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFFF97316)),
-                              ),
-                            ]),
                           ),
                         ),
                       ),
@@ -814,6 +868,7 @@ class _TimelineRowState extends State<_TimelineRow> {
           ),
         ),
       ]),
+      ], // Stack children
     );
   }
 }
@@ -888,14 +943,9 @@ class _ActionBtn extends StatelessWidget {
         message: label,
         child: GestureDetector(
           onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: color.withValues(alpha: 0.22)),
-            ),
-            child: Icon(icon, size: 16, color: color),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Icon(icon, size: 18, color: color),
           ),
         ),
       );
@@ -925,10 +975,8 @@ class _SectionRow extends StatefulWidget {
 class _SectionRowState extends State<_SectionRow> {
   bool _expanded = false;
 
-  // Text longer than ~70 chars will overflow 2 lines at fontSize 12
-  // on a typical phone screen. Avoids TextPainter inside LayoutBuilder
-  // (which can cause nested-layout assertion failures).
-  bool get _isLong => widget.value.length > 70;
+  // Text longer than ~70 chars OR with more than 2 newlines needs expand/collapse.
+  bool get _isLong => widget.value.length > 70 || widget.value.split('\n').length > 2;
   bool get _canExpand => widget.trailingWidget == null && _isLong;
 
   @override
@@ -1133,15 +1181,20 @@ class _ParsedMed {
   final String route;
   final String frequency;
   final String duration;
-  const _ParsedMed({required this.medicine, required this.dose, required this.route, required this.frequency, required this.duration});
+  final String specialInstruction;
+  const _ParsedMed({required this.medicine, required this.dose, required this.route, required this.frequency, required this.duration, this.specialInstruction = ''});
 }
 
 List<_ParsedMed> _parseMeds(String raw) {
   return raw.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
+    // Extract special instruction (anything after last " | ")
+    final pipeIdx = line.lastIndexOf(' | ');
+    final lineMain = pipeIdx >= 0 ? line.substring(0, pipeIdx).trim() : line;
+    final specialInstruction = pipeIdx >= 0 ? line.substring(pipeIdx + 3).trim() : '';
     // Extract dose from [dose]
-    final doseMatch  = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+    final doseMatch  = RegExp(r'\[([^\]]+)\]').firstMatch(lineMain);
     final dose       = doseMatch?.group(1) ?? '';
-    final withoutDose = line.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
+    final withoutDose = lineMain.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
     // Extract route from (route)
     final routeMatch  = RegExp(r'\(([^)]+)\)').firstMatch(withoutDose);
     final route       = routeMatch?.group(1) ?? '';
@@ -1153,7 +1206,7 @@ List<_ParsedMed> _parseMeds(String raw) {
     final mulIdx    = right.indexOf(' × ');
     final frequency = mulIdx >= 0 ? right.substring(0, mulIdx).trim() : right;
     final duration  = mulIdx >= 0 ? right.substring(mulIdx + 3).trim() : '';
-    return _ParsedMed(medicine: medicine, dose: dose, route: route, frequency: frequency, duration: duration);
+    return _ParsedMed(medicine: medicine, dose: dose, route: route, frequency: frequency, duration: duration, specialInstruction: specialInstruction);
   }).toList();
 }
 
@@ -1224,13 +1277,31 @@ class _MedicinesTable extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  child: Row(children: [
-                    dataCell(m.medicine,  weights[0]),
-                    dataCell(m.dose,      weights[1]),
-                    dataCell(m.route,     weights[2]),
-                    dataCell(m.frequency, weights[3]),
-                    dataCell(m.duration,  weights[4]),
-                  ]),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        dataCell(m.medicine,  weights[0]),
+                        dataCell(m.dose,      weights[1]),
+                        dataCell(m.route,     weights[2]),
+                        dataCell(m.frequency, weights[3]),
+                        dataCell(m.duration,  weights[4]),
+                      ]),
+                      if (m.specialInstruction.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Row(children: [
+                            Icon(Icons.info_outline_rounded,
+                                size: 10, color: const Color(0xFFD4A855)),
+                            const SizedBox(width: 4),
+                            Expanded(child: Text(m.specialInstruction,
+                                style: const TextStyle(
+                                    fontSize: 10, color: Color(0xFFD4A855),
+                                    fontStyle: FontStyle.italic))),
+                          ]),
+                        ),
+                    ],
+                  ),
                 ),
                 if (!isLast) Divider(height: 1, thickness: 1, color: context.borderColor),
               ],
@@ -1311,32 +1382,70 @@ Future<void> _openAttachment(PhotoEntity p) async {
 }
 
 Future<void> _downloadAttachment(BuildContext ctx, PhotoEntity p) async {
-  final messenger = ScaffoldMessenger.of(ctx);
-  // For local-only files, share directly.
   if (p.url == null || p.url!.isEmpty) {
     if (p.localPath != null) {
       await Share.shareXFiles([XFile(p.localPath!)], text: _attachFilename(p));
     }
     return;
   }
-  messenger.showSnackBar(const SnackBar(
-    content: Text('Downloading…'),
-    duration: Duration(seconds: 60),
+
+  final messenger = ScaffoldMessenger.of(ctx);
+  messenger.showSnackBar(SnackBar(
+    content: Row(children: [
+      const SizedBox(
+        width: 16, height: 16,
+        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+      ),
+      const SizedBox(width: 12),
+      const Text('Downloading…', style: TextStyle(fontWeight: FontWeight.w600)),
+    ]),
+    duration: const Duration(seconds: 60),
+    backgroundColor: const Color(0xFF4B55CC),
+    behavior: SnackBarBehavior.floating,
   ));
+
   try {
-    final dir = await getApplicationDocumentsDirectory();
+    // Save to the public Downloads folder on Android, documents dir on iOS
+    final Directory saveDir;
+    if (Platform.isAndroid) {
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      saveDir = await downloadsDir.exists() ? downloadsDir : await getApplicationDocumentsDirectory();
+    } else {
+      saveDir = await getApplicationDocumentsDirectory();
+    }
+
     final filename = _attachFilename(p);
-    final savePath = '${dir.path}/$filename';
-    await Dio().download(p.url!, savePath);
+    final savePath = '${saveDir.path}/$filename';
+
+    await Dio().download(p.url!, savePath,
+        onReceiveProgress: (_, __) {});
+
     messenger.hideCurrentSnackBar();
-    await Share.shareXFiles([XFile(savePath)], text: filename);
+    messenger.showSnackBar(SnackBar(
+      content: Row(children: [
+        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text('Saved: $filename',
+            style: const TextStyle(fontWeight: FontWeight.w600))),
+      ]),
+      backgroundColor: const Color(0xFF4EC080),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 4),
+    ));
   } catch (_) {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(SnackBar(
       content: const Text('Download failed — opening in browser'),
+      backgroundColor: const Color(0xFFE07878),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      duration: const Duration(seconds: 3),
       action: SnackBarAction(
         label: 'Open',
-        onPressed: () => launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication),
+        textColor: Colors.white,
+        onPressed: () => launchUrl(Uri.parse(p.url!),
+            mode: LaunchMode.externalApplication),
       ),
     ));
   }
@@ -1404,18 +1513,13 @@ class _AttachmentsSectionState extends State<_AttachmentsSection> {
             topLeft: Radius.circular(8), topRight: Radius.circular(8)),
         ),
         child: Row(children: [
-          Expanded(flex: 4,
+          Expanded(
               child: Text('File Name',
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
                       color: context.textDisabled, letterSpacing: 0.3))),
-          Expanded(flex: 4,
-              child: Text('Uploaded On',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                      color: context.textDisabled, letterSpacing: 0.3))),
-          Expanded(flex: 3,
-              child: Text('Actions',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                      color: context.textDisabled, letterSpacing: 0.3))),
+          Text('Actions',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                  color: context.textDisabled, letterSpacing: 0.3)),
         ]),
       ),
 
@@ -1485,7 +1589,6 @@ class _AttachmentRow extends StatelessWidget {
     final name     = _attachFilename(photo);
     final iconBg   = _attachIconBg(photo);
     final iconData = _attachIconData(photo);
-    final dateStr  = DateFormat('dd MMM yyyy, hh:mm a').format(photo.createdAt);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -1509,64 +1612,72 @@ class _AttachmentRow extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(name,
-                  style: TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w600, color: context.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name,
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w600, color: context.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  if (photo.caption != null && !photo.caption!.contains('.'))
+                    Container(
+                      margin: const EdgeInsets.only(top: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _kAccent.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(photo.caption!,
+                          style: TextStyle(
+                              fontSize: 9, fontWeight: FontWeight.w700,
+                              color: _kAccent, letterSpacing: 0.2)),
+                    ),
+                ],
+              ),
             ),
           ]),
         ),
-        Expanded(flex: 4,
-            child: Text(dateStr,
-                style: TextStyle(fontSize: 11, color: context.textSecondary),
-                maxLines: 2, overflow: TextOverflow.ellipsis)),
-        Expanded(
-          flex: 3,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              InkWell(
-                onTap: (photo.url != null || photo.localPath != null)
-                    ? () {
-                        if (_isImageFile(photo)) {
-                          _viewImageInApp(context, photo);
-                        } else {
-                          _openAttachment(photo);
-                        }
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            InkWell(
+              onTap: (photo.url != null || photo.localPath != null)
+                  ? () {
+                      if (_isImageFile(photo)) {
+                        _viewImageInApp(context, photo);
+                      } else {
+                        _openAttachment(photo);
                       }
-                    : null,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.remove_red_eye_outlined,
-                        size: 15,
-                        color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled),
-                    const SizedBox(width: 3),
-                    Text('View',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled)),
-                  ]),
-                ),
+                    }
+                  : null,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Icons.remove_red_eye_outlined,
+                    size: 18,
+                    color: (photo.url != null || photo.localPath != null)
+                        ? _kAccent
+                        : context.textDisabled),
               ),
-              const SizedBox(width: 12),
-              InkWell(
-                onTap: (photo.url != null || photo.localPath != null)
-                    ? () => _downloadAttachment(context, photo)
-                    : null,
-                borderRadius: BorderRadius.circular(6),
-                child: Padding(
-                  padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.download_rounded,
-                      size: 18,
-                      color: (photo.url != null || photo.localPath != null) ? _kAccent : context.textDisabled),
-                ),
+            ),
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: (photo.url != null || photo.localPath != null)
+                  ? () => _downloadAttachment(context, photo)
+                  : null,
+              borderRadius: BorderRadius.circular(6),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(Icons.download_rounded,
+                    size: 18,
+                    color: (photo.url != null || photo.localPath != null)
+                        ? _kAccent
+                        : context.textDisabled),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ]),
     );

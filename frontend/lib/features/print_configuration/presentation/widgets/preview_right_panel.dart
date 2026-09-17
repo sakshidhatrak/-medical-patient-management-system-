@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/theme/theme_extensions.dart';
 import '../../services/pdf_export_service.dart';
 import '../providers/print_config_provider.dart';
 
@@ -75,23 +76,25 @@ final _kSectionDefs = <_S>[
     ('General Examination', 'examGeneral'),
     ('Neurological Examination', 'examNeurological'),
   ]),
-  _S('REPORTS', Icons.description_outlined, [
+  _S('PREVIOUS INVESTIGATIONS', Icons.description_outlined, [
     ('Imaging', 'imaging'),
     ('Other Investigation', 'otherInvestigation'),
   ]),
-  _S('ADVICE', Icons.health_and_safety_outlined, [
-    ('Advice', 'advice'),
+  _S('IMPRESSION', Icons.lightbulb_outline_rounded, [
+    ('Clinical Diagnosis', 'clinicalDiagnosis'),
+    ('Impression', 'diagnosis'),
+  ]),
+  _S('TREATMENT PLAN', Icons.assignment_turned_in_outlined, [
+    ('Treatment Plan', 'treatmentPlan'),
   ]),
   _S('TREATMENT (MEDICINES)', Icons.medication_outlined, [
     ('Medications', 'medications'),
   ], rxIcon: true),
-  _S('INVESTIGATIONS', Icons.science_outlined, [
-    ('Clinical Diagnosis', 'clinicalDiagnosis'),
-    ('Impression', 'diagnosis'),
-    ('Treatment Plan', 'treatmentPlan'),
+  _S('ADVICE', Icons.health_and_safety_outlined, [
+    ('Advice', 'advice'),
   ]),
   _S('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', Icons.people_outline, [
-    ('Notes', 'notes'),
+    ('Cross Consultation', 'crossConsultation'),
   ]),
 ];
 
@@ -302,9 +305,12 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
     addFull(_kSectionDefs[3]);              // Medical History
     addFull(_kSectionDefs[4]);              // Presenting Complaints
     addFull(_kSectionDefs[5]);              // Examination Findings
-    addPaired(_kSectionDefs[6], _kSectionDefs[7]); // Reports | Advice
-    addPaired(_kSectionDefs[8], _kSectionDefs[9]); // Treatment | Investigations
-    addFull(_kSectionDefs[10]);             // Cross Reference
+    addFull(_kSectionDefs[6]);              // Previous Investigations
+    addFull(_kSectionDefs[7]);              // Impression
+    addFull(_kSectionDefs[8]);              // Treatment Plan
+    addFull(_kSectionDefs[9]);              // Treatment (Medicines)
+    addFull(_kSectionDefs[10]);             // Advice
+    addFull(_kSectionDefs[11]);             // Cross Reference
 
     return result;
   }
@@ -941,20 +947,20 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
     final botPad   = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      backgroundColor: _kPageBg,
+      backgroundColor: context.bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: context.cardColor,
         elevation: 0.5,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.black12,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: _kPrimNvy),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF4B55CC)),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Customize Report Fields',
+          'Final Preview',
           style: TextStyle(
-            color: _kPrimNvy,
+            color: Color(0xFF4B55CC),
             fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
@@ -965,7 +971,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
             child: const Text(
               'Reset All',
               style: TextStyle(
-                color: _kPrimNvy,
+                color: Color(0xFF4B55CC),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -1021,9 +1027,9 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
           // ── Bottom action bar ─────────────────────────────────────────────
           Container(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + botPad),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(top: BorderSide(color: Color(0xFFE0E0E0))),
+            decoration: BoxDecoration(
+              color: context.cardColor,
+              border: Border(top: BorderSide(color: context.borderColor)),
             ),
             child: Row(
               children: [
@@ -1032,8 +1038,8 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                   child: OutlinedButton(
                     onPressed: (_saving || _printing) ? null : () => Navigator.of(context).pop(),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: _kPrimNvy,
-                      side: const BorderSide(color: _kPrimNvy, width: 1.5),
+                      foregroundColor: const Color(0xFF4B55CC),
+                      side: const BorderSide(color: Color(0xFF4B55CC), width: 1.5),
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
@@ -1248,15 +1254,9 @@ class _SectionConfigCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: context.cardColor,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: context.borderColor),
         ),
         child: Column(
           children: [
@@ -1278,10 +1278,10 @@ class _SectionConfigCard extends StatelessWidget {
                       width: 46,
                       height: 46,
                       decoration: BoxDecoration(
-                        color: _kIconBg,
+                        color: context.primarySurf,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Icon(section.icon, color: _kPrimNvy, size: 22),
+                      child: Icon(section.icon, color: const Color(0xFF4B55CC), size: 22),
                     ),
                     const SizedBox(width: 12),
                     // Title + count
@@ -1291,19 +1291,19 @@ class _SectionConfigCard extends StatelessWidget {
                         children: [
                           Text(
                             section.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w800,
-                              color: _kPrimNvy,
+                              color: context.textPrimary,
                               letterSpacing: 0.15,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             sub,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black54,
+                              color: context.textSecondary,
                             ),
                           ),
                         ],
@@ -1316,9 +1316,9 @@ class _SectionConfigCard extends StatelessWidget {
                         value: allOn,
                         onChanged: onToggleSection,
                         activeColor: Colors.white,
-                        activeTrackColor: _kPrimNvy,
+                        activeTrackColor: const Color(0xFF4B55CC),
                         inactiveThumbColor: Colors.white,
-                        inactiveTrackColor: const Color(0xFFCCCCCC),
+                        inactiveTrackColor: context.textDisabled,
                         trackOutlineColor:
                             WidgetStateProperty.all(Colors.transparent),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1329,7 +1329,7 @@ class _SectionConfigCard extends StatelessWidget {
                       isExpanded
                           ? Icons.keyboard_arrow_up_rounded
                           : Icons.keyboard_arrow_down_rounded,
-                      color: Colors.black45,
+                      color: context.textSecondary,
                       size: 22,
                     ),
                   ],
@@ -1338,7 +1338,7 @@ class _SectionConfigCard extends StatelessWidget {
             ),
             // Expanded field list — only filled fields shown
             if (isExpanded) ...[
-              const Divider(height: 1, thickness: 0.5, color: Color(0xFFEEEEEE)),
+              Divider(height: 1, thickness: 0.5, color: context.borderColor),
               for (final f in filledFields)
                 _FieldCheckRow(
                   label: f.$1,
@@ -1390,7 +1390,7 @@ class _FieldCheckRow extends StatelessWidget {
                     label,
                     style: TextStyle(
                       fontSize: 13,
-                      color: isEnabled ? Colors.black87 : Colors.black38,
+                      color: isEnabled ? context.textPrimary : context.textDisabled,
                       fontWeight: isEnabled ? FontWeight.w500 : FontWeight.w400,
                     ),
                   ),
@@ -1398,7 +1398,7 @@ class _FieldCheckRow extends StatelessWidget {
                 Checkbox(
                   value: isEnabled,
                   onChanged: (_) => onTap(),
-                  activeColor: _kPrimNvy,
+                  activeColor: const Color(0xFF4B55CC),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
@@ -1407,11 +1407,11 @@ class _FieldCheckRow extends StatelessWidget {
             ),
             // Value display
             if (!filled)
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
                 child: Text(
                   'No data entered',
-                  style: TextStyle(fontSize: 11, color: Color(0xFFBBBBBB), fontStyle: FontStyle.italic),
+                  style: TextStyle(fontSize: 11, color: context.textDisabled, fontStyle: FontStyle.italic),
                 ),
               )
             else if (isMeds)
@@ -1424,11 +1424,11 @@ class _FieldCheckRow extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
                   value,
-                  maxLines: 2,
+                  maxLines: 5,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11,
-                    color: isEnabled ? Colors.black54 : const Color(0xFFCCCCCC),
+                    color: isEnabled ? context.textSecondary : context.textDisabled,
                   ),
                 ),
               ),
@@ -1470,9 +1470,9 @@ class _MedsMiniTable extends StatelessWidget {
     if (rows.isEmpty) return const SizedBox.shrink();
 
     const headers = ['Medicine', 'Dose', 'Route', 'Freq', 'Duration'];
-    final dimColor = isEnabled ? Colors.black38 : const Color(0xFFCCCCCC);
-    final textColor = isEnabled ? Colors.black87 : const Color(0xFFCCCCCC);
-    final borderColor = isEnabled ? const Color(0xFFDDDDDD) : const Color(0xFFEEEEEE);
+    final dimColor = isEnabled ? context.textSecondary : context.textDisabled;
+    final textColor = isEnabled ? context.textPrimary : context.textDisabled;
+    final borderColor = isEnabled ? context.borderColor : context.dividerColor;
 
     Widget cell(String t, {bool isHeader = false}) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),

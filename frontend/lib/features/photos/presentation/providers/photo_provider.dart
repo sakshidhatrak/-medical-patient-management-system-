@@ -217,32 +217,43 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
       final visitIdReady  = visitId  == null || RegExp(r'^\d+$').hasMatch(visitId);
       final surgIdReady   = surgeryId == null || RegExp(r'^\d+$').hasMatch(surgeryId);
 
+      // Attempt online upload (mobile + web when conditions allow)
       if (online && patientSynced && visitIdReady && surgIdReady) {
-        final ds = await _buildDs();
-        final photo = await ds.uploadPhoto(
-          patientId: resolvedPatientId,
-          bytes: bytes,
-          filename: filename,
-          category: category,
-          visitId: visitId,
-          surgeryId: surgeryId,
-          caption: caption,
-        );
-        if (!kIsWeb) await _store.insert(_entityToRow(photo));
-        state = state.copyWith(
-          photos: [photo, ...state.photos],
-          isUploading: false,
-        );
-        return photo;
+        if (kIsWeb) {
+          // Web has no local store; if server fails, there is no fallback.
+          state = state.copyWith(
+              isUploading: false,
+              error: 'Patient is still syncing — please retry in a moment.');
+          return null;
+        }
+        // Mobile: try server upload, fall back to local save on any error
+        try {
+          final ds = await _buildDs();
+          final photo = await ds.uploadPhoto(
+            patientId: resolvedPatientId,
+            bytes: bytes,
+            filename: filename,
+            category: category,
+            visitId: visitId,
+            surgeryId: surgeryId,
+            caption: caption,
+          );
+          await _store.insert(_entityToRow(photo));
+          state = state.copyWith(
+            photos: [photo, ...state.photos],
+            isUploading: false,
+          );
+          return photo;
+        } catch (_) {
+          // Server unreachable — fall through to local save below
+        }
       }
 
       // Web can't save without network, and has no local store.
       if (kIsWeb) {
         state = state.copyWith(
             isUploading: false,
-            error: online
-                ? 'Patient is still syncing — please retry in a moment.'
-                : 'Photo upload requires internet connection.');
+            error: 'Photo upload requires internet connection.');
         return null;
       }
 
@@ -365,14 +376,17 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
         await _store.markUploaded(localId, photo.url ?? '', photo.storagePath);
         try { await file.delete(); } catch (_) {}
         // Update state using localId so the pending photo is replaced correctly.
+        // Use visitId/surgeryId from the SQLite row (already remapped to
+        // numeric server IDs by remapVisitId) rather than the in-memory entity
+        // value, which may still hold the original client UUID.
         state = state.copyWith(
           photos: state.photos.map((p) {
             if (p.id != localId) return p;
             return PhotoEntity(
               id:          p.id,
               patientId:   p.patientId,
-              visitId:     p.visitId,
-              surgeryId:   p.surgeryId,
+              visitId:     (row['visit_id'] as String?) ?? p.visitId,
+              surgeryId:   (row['surgery_id'] as String?) ?? p.surgeryId,
               storagePath: photo.storagePath,
               url:         photo.url,
               category:    p.category,

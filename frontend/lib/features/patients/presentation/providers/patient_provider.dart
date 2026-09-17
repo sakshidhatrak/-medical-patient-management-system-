@@ -132,11 +132,18 @@ class PatientsNotifier extends Notifier<PatientsState> {
       final models = await _ds
           .getPatients(page: page, pageSize: _pageSize, search: state.search)
           .timeout(const Duration(seconds: 15));
-      // Cache every fetched patient locally.
+      // Fetch locally-deleted IDs so API results don't overwrite soft-deletes.
+      final deletedIds = await _local.getDeletedIds();
+      // Cache every fetched patient locally — skip ones deleted locally.
       for (final m in models) {
-        await _local.upsert(m.toFullJson());
+        if (!deletedIds.contains(m.id)) {
+          await _local.upsert(m.toFullJson());
+        }
       }
-      final entities = models.map((m) => m.toEntity()).toList();
+      final entities = models
+          .where((m) => !deletedIds.contains(m.id))
+          .map((m) => m.toEntity())
+          .toList();
       // On refresh, preserve locally-pending patients not yet in the API response.
       final List<PatientEntity> merged;
       if (refresh) {
@@ -379,6 +386,41 @@ class PatientsNotifier extends Notifier<PatientsState> {
     } catch (e) {
       state = state.copyWith(error: e.toString());
       return null;
+    }
+  }
+
+  Future<void> deletePatient(String id) async {
+    try {
+      // 1. Soft-delete patient locally.
+      await _local.delete(id);
+      // 2. Cascade: soft-delete all visits and surgeries locally.
+      await ref.read(localVisitCacheProvider).softDeleteAllForPatient(id);
+      await ref.read(localSurgeryCacheProvider).softDeleteAllForPatient(id);
+      // 3. Remove from in-memory state immediately.
+      state = state.copyWith(
+          patients: state.patients.where((p) => p.id != id).toList());
+      // 4. Sync to server (or queue for later if offline).
+      if (_online) {
+        try {
+          await _ds.deletePatient(id);
+        } catch (_) {
+          await _queue.enqueue(
+            entityType: 'patients',
+            entityId: id,
+            operation: 'patch',
+            payload: {'id': id, 'isActive': false},
+          );
+        }
+      } else {
+        await _queue.enqueue(
+          entityType: 'patients',
+          entityId: id,
+          operation: 'patch',
+          payload: {'id': id, 'isActive': false},
+        );
+      }
+    } catch (e) {
+      state = state.copyWith(error: e.toString());
     }
   }
 

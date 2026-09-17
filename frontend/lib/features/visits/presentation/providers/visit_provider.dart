@@ -29,6 +29,14 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
     // When SyncEngine syncs a visit, reload from SQLite so the grey dot
     // turns green immediately without the user navigating away.
     ref.listen(visitSyncEventProvider, (_, __) => _loadLocal(arg));
+    // Retry pending visits when connectivity is restored (e.g. after Render cold-start).
+    if (!kIsWeb) {
+      ref.listen<bool?>(isOnlineProvider, (prev, online) {
+        if (online == true && prev != true) {
+          unawaited(ref.read(syncEngineProvider).syncAll());
+        }
+      });
+    }
     Future.microtask(() => _init(arg));
     return [];
   }
@@ -289,6 +297,12 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         payload: {...syncModel.toFullJson(), 'patientId': queuePatientId},
       );
       await _local.markPending(model.id);
+      // Schedule a retry after 30 s (covers Render cold-start ~50 s total
+      // when the first attempt fires immediately on visit save).
+      if (!kIsWeb) {
+        Future.delayed(const Duration(seconds: 30),
+            () => unawaited(ref.read(syncEngineProvider).syncAll()));
+      }
     }
   }
 
@@ -299,10 +313,19 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
   }
 
   Future<void> deleteVisit(String id) async {
+    await _local.delete(id);
+    state = state.where((v) => v.id != id).toList();
     if (_online) {
       try {
         await _ds.deleteVisit('$arg/$id');
-      } catch (_) {}
+      } catch (_) {
+        await _queue.enqueue(
+          entityType: 'visits',
+          entityId: id,
+          operation: 'delete',
+          payload: {'patientId': arg},
+        );
+      }
     } else {
       await _queue.enqueue(
         entityType: 'visits',
@@ -311,8 +334,6 @@ class VisitsNotifier extends FamilyNotifier<List<VisitEntity>, String> {
         payload: {'patientId': arg},
       );
     }
-    await _local.delete(id);
-    state = state.where((v) => v.id != id).toList();
   }
 }
 

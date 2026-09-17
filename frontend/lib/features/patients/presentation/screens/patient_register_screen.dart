@@ -7,6 +7,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -163,7 +164,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     if (_prescriptionRows.isNotEmpty) {
       m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
       add('medications', _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'));
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'));
     }
     add('advice',             _adviceCtrl.text.trim());
     add('crossConsultation',  _crossConsultCtrl.text.trim());
@@ -416,27 +417,40 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                       : null,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                child: Row(children: [
-                  Expanded(flex: 3, child: Text(row.medicine,
-                      style: TextStyle(fontSize: 12, color: _kNavy(context),
-                          fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.route,
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.frequency,
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  GestureDetector(
-                    onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
-                    child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
-                  ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(flex: 3, child: Text(row.medicine,
+                        style: TextStyle(fontSize: 12, color: _kNavy(context),
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.route,
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.frequency,
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    GestureDetector(
+                      onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
+                      child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
+                    ),
+                  ]),
+                  if (row.specialInstruction.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(Icons.info_outline_rounded, size: 11, color: Colors.amber.shade700),
+                      const SizedBox(width: 4),
+                      Expanded(child: Text(row.specialInstruction,
+                          style: TextStyle(fontSize: 11, color: Colors.amber.shade700,
+                              fontStyle: FontStyle.italic),
+                          overflow: TextOverflow.ellipsis)),
+                    ]),
+                  ],
                 ]),
               );
             }),
@@ -481,21 +495,74 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   Future<void> _pickFiles(
     void Function(List<({String name, Uint8List bytes})>) onPicked,
   ) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(ctx).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          const Text('Upload from', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: _mediaOptionTile(ctx, 'Camera', Icons.camera_alt_rounded, const Color(0xFF4B55CC), 'camera')),
+            const SizedBox(width: 12),
+            Expanded(child: _mediaOptionTile(ctx, 'Gallery / Files', Icons.photo_library_rounded, const Color(0xFF059669), 'gallery')),
+          ]),
+        ]),
+      ),
+    );
+    if (choice == null) return;
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
-        withData: true,
-        allowMultiple: true,
-      );
-      if (result != null && result.files.isNotEmpty) {
-        final picked = result.files
-            .where((f) => f.bytes != null)
-            .map((f) => (name: f.name, bytes: f.bytes!))
-            .toList();
-        if (picked.isNotEmpty) onPicked(picked);
+      if (choice == 'camera') {
+        final picker = ImagePicker();
+        final img = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+        if (img == null) return;
+        final bytes = await img.readAsBytes();
+        final name = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        onPicked([(name: name, bytes: bytes)]);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+          withData: true,
+          allowMultiple: true,
+        );
+        if (result != null && result.files.isNotEmpty) {
+          final picked = result.files
+              .where((f) => f.bytes != null)
+              .map((f) => (name: f.name, bytes: f.bytes!))
+              .toList();
+          if (picked.isNotEmpty) onPicked(picked);
+        }
       }
     } catch (_) {}
+  }
+
+  Widget _mediaOptionTile(BuildContext ctx, String label, IconData icon, Color color, String value) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(ctx, value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13)),
+        ]),
+      ),
+    );
   }
 
   Widget _fieldWithUpload({
@@ -906,8 +973,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       'diagnosis':          _diagnosisCtrl.text.trim(),
       'treatmentPlan':      _treatmentCtrl.text.trim(),
       'medications':        _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
-      'notes':              _treatNotesCtrl.text.trim(),
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'),
       'advice':             _adviceCtrl.text.trim(),
       'crossConsultation':  _crossConsultCtrl.text.trim(),
     };
@@ -1364,19 +1430,10 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         ]),
       ),
       _WizardCard(
-        title: 'Investigation',
+        title: 'Previous Investigations',
         icon: Icons.science_outlined,
         color: _kGreen,
         child: Column(children: [
-          _fieldWithUpload(
-            label: 'Diagnosis',
-            controller: _clinicalDiagnosisCtrl,
-            files: _clinicalDiagnosisFiles,
-            onFilesChange: (f) => _clinicalDiagnosisFiles..clear()..addAll(f),
-            prefixIcon: Icons.local_hospital_outlined,
-            hint: 'Clinical diagnosis…',
-          ),
-          const SizedBox(height: 12),
           _fieldWithUpload(
             label: 'Imaging',
             controller: _imagingCtrl,
@@ -1397,19 +1454,23 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         ]),
       ),
       _WizardCard(
+        title: 'Impression',
+        icon: Icons.lightbulb_outline_rounded,
+        color: const Color(0xFFF59E0B),
+        child: _fieldWithUpload(
+          label: 'Clinical Impression',
+          controller: _diagnosisCtrl,
+          files: _impressionFiles,
+          onFilesChange: (f) => _impressionFiles..clear()..addAll(f),
+          prefixIcon: Icons.rule_outlined,
+          hint: 'Clinical impression / assessment…',
+        ),
+      ),
+      _WizardCard(
         title: 'Clinical Plan',
         icon: Icons.assignment_outlined,
         color: _kBlue,
         child: Column(children: [
-          _fieldWithUpload(
-            label: 'Impression',
-            controller: _diagnosisCtrl,
-            files: _impressionFiles,
-            onFilesChange: (f) => _impressionFiles..clear()..addAll(f),
-            prefixIcon: Icons.rule_outlined,
-            hint: 'Clinical impression…',
-          ),
-          const SizedBox(height: 12),
           _fieldWithUpload(
             label: 'Plan',
             controller: _treatmentCtrl,
@@ -1420,14 +1481,6 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ),
           const SizedBox(height: 12),
           _buildMedicationTable(),
-          const SizedBox(height: 12),
-          _RegField(
-            label: 'Notes',
-            controller: _treatNotesCtrl,
-            maxLines: 3,
-            prefixIcon: Icons.notes_rounded,
-            hint: 'Additional clinical notes…',
-          ),
           const SizedBox(height: 12),
           _RegField(
             label: 'Advice',
@@ -1446,6 +1499,21 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
             hint: 'Referred to / consulted with…',
           ),
         ]),
+      ),
+
+      // ── Doctor's Notes (private — not printed) ─────────────────────────
+      _WizardCard(
+        title: "Doctor's Notes",
+        icon: Icons.lock_outline_rounded,
+        color: const Color(0xFF64748B),
+        badge: 'Private · Not printed',
+        child: _RegField(
+          label: 'Notes (admin reference only)',
+          controller: _treatNotesCtrl,
+          maxLines: 4,
+          prefixIcon: Icons.notes_rounded,
+          hint: 'Private notes — will not appear on the patient sheet…',
+        ),
       ),
     ],
   );
@@ -1684,21 +1752,35 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ),
         ),
 
-        // ── Investigation | Clinical Plan ─────────────────────────────────
-        twoCol(
-          sCard('Investigation', Icons.science_outlined,
+        // ── Previous Investigations ───────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Previous Investigations', Icons.science_outlined,
               const Color(0xFFF59E0B),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              eRow('Clinical Diagnosis', _clinicalDiagnosisCtrl.text.trim(),
-                  _clinicalDiagnosisFiles),
               eRow('Imaging', _imagingCtrl.text.trim(), _imagingFiles),
               eRow('Other Investigation', _otherInvestCtrl.text.trim(),
                   _otherInvestFiles),
             ]),
           ),
-          sCard('Clinical Plan', Icons.assignment_outlined, _kBlue,
+        ),
+
+        // ── Impression ────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Impression', Icons.lightbulb_outline_rounded,
+              const Color(0xFFF59E0B),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              eRow('Impression', _diagnosisCtrl.text.trim(), _impressionFiles),
+              eRow('Clinical Impression', _diagnosisCtrl.text.trim(), _impressionFiles),
+            ]),
+          ),
+        ),
+
+        // ── Clinical Plan ─────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Clinical Plan', Icons.assignment_outlined, _kBlue,
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               eRow('Plan', _treatmentCtrl.text.trim(), _planFiles),
               if (_prescriptionRows.isNotEmpty) ...[
                 Padding(
@@ -1712,23 +1794,35 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                       final r = _prescriptionRows[idx];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 3),
-                        child: Row(children: [
-                          Container(
-                            width: 18, height: 18,
-                            decoration: BoxDecoration(
-                                color: _kBlue.withValues(alpha: 0.12),
-                                shape: BoxShape.circle),
-                            alignment: Alignment.center,
-                            child: Text('${idx + 1}',
-                                style: TextStyle(fontSize: 8,
-                                    fontWeight: FontWeight.w800, color: _kBlue)),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(child: Text(
-                            '${r.medicine}${r.dose.isNotEmpty ? "  ${r.dose}" : ""}  ·  ${r.route}  ·  ${r.frequency}${r.duration.isNotEmpty ? "  ×  ${r.duration}" : ""}',
-                            style: TextStyle(fontSize: 11, color: _kNavy(context),
-                                fontWeight: FontWeight.w600),
-                          )),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Container(
+                              width: 18, height: 18,
+                              decoration: BoxDecoration(
+                                  color: _kBlue.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle),
+                              alignment: Alignment.center,
+                              child: Text('${idx + 1}',
+                                  style: TextStyle(fontSize: 8,
+                                      fontWeight: FontWeight.w800, color: _kBlue)),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(child: Text(
+                              '${r.medicine}${r.dose.isNotEmpty ? "  ${r.dose}" : ""}  ·  ${r.route}  ·  ${r.frequency}${r.duration.isNotEmpty ? "  ×  ${r.duration}" : ""}',
+                              style: TextStyle(fontSize: 11, color: _kNavy(context),
+                                  fontWeight: FontWeight.w600),
+                            )),
+                          ]),
+                          if (r.specialInstruction.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Padding(
+                              padding: const EdgeInsets.only(left: 24),
+                              child: Text(r.specialInstruction,
+                                  style: TextStyle(fontSize: 10,
+                                      color: Colors.amber.shade700,
+                                      fontStyle: FontStyle.italic)),
+                            ),
+                          ],
                         ]),
                       );
                     }),
@@ -1736,12 +1830,34 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 ),
               ] else
                 eRow('Treatment', '', _treatmentMedFiles),
-              pRow('Notes', fv(_treatNotesCtrl.text.trim())),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
               eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),
         ),
+
+        // ── Doctor's Notes (private — not on patient sheet) ───────────────
+        if (_treatNotesCtrl.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: sCard("Doctor's Notes", Icons.lock_outline_rounded,
+                _kMuted(context),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.lock_outline_rounded,
+                      size: 11, color: _kMuted(context)),
+                  const SizedBox(width: 4),
+                  Text('Private · Not on patient sheet',
+                      style: TextStyle(fontSize: 10, color: _kMuted(context),
+                          fontStyle: FontStyle.italic)),
+                ]),
+                const SizedBox(height: 6),
+                Text(_treatNotesCtrl.text.trim(),
+                    style: TextStyle(fontSize: 13, color: _kNavy(context),
+                        fontWeight: FontWeight.w500)),
+              ]),
+            ),
+          ),
       ],
     );
   }
@@ -1864,6 +1980,7 @@ class _PrescriptionRow {
   String route;
   String frequency;
   String duration;
+  String specialInstruction;
 
   _PrescriptionRow({
     this.medicine = '',
@@ -1871,14 +1988,16 @@ class _PrescriptionRow {
     this.route = '',
     this.frequency = '',
     this.duration = '',
+    this.specialInstruction = '',
   });
 
   Map<String, dynamic> toJson() => {
-    'medicine':  medicine,
-    'dose':      dose,
-    'route':     route,
-    'frequency': frequency,
-    'duration':  duration,
+    'medicine':           medicine,
+    'dose':               dose,
+    'route':              route,
+    'frequency':          frequency,
+    'duration':           duration,
+    'specialInstruction': specialInstruction,
   };
 }
 
@@ -1901,11 +2020,12 @@ class _AddMedicineSheet extends StatefulWidget {
 }
 
 class _AddMedicineSheetState extends State<_AddMedicineSheet> {
-  final _nameCtrl  = TextEditingController();
-  final _doseCtrl  = TextEditingController();
-  final _routeCtrl = TextEditingController();
-  final _freqCtrl  = TextEditingController();
-  final _durCtrl   = TextEditingController();
+  final _nameCtrl    = TextEditingController();
+  final _doseCtrl    = TextEditingController();
+  final _routeCtrl   = TextEditingController();
+  final _freqCtrl    = TextEditingController();
+  final _durCtrl     = TextEditingController();
+  final _specialCtrl = TextEditingController();
 
   List<MedicineSuggestion> _suggestions = [];
   bool _showSugg = false;
@@ -1924,6 +2044,7 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     _routeCtrl.dispose();
     _freqCtrl.dispose();
     _durCtrl.dispose();
+    _specialCtrl.dispose();
     super.dispose();
   }
 
@@ -1954,11 +2075,12 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     final med = _nameCtrl.text.trim();
     if (med.isEmpty) return;
     Navigator.of(context).pop(_PrescriptionRow(
-      medicine:  med,
-      dose:      _doseCtrl.text.trim(),
-      route:     _routeCtrl.text.trim(),
-      frequency: _freqCtrl.text.trim(),
-      duration:  _durCtrl.text.trim(),
+      medicine:           med,
+      dose:               _doseCtrl.text.trim(),
+      route:              _routeCtrl.text.trim(),
+      frequency:          _freqCtrl.text.trim(),
+      duration:           _durCtrl.text.trim(),
+      specialInstruction: _specialCtrl.text.trim(),
     ));
   }
 
@@ -2138,6 +2260,21 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                           decoration: _dec(hint: '5 days')),
                     ])),
                 ]),
+                const SizedBox(height: 12),
+                // ── Special Instruction ────────────────────────────────────
+                Text('Special Instruction',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                        color: _kSlate(context))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _specialCtrl,
+                  style: TextStyle(fontSize: 14, color: _kNavy(context),
+                      fontWeight: FontWeight.w500),
+                  decoration: _dec(hint: 'e.g. Take after food, avoid sunlight…').copyWith(
+                    prefixIcon: Icon(Icons.info_outline_rounded,
+                        size: 17, color: _kMuted(context)),
+                  ),
+                ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity, height: 50,
@@ -2171,12 +2308,14 @@ class _WizardCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final Widget child;
+  final String? badge;
 
   const _WizardCard({
     required this.title,
     required this.icon,
     required this.color,
     required this.child,
+    this.badge,
   });
 
   @override
@@ -2201,9 +2340,26 @@ class _WizardCard extends StatelessWidget {
               child: Icon(icon, color: color, size: 16),
             ),
             const SizedBox(width: 10),
-            Text(title,
+            Expanded(child: Text(title,
                 style: TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context))),
+                    fontSize: 13, fontWeight: FontWeight.w700, color: _kNavy(context)))),
+            if (badge != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF64748B).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.lock_outline_rounded,
+                      size: 10, color: const Color(0xFF64748B)),
+                  const SizedBox(width: 4),
+                  Text(badge!,
+                      style: const TextStyle(
+                          fontSize: 10, color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w600)),
+                ]),
+              ),
           ]),
         ),
         Divider(height: 1, color: _kBorder(context)),

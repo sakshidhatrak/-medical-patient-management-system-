@@ -100,7 +100,7 @@ class PatientApiDataSourceImpl implements PatientSupabaseDataSource {
   @override
   Future<void> deletePatient(String id) async {
     try {
-      await _api.delete<void>('/patients/$id');
+      await _api.patch<void>('/patients/$id', data: {'isActive': false});
     } on AppException {
       rethrow;
     } catch (e) {

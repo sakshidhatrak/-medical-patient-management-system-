@@ -68,10 +68,10 @@ class TreatmentFormSection extends StatelessWidget {
         _wrap(
           'diagnosis',
           AppTextField(
-            label: 'Diagnosis',
-            hint: 'Clinical diagnosis…',
+            label: 'Impression',
+            hint: 'Clinical impression / assessment…',
             controller: diagnosisCtrl,
-            prefixIcon: const Icon(Icons.local_hospital_outlined),
+            prefixIcon: const Icon(Icons.lightbulb_outline_rounded),
           ),
         ),
         _wrap(

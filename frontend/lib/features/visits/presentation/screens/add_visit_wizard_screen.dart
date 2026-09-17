@@ -12,7 +12,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../patients/domain/entities/patient_entity.dart';
 import '../../../patients/presentation/providers/patient_provider.dart';
@@ -114,6 +116,23 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   final _bpCtrl     = TextEditingController();
   final _tempCtrl   = TextEditingController();
 
+  // ── Patient fields editable in Step 1 ────────────────────────────────────
+  bool _patientFieldsPopulated = false;
+  final _pat1FirstNameCtrl  = TextEditingController();
+  final _pat1LastNameCtrl   = TextEditingController();
+  final _pat1AgeCtrl        = TextEditingController();
+  final _pat1PhoneCtrl      = TextEditingController();
+  final _pat1AltPhoneCtrl   = TextEditingController();
+  final _pat1EmailCtrl      = TextEditingController();
+  final _pat1AddressCtrl    = TextEditingController();
+  final _pat1IdTypeCtrl     = TextEditingController();
+  final _pat1IdNumberCtrl   = TextEditingController();
+  String? _pat1Gender;
+  final _pat1WeightCtrl     = TextEditingController();
+  final _pat1BpCtrl         = TextEditingController();
+  final _pat1TempCtrl       = TextEditingController();
+  final _pat1AllergyCtrl    = TextEditingController();
+
   static const _stepLabels = ['Patient Info', 'Treatment & Advice', 'Preview & Print'];
   static const _stepSubtitles = [
     'Auto-populated · Review & continue',
@@ -146,6 +165,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _diagnosisCtrl, _treatmentCtrl,
       _treatNotesCtrl, _adviceCtrl, _crossConsultCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
+      _pat1FirstNameCtrl, _pat1LastNameCtrl, _pat1AgeCtrl,
+      _pat1PhoneCtrl, _pat1AltPhoneCtrl, _pat1EmailCtrl,
+      _pat1AddressCtrl, _pat1IdTypeCtrl, _pat1IdNumberCtrl,
+      _pat1WeightCtrl, _pat1BpCtrl, _pat1TempCtrl, _pat1AllergyCtrl,
     ]) {
       c.dispose();
     }
@@ -210,6 +233,48 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     setState(() {});
   }
 
+  void _populatePatientFields(PatientEntity patient) {
+    if (_patientFieldsPopulated) return;
+    _patientFieldsPopulated = true;
+    _pat1FirstNameCtrl.text = patient.firstName;
+    _pat1LastNameCtrl.text  = patient.lastName;
+    _pat1AgeCtrl.text       = patient.age?.toString() ?? '';
+    _pat1PhoneCtrl.text     = patient.phone ?? '';
+    _pat1AltPhoneCtrl.text  = patient.altPhone ?? '';
+    _pat1EmailCtrl.text     = patient.email ?? '';
+    _pat1AddressCtrl.text   = patient.address ?? '';
+    _pat1IdTypeCtrl.text    = patient.idProofType ?? '';
+    _pat1IdNumberCtrl.text  = patient.idProofNumber ?? '';
+    _pat1Gender             = patient.sex?.isNotEmpty == true ? patient.sex : null;
+    _pat1WeightCtrl.text    = patient.weight ?? '';
+    _pat1BpCtrl.text        = patient.bloodPressure ?? '';
+    _pat1TempCtrl.text      = patient.temperature ?? '';
+    _pat1AllergyCtrl.text   = patient.allergies ?? '';
+  }
+
+  Future<void> _savePatientEdits(PatientEntity original) async {
+    if (!_patientFieldsPopulated || _patient == null) return;
+    final fn = _pat1FirstNameCtrl.text.trim();
+    final updated = original.copyWith(
+      firstName:     fn.isNotEmpty ? fn : null,
+      lastName:      _pat1LastNameCtrl.text.trim(),
+      age:           int.tryParse(_pat1AgeCtrl.text.trim()) ?? original.age,
+      sex:           _pat1Gender ?? original.sex,
+      phone:         _pat1PhoneCtrl.text.trim().isNotEmpty ? _pat1PhoneCtrl.text.trim() : original.phone,
+      altPhone:      _pat1AltPhoneCtrl.text.trim().isNotEmpty ? _pat1AltPhoneCtrl.text.trim() : original.altPhone,
+      email:         _pat1EmailCtrl.text.trim().isNotEmpty ? _pat1EmailCtrl.text.trim() : original.email,
+      address:       _pat1AddressCtrl.text.trim().isNotEmpty ? _pat1AddressCtrl.text.trim() : original.address,
+      idProofType:   _pat1IdTypeCtrl.text.trim().isNotEmpty ? _pat1IdTypeCtrl.text.trim() : original.idProofType,
+      idProofNumber: _pat1IdNumberCtrl.text.trim().isNotEmpty ? _pat1IdNumberCtrl.text.trim() : original.idProofNumber,
+      weight:        _pat1WeightCtrl.text.trim().isNotEmpty ? _pat1WeightCtrl.text.trim() : original.weight,
+      bloodPressure: _pat1BpCtrl.text.trim().isNotEmpty ? _pat1BpCtrl.text.trim() : original.bloodPressure,
+      temperature:   _pat1TempCtrl.text.trim().isNotEmpty ? _pat1TempCtrl.text.trim() : original.temperature,
+      allergies:     _pat1AllergyCtrl.text.trim().isNotEmpty ? _pat1AllergyCtrl.text.trim() : original.allergies,
+    );
+    await ref.read(patientsProvider.notifier).updatePatient(updated);
+    _patient = updated;
+  }
+
   // ── Build examination JSON ────────────────────────────────────────────────
   String? _buildExamination() {
     final m = <String, String>{};
@@ -224,7 +289,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     if (_prescriptionRows.isNotEmpty) {
       m['prescriptions'] = jsonEncode(_prescriptionRows.map((r) => r.toJson()).toList());
       add('medications', _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'));
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'));
     }
     add('advice',            _adviceCtrl.text.trim());
     add('crossConsultation', _crossConsultCtrl.text.trim());
@@ -256,18 +321,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   // ── Upload all files picked in the wizard for a given visitId ────────────
   Future<void> _uploadVisitFiles(String visitId) async {
     final notifier = ref.read(photoProvider(widget.patientId).notifier);
-    final batches = <(List<({String name, Uint8List bytes})>, PhotoCategory)>[
-      (_prevHistoryFiles,       PhotoCategory.visit),
-      (_chiefComplaintFiles,    PhotoCategory.visit),
-      (_examGeneralFiles,       PhotoCategory.examination),
-      (_examNeurologicalFiles,  PhotoCategory.examination),
-      (_clinicalDiagnosisFiles, PhotoCategory.visit),
-      (_imagingFiles,           PhotoCategory.radiology),
-      (_otherInvestFiles,       PhotoCategory.visit),
-      (_impressionFiles,        PhotoCategory.treatment),
-      (_planFiles,              PhotoCategory.treatment),
-      (_treatmentMedFiles,      PhotoCategory.treatment),
-      (_crossConsultFiles,      PhotoCategory.visit),
+    // 3-tuple: (files, category, sectionLabel) — sectionLabel stored as caption
+    final batches = <(List<({String name, Uint8List bytes})>, PhotoCategory, String)>[
+      (_prevHistoryFiles,       PhotoCategory.visit,       'Previous History'),
+      (_chiefComplaintFiles,    PhotoCategory.visit,       'Chief Complaint'),
+      (_examGeneralFiles,       PhotoCategory.examination, 'General Examination'),
+      (_examNeurologicalFiles,  PhotoCategory.examination, 'Neurological Examination'),
+      (_clinicalDiagnosisFiles, PhotoCategory.visit,       'Clinical Diagnosis'),
+      (_imagingFiles,           PhotoCategory.radiology,   'Imaging'),
+      (_otherInvestFiles,       PhotoCategory.visit,       'Other Investigation'),
+      (_impressionFiles,        PhotoCategory.treatment,   'Impression'),
+      (_planFiles,              PhotoCategory.treatment,   'Treatment Plan'),
+      (_treatmentMedFiles,      PhotoCategory.treatment,   'Medicines'),
+      (_crossConsultFiles,      PhotoCategory.visit,       'Cross Consultation'),
     ];
 
     int uploaded = 0;
@@ -280,7 +346,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           filename: f.name,
           category: batch.$2,
           visitId:  visitId,
-          caption:  f.name,
+          caption:  batch.$3,  // section label stored as caption
         );
         if (result != null) {
           uploaded++;
@@ -316,7 +382,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('$uploaded file(s) uploaded successfully',
             style: TextStyle(fontWeight: FontWeight.w600)),
-        backgroundColor: _kGreen,
+        backgroundColor: _kBlue2,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -388,6 +454,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           // Keep _saving = true (button disabled) during file upload so a
           // second tap cannot create a duplicate visit while files are uploading.
           await _uploadVisitFiles(visit.id);
+          if (_patient != null) unawaited(_savePatientEdits(_patient!));
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
@@ -398,7 +465,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               )),
             ]),
-            backgroundColor: _kGreen,
+            backgroundColor: _kBlue2,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 3),
@@ -454,6 +521,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           }
           // Keep _saving = true during file upload (same fix as new-visit path).
           await _uploadVisitFiles(widget.visitId!);
+          if (_patient != null) unawaited(_savePatientEdits(_patient!));
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
@@ -464,7 +532,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               )),
             ]),
-            backgroundColor: _kGreen,
+            backgroundColor: _kBlue2,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             duration: const Duration(seconds: 3),
@@ -560,7 +628,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'weight':         _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : pn('weight'),
       'bloodPressure':  _bpCtrl.text.trim().isNotEmpty ? _bpCtrl.text.trim() : pn('bloodPressure'),
       'temperature':    _tempCtrl.text.trim().isNotEmpty ? _tempCtrl.text.trim() : pn('temperature'),
-      'allergies':      pn('allergies'),
+      'allergies':      _patient?.allergies?.isNotEmpty == true ? _patient!.allergies! : pn('allergies'),
       'medicalHistory': pn('clinicalNotes'),
       'previousHistory':_prevHistoryCtrl.text.trim(),
       'chiefComplaint': _complaintCtrl.text.trim(),
@@ -572,8 +640,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'diagnosis':      _diagnosisCtrl.text.trim(),
       'treatmentPlan':  _treatmentCtrl.text.trim(),
       'medications':    _prescriptionRows.map((r) =>
-          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}').join('\n'),
-      'notes':          _treatNotesCtrl.text.trim(),
+          '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.specialInstruction.isNotEmpty ? " — ${r.specialInstruction}" : ""}').join('\n'),
       'advice':         _adviceCtrl.text.trim(),
       'visitType':      visit.visitType.label,
     };
@@ -584,12 +651,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   Widget _fileChip(String name, VoidCallback onClear) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
     decoration: BoxDecoration(
-      color: _kGreen.withValues(alpha: 0.06),
+      color: _kBlue.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: _kGreen.withValues(alpha: 0.25)),
+      border: Border.all(color: _kBlue.withValues(alpha: 0.25)),
     ),
     child: Row(children: [
-      Icon(Icons.insert_drive_file_rounded, color: _kGreen, size: 14),
+      Icon(Icons.insert_drive_file_rounded, color: _kBlue, size: 14),
       const SizedBox(width: 6),
       Expanded(child: Text(name,
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kNavy(context)),
@@ -601,28 +668,94 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   Future<void> _pickFiles(
       void Function(List<({String name, Uint8List bytes})>) onPicked) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
-        withData: true,
-        allowMultiple: true,
-      );
-      if (result != null && result.files.isNotEmpty) {
-        final picked = result.files
-            .where((f) => f.bytes != null)
-            .map((f) => (name: f.name, bytes: f.bytes!))
-            .toList();
-        if (picked.isNotEmpty) onPicked(picked);
-      }
-    } catch (_) {}
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: _kCard(ctx),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.fromLTRB(16, 12, 16,
+            16 + MediaQuery.of(ctx).padding.bottom),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 36, height: 4,
+            decoration: BoxDecoration(
+                color: _kBorder(ctx), borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 16),
+          Text('Add Attachment',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700,
+                  color: _kNavy(ctx))),
+          const SizedBox(height: 16),
+          Row(children: [
+            Expanded(child: _mediaOptionTile(ctx, 'Camera',
+                Icons.camera_alt_rounded, _kBlue, 'camera')),
+            const SizedBox(width: 12),
+            Expanded(child: _mediaOptionTile(ctx, 'Gallery / Files',
+                Icons.photo_library_outlined, _kGreen, 'gallery')),
+          ]),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+
+    if (choice == 'camera') {
+      try {
+        final picker = ImagePicker();
+        final img = await picker.pickImage(
+            source: ImageSource.camera, imageQuality: 85);
+        if (img == null || !mounted) return;
+        final bytes = await img.readAsBytes();
+        final name = 'camera_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        onPicked([(name: name, bytes: bytes)]);
+      } catch (_) {}
+    } else {
+      try {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
+          withData: true,
+          allowMultiple: true,
+        );
+        if (result != null && result.files.isNotEmpty) {
+          final picked = result.files
+              .where((f) => f.bytes != null)
+              .map((f) => (name: f.name, bytes: f.bytes!))
+              .toList();
+          if (picked.isNotEmpty) onPicked(picked);
+        }
+      } catch (_) {}
+    }
   }
+
+  Widget _mediaOptionTile(BuildContext ctx, String label, IconData icon,
+      Color color, String value) =>
+      GestureDetector(
+        onTap: () => Navigator.pop(ctx, value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(label,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+                    color: color)),
+          ]),
+        ),
+      );
 
   Widget _fieldWithUpload({
     required String label,
     required TextEditingController controller,
     required List<({String name, Uint8List bytes})> files,
     required void Function(List<({String name, Uint8List bytes})>) onFilesChange,
+    List<PhotoEntity> existingPhotos = const [],
     int maxLines = 2,
     IconData prefixIcon = Icons.notes_rounded,
     String hint = '',
@@ -647,7 +780,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               children: [
                 IconButton(
                   icon: Icon(Icons.upload_file_rounded, size: 20,
-                      color: files.isNotEmpty ? _kGreen : _kMuted(context)),
+                      color: files.isNotEmpty ? _kBlue : _kMuted(context)),
                   onPressed: () => _pickFiles((picked) =>
                       setState(() => onFilesChange([...files, ...picked]))),
                 ),
@@ -657,7 +790,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     child: Container(
                       width: 15, height: 15,
                       decoration: BoxDecoration(
-                          color: _kGreen, shape: BoxShape.circle),
+                          color: _kBlue, shape: BoxShape.circle),
                       alignment: Alignment.center,
                       child: Text('${files.length}',
                           style: TextStyle(
@@ -694,6 +827,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               onFilesChange(updated);
             }));
           }),
+        ),
+      ],
+      if (existingPhotos.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6, runSpacing: 6,
+          children: existingPhotos.map(_existingPhotoChip).toList(),
         ),
       ],
     ]);
@@ -961,23 +1101,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               const SizedBox(width: 8),
             ],
             Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _openPrint,
-                icon: Icon(Icons.print_outlined, size: 17),
-                label: Text('Print'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _kBlue,
-                  side: BorderSide(color: _kBlue, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  textStyle: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
               child: FilledButton.icon(
                 onPressed: () => context.go('/patients/${widget.patientId}'),
                 icon: Icon(Icons.person_outlined, size: 17),
@@ -1017,7 +1140,77 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   }
 
 
-  // ── Step 1 : Patient Info (read-only) ─────────────────────────────────────
+  // ── Editable field for Step 1 patient card ───────────────────────────────
+  Widget _editField(String label, TextEditingController ctrl, {
+    TextInputType? keyboard, int maxLines = 1, String hint = '',
+  }) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w600, color: _kMuted(context))),
+        const SizedBox(height: 4),
+        TextFormField(
+          controller: ctrl,
+          maxLines: maxLines,
+          keyboardType: keyboard,
+          style: TextStyle(
+              fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: hint.isNotEmpty ? hint : null,
+            hintStyle: TextStyle(color: _kMuted(context), fontSize: 12),
+            filled: true, fillColor: _kBg(context),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBorder(context))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBorder(context))),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBlue, width: 1.5)),
+          ),
+        ),
+      ]);
+
+  Widget _pat1GenderDropdown() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Gender', style: TextStyle(
+            fontSize: 11, fontWeight: FontWeight.w600, color: _kMuted(context))),
+        const SizedBox(height: 4),
+        DropdownButtonFormField<String>(
+          value: _pat1Gender,
+          dropdownColor: _kCard(context),
+          iconEnabledColor: _kMuted(context),
+          items: ['male', 'female', 'other']
+              .map((g) => DropdownMenuItem(
+                    value: g,
+                    child: Text(
+                        '${g[0].toUpperCase()}${g.substring(1)}',
+                        style: TextStyle(color: _kNavy(context), fontSize: 13)),
+                  ))
+              .toList(),
+          onChanged: (v) => setState(() => _pat1Gender = v),
+          decoration: InputDecoration(
+            filled: true, fillColor: _kBg(context),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBorder(context))),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBorder(context))),
+            focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: _kBlue, width: 1.5)),
+          ),
+          style: TextStyle(
+              fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w500),
+        ),
+      ]);
+
+  // ── Step 1 : Patient Info (editable) ──────────────────────────────────────
   Widget _buildStep1(AsyncValue<PatientEntity?> patientAsync) {
     return patientAsync.when(
       loading: () => const Center(
@@ -1028,20 +1221,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           return const Center(child: Text('Patient not found'));
         }
 
-        // Parse patient notes JSON for extra fields
-        final notes = <String, String>{};
-        if (patient.notes?.isNotEmpty == true) {
-          try {
-            final decoded = jsonDecode(patient.notes!) as Map<String, dynamic>;
-            notes.addAll(decoded.map((k, v) => MapEntry(k, v.toString())));
-          } catch (_) {}
-        }
-        String n(String k) => notes[k]?.isNotEmpty == true ? notes[k]! : '—';
-        String fv(String? s) => (s?.isNotEmpty == true) ? s! : '—';
-        final fullName = '${patient.firstName} ${patient.lastName}'.trim();
-        final gender = patient.sex?.isNotEmpty == true
-            ? '${patient.sex![0].toUpperCase()}${patient.sex!.substring(1)}'
-            : '—';
+        _populatePatientFields(patient);
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -1153,58 +1333,67 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ]),
             ),
 
-            // ── Patient Basic Info ────────────────────────────────────────
+            // ── Patient Basic Info (editable) ─────────────────────────────
             _WizardCard(
               title: 'Basic Information',
               icon: Icons.person_outline_rounded,
               color: _kBlue,
-              badge: 'Read-only',
               child: Column(children: [
-                _roRow('Full Name', fullName),
+                Row(children: [
+                  Expanded(child: _editField('First Name', _pat1FirstNameCtrl)),
+                  const SizedBox(width: 12),
+                  Expanded(child: _editField('Last Name', _pat1LastNameCtrl)),
+                ]),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: _roRow('Age',
-                      patient.age != null ? '${patient.age} yrs' : '—')),
+                  Expanded(child: _editField('Age', _pat1AgeCtrl,
+                      keyboard: TextInputType.number, hint: 'yrs')),
                   const SizedBox(width: 12),
-                  Expanded(child: _roRow('Gender', gender)),
+                  Expanded(child: _pat1GenderDropdown()),
                 ]),
                 const SizedBox(height: 10),
                 _roRow('UHID', patient.prn),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: _roRow('Phone', fv(patient.phone))),
+                  Expanded(child: _editField('Phone', _pat1PhoneCtrl,
+                      keyboard: TextInputType.phone)),
                   const SizedBox(width: 12),
-                  Expanded(child: _roRow('Alt Phone', n('altPhone'))),
+                  Expanded(child: _editField('Alt Phone', _pat1AltPhoneCtrl,
+                      keyboard: TextInputType.phone)),
                 ]),
                 const SizedBox(height: 10),
-                _roRow('Email', n('email')),
+                _editField('Email', _pat1EmailCtrl,
+                    keyboard: TextInputType.emailAddress),
                 const SizedBox(height: 10),
-                _roRow('Address', fv(patient.address)),
+                _editField('Address', _pat1AddressCtrl, maxLines: 2),
                 const SizedBox(height: 10),
                 Row(children: [
-                  Expanded(child: _roRow('ID Proof Type', n('idProofType'))),
+                  Expanded(child: _editField('ID Proof Type', _pat1IdTypeCtrl)),
                   const SizedBox(width: 12),
-                  Expanded(child: _roRow('ID Number', n('idProofNumber'))),
+                  Expanded(child: _editField('ID Number', _pat1IdNumberCtrl)),
                 ]),
               ]),
             ),
 
-            // ── Vitals reference (from registration) ──────────────────────
+            // ── Vitals & Clinical Snapshot (editable) ─────────────────────
             _WizardCard(
               title: 'Vitals & Clinical Snapshot',
               icon: Icons.monitor_heart_outlined,
-              color: _kRed,
-              badge: 'Read-only',
+              color: _kBlue,
               child: Column(children: [
                 Row(children: [
-                  Expanded(child: _roRow('Weight', n('weight'))),
+                  Expanded(child: _editField('Weight', _pat1WeightCtrl,
+                      hint: 'kg')),
                   const SizedBox(width: 12),
-                  Expanded(child: _roRow('Blood Pressure', n('bloodPressure'))),
+                  Expanded(child: _editField('Blood Pressure', _pat1BpCtrl,
+                      hint: 'mmHg')),
                   const SizedBox(width: 12),
-                  Expanded(child: _roRow('Temperature', n('temperature'))),
+                  Expanded(child: _editField('Temperature', _pat1TempCtrl,
+                      hint: '°F')),
                 ]),
                 const SizedBox(height: 10),
-                _roRow('Known Allergies', n('allergies')),
+                _editField('Known Allergies', _pat1AllergyCtrl,
+                    maxLines: 2, hint: 'e.g. Penicillin, Sulfa drugs'),
               ]),
             ),
           ],
@@ -1235,40 +1424,91 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     ],
   );
 
-  // ── Step 2 : Treatment (exact same as patient registration) ───────────────
-  Widget _buildStep2() => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-    children: [
-      // ── Vitals (editable per visit) ──────────────────────────────────
-      _WizardCard(
-        title: 'Vitals',
-        icon: Icons.monitor_heart_outlined,
-        color: _kRed,
-        child: Column(children: [
-          Row(children: [
-            Expanded(child: _vField(
-              label: 'Weight',
-              controller: _weightCtrl,
-              prefixIcon: Icons.monitor_weight_outlined,
-              hint: '65 kg',
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: _vField(
-              label: 'Blood Pressure',
-              controller: _bpCtrl,
-              prefixIcon: Icons.favorite_border_rounded,
-              hint: '120/80',
-            )),
-            const SizedBox(width: 12),
-            Expanded(child: _vField(
-              label: 'Temperature',
-              controller: _tempCtrl,
-              prefixIcon: Icons.thermostat_outlined,
-              hint: '37.1 °C',
-            )),
-          ]),
+  // ── Existing photo chip (shown inline under each section in edit mode) ──────
+  Widget _existingPhotoChip(PhotoEntity p) {
+    final filename = p.storagePath.split('/').last;
+    return GestureDetector(
+      onTap: () {
+        if (p.url != null && p.url!.isNotEmpty) {
+          launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _kBlue.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: _kBlue.withValues(alpha: 0.25)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.insert_drive_file_rounded, color: _kBlue, size: 13),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(filename,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                    color: _kNavy(context)),
+                overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () =>
+                ref.read(photoProvider(widget.patientId).notifier).delete(p),
+            child: Icon(Icons.close_rounded, size: 14, color: _kMuted(context)),
+          ),
         ]),
       ),
+    );
+  }
+
+  // ── Step 2 : Treatment (exact same as patient registration) ───────────────
+  Widget _buildStep2() {
+    // Watch once unconditionally — correct Riverpod pattern for ConsumerState.
+    // Calling ref.watch() inside a nested local function (old pattern) caused
+    // the subscription to be registered only when that branch rendered, which
+    // meant Follow-up visits (different tab or section state) sometimes missed
+    // the provider update.
+    final _allPatientPhotos = ref.watch(photoProvider(widget.patientId)).photos;
+    final _visitPhotos = widget.visitId != null
+        ? _allPatientPhotos.where((p) => p.visitId == widget.visitId).toList()
+        : <PhotoEntity>[];
+
+    // Filter existing photos by section caption.
+    List<PhotoEntity> ep(String caption) =>
+        _visitPhotos.where((p) => p.caption == caption).toList();
+
+    // Catch photos that have a visitId match but no recognised section caption
+    // (e.g. uploaded before the caption feature, or from an unknown section).
+    const _knownCaptions = {
+      'Previous History', 'Chief Complaint', 'General Examination',
+      'Neurological Examination', 'Imaging', 'Other Investigation',
+      'Impression', 'Treatment Plan', 'Medicines',
+      'Cross Consultation', 'Clinical Diagnosis',
+    };
+    final _orphanPhotos = _visitPhotos
+        .where((p) => p.caption == null || !_knownCaptions.contains(p.caption))
+        .toList();
+
+    return ListView(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+    children: [
+
+      // ── Orphan photos (uploaded before caption feature or unknown section) ──
+      if (_orphanPhotos.isNotEmpty) ...[
+        _WizardCard(
+          title: 'Previously Uploaded',
+          icon: Icons.cloud_done_rounded,
+          color: _kBlue,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${_orphanPhotos.length} file${_orphanPhotos.length == 1 ? '' : 's'} attached to this visit',
+                style: TextStyle(fontSize: 12, color: _kSlate(context))),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6,
+                children: _orphanPhotos.map(_existingPhotoChip).toList()),
+          ]),
+        ),
+        const SizedBox(height: 12),
+      ],
 
       // ── History & Complaint ──────────────────────────────────────────
       _WizardCard(
@@ -1281,6 +1521,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             controller: _prevHistoryCtrl,
             files: _prevHistoryFiles,
             onFilesChange: (f) => _prevHistoryFiles..clear()..addAll(f),
+            existingPhotos: ep('Previous History'),
             prefixIcon: Icons.history_edu_outlined,
             hint: 'Enter previous medical history…',
           ),
@@ -1290,6 +1531,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             controller: _complaintCtrl,
             files: _chiefComplaintFiles,
             onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
+            existingPhotos: ep('Chief Complaint'),
             prefixIcon: Icons.report_problem_outlined,
             hint: 'Primary reason for visit…',
           ),
@@ -1416,6 +1658,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     _fileChip(_examGeneralFiles[idx].name, () =>
                         setState(() => _examGeneralFiles.removeAt(idx))))),
             ],
+            if (ep('General Examination').isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6,
+                  children: ep('General Examination').map(_existingPhotoChip).toList()),
+            ],
           ] else ...[
             TextFormField(
               controller: _examNeurologicalCtrl,
@@ -1478,30 +1725,27 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                         () => setState(() =>
                             _examNeurologicalFiles.removeAt(idx))))),
             ],
+            if (ep('Neurological Examination').isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6,
+                  children: ep('Neurological Examination').map(_existingPhotoChip).toList()),
+            ],
           ],
         ]),
       ),
 
-      // ── Investigation ────────────────────────────────────────────────
+      // ── Previous Investigations ──────────────────────────────────────
       _WizardCard(
-        title: 'Investigation',
+        title: 'Previous Investigations',
         icon: Icons.science_outlined,
-        color: _kGreen,
+        color: _kBlue,
         child: Column(children: [
-          _fieldWithUpload(
-            label: 'Diagnosis',
-            controller: _clinicalDiagnosisCtrl,
-            files: _clinicalDiagnosisFiles,
-            onFilesChange: (f) => _clinicalDiagnosisFiles..clear()..addAll(f),
-            prefixIcon: Icons.local_hospital_outlined,
-            hint: 'Clinical diagnosis…',
-          ),
-          const SizedBox(height: 12),
           _fieldWithUpload(
             label: 'Imaging',
             controller: _imagingCtrl,
             files: _imagingFiles,
             onFilesChange: (f) => _imagingFiles..clear()..addAll(f),
+            existingPhotos: ep('Imaging'),
             prefixIcon: Icons.image_search_rounded,
             hint: 'Imaging findings (X-Ray, MRI, CT…)',
           ),
@@ -1511,10 +1755,27 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             controller: _otherInvestCtrl,
             files: _otherInvestFiles,
             onFilesChange: (f) => _otherInvestFiles..clear()..addAll(f),
+            existingPhotos: ep('Other Investigation'),
             prefixIcon: Icons.biotech_outlined,
             hint: 'Lab reports, other tests…',
           ),
         ]),
+      ),
+
+      // ── Impression ───────────────────────────────────────────────────
+      _WizardCard(
+        title: 'Impression',
+        icon: Icons.lightbulb_outline_rounded,
+        color: _kBlue,
+        child: _fieldWithUpload(
+          label: 'Clinical Impression',
+          controller: _diagnosisCtrl,
+          files: _impressionFiles,
+          onFilesChange: (f) => _impressionFiles..clear()..addAll(f),
+          existingPhotos: ep('Impression'),
+          prefixIcon: Icons.rule_outlined,
+          hint: 'Clinical impression / assessment…',
+        ),
       ),
 
       // ── Clinical Plan ────────────────────────────────────────────────
@@ -1524,32 +1785,16 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         color: _kBlue,
         child: Column(children: [
           _fieldWithUpload(
-            label: 'Impression',
-            controller: _diagnosisCtrl,
-            files: _impressionFiles,
-            onFilesChange: (f) => _impressionFiles..clear()..addAll(f),
-            prefixIcon: Icons.rule_outlined,
-            hint: 'Clinical impression…',
-          ),
-          const SizedBox(height: 12),
-          _fieldWithUpload(
             label: 'Plan',
             controller: _treatmentCtrl,
             files: _planFiles,
             onFilesChange: (f) => _planFiles..clear()..addAll(f),
+            existingPhotos: ep('Treatment Plan'),
             prefixIcon: Icons.assignment_outlined,
             hint: 'Recommended plan…',
           ),
           const SizedBox(height: 12),
           _buildMedicationTable(),
-          const SizedBox(height: 12),
-          _vField(
-            label: 'Notes',
-            controller: _treatNotesCtrl,
-            maxLines: 3,
-            prefixIcon: Icons.notes_rounded,
-            hint: 'Additional clinical notes…',
-          ),
           const SizedBox(height: 12),
           _vField(
             label: 'Advice',
@@ -1564,13 +1809,28 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             controller: _crossConsultCtrl,
             files: _crossConsultFiles,
             onFilesChange: (f) => _crossConsultFiles..clear()..addAll(f),
+            existingPhotos: ep('Cross Consultation'),
             prefixIcon: Icons.people_outline_rounded,
             hint: 'Referred to / consulted with…',
           ),
         ]),
       ),
+
+      // ── Doctor's Notes (private — not printed) ───────────────────────
+      _WizardCard(
+        title: "Doctor's Notes",
+        icon: Icons.lock_outline_rounded,
+        color: _kBlue,
+        child: _vField(
+          label: 'Notes (for your reference only)',
+          controller: _treatNotesCtrl,
+          maxLines: 4,
+          hint: 'Private notes — will not appear on the patient sheet…',
+        ),
+      ),
     ],
   );
+  }
 
   // ── Structured medication table ───────────────────────────────────────────
   Widget _buildMedicationTable() {
@@ -1652,27 +1912,40 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                       : null,
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                child: Row(children: [
-                  Expanded(flex: 3, child: Text(row.medicine,
-                      style: TextStyle(fontSize: 12, color: _kNavy(context),
-                          fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.route,
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.frequency,
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
-                      style: TextStyle(fontSize: 12, color: _kSlate(context)),
-                      overflow: TextOverflow.ellipsis)),
-                  GestureDetector(
-                    onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
-                    child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
-                  ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(flex: 3, child: Text(row.medicine,
+                        style: TextStyle(fontSize: 12, color: _kNavy(context),
+                            fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.route,
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.frequency,
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    Expanded(flex: 2, child: Text(row.duration.isNotEmpty ? row.duration : '—',
+                        style: TextStyle(fontSize: 12, color: _kSlate(context)),
+                        overflow: TextOverflow.ellipsis)),
+                    GestureDetector(
+                      onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
+                      child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
+                    ),
+                  ]),
+                  if (row.specialInstruction.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(Icons.info_outline_rounded, size: 11, color: _kAmber),
+                      const SizedBox(width: 4),
+                      Expanded(child: Text(row.specialInstruction,
+                          style: TextStyle(fontSize: 10, color: _kAmber,
+                              fontStyle: FontStyle.italic),
+                          overflow: TextOverflow.ellipsis)),
+                    ]),
+                  ],
                 ]),
               );
             }),
@@ -1864,9 +2137,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     // Determine banner style
     final isUnsavedDraft = _savedVisit == null && widget.visitId == null;
     final isViewMode     = widget.visitId != null && !_justSaved;
-    final bannerColor = isUnsavedDraft ? _kAmber
-        : isViewMode ? _kBlue
-        : _kGreen;
+    final bannerColor = isUnsavedDraft ? _kAmber : _kBlue;
     final bannerIcon = isUnsavedDraft ? Icons.edit_note_outlined
         : isViewMode ? Icons.assignment_outlined
         : Icons.check_rounded;
@@ -1941,33 +2212,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         ),
         const SizedBox(height: 10),
 
-        // ── Patient Information ───────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: sCard('Patient Information', Icons.person_outline_rounded,
-              _kBlue,
-            Wrap(
-              spacing: 24,
-              runSpacing: 0,
-              children: [
-                SizedBox(width: double.infinity, child: iField('Full Name', fullName.isEmpty ? '—' : fullName)),
-                iField('UHID', p?.prn ?? '—'),
-                iField('Age', p?.age != null ? '${p!.age} yrs' : '—'),
-                iField('Gender', gender),
-                iField('Phone', fv(p?.phone)),
-                iField('Alt Phone', n('altPhone')),
-                iField('Email', n('email')),
-                iField('Address', fv(p?.address)),
-                iField('ID Proof Type', n('idProofType')),
-                iField('ID Number', n('idProofNumber')),
-              ],
-            ),
-          ),
-        ),
-
         // ── Vitals | Clinical Snapshot ────────────────────────────────────
         twoCol(
-          sCard('Vitals', Icons.monitor_heart_outlined, _kRed,
+          sCard('Vitals', Icons.monitor_heart_outlined, _kBlue,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               pRow('Weight', fv(wt)),
               pRow('Blood Pressure', fv(bp)),
@@ -1975,11 +2222,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             ]),
           ),
           sCard('Clinical Snapshot', Icons.health_and_safety_outlined,
-              _kAmber,
-            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              pRow('Known Allergies', n('allergies')),
-              pRow('Medical History', n('clinicalNotes')),
-            ]),
+              _kBlue,
+            pRow('Known Allergies', fv(p?.allergies ?? n('allergies'))),
           ),
         ),
 
@@ -2005,22 +2249,33 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ),
         ),
 
-        // ── Investigation | Clinical Plan ─────────────────────────────────
-        twoCol(
-          sCard('Investigation', Icons.science_outlined,
+        // ── Previous Investigations ───────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Previous Investigations', Icons.science_outlined,
               const Color(0xFFF59E0B),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              eRow('Clinical Diagnosis',
-                  _clinicalDiagnosisCtrl.text.trim(), _clinicalDiagnosisFiles),
               eRow('Imaging', _imagingCtrl.text.trim(), _imagingFiles),
               eRow('Other Investigation',
                   _otherInvestCtrl.text.trim(), _otherInvestFiles),
             ]),
           ),
-          sCard('Clinical Plan', Icons.assignment_outlined, _kBlue,
+        ),
+
+        // ── Impression ────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Impression', Icons.lightbulb_outline_rounded, _kAmber,
+            eRow('Clinical Impression',
+                _diagnosisCtrl.text.trim(), _impressionFiles),
+          ),
+        ),
+
+        // ── Clinical Plan ─────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: sCard('Clinical Plan', Icons.assignment_outlined, _kBlue,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              eRow('Impression',
-                  _diagnosisCtrl.text.trim(), _impressionFiles),
               eRow('Plan', _treatmentCtrl.text.trim(), _planFiles),
               if (_prescriptionRows.isNotEmpty) ...[
                 Text('Prescriptions',
@@ -2030,57 +2285,87 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ...List.generate(_prescriptionRows.length, (idx) {
                   final r = _prescriptionRows[idx];
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(children: [
-                      Container(
-                        width: 20, height: 20,
-                        decoration: BoxDecoration(
-                            color: _kBlue.withValues(alpha: 0.12),
-                            shape: BoxShape.circle),
-                        alignment: Alignment.center,
-                        child: Text('${idx + 1}',
-                            style: TextStyle(
-                                fontSize: 9, fontWeight: FontWeight.w800,
-                                color: _kBlue)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: RichText(
-                          text: TextSpan(
-                            style: TextStyle(
-                                fontSize: 12, color: _kNavy(context),
-                                fontWeight: FontWeight.w600),
-                            children: [
-                              TextSpan(text: r.medicine),
-                              if (r.dose.isNotEmpty)
-                                TextSpan(text: '  ${r.dose}',
-                                    style: TextStyle(
-                                        color: _kSlate(context), fontWeight: FontWeight.w500)),
-                              TextSpan(text: '  ·  ${r.route}  ·  ${r.frequency}',
-                                  style: TextStyle(
-                                      color: _kMuted(context), fontSize: 11,
-                                      fontWeight: FontWeight.w500)),
-                              if (r.duration.isNotEmpty)
-                                TextSpan(text: '  ×  ${r.duration}',
-                                    style: TextStyle(
-                                        color: _kMuted(context), fontSize: 11,
-                                        fontWeight: FontWeight.w500)),
-                            ],
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Container(
+                            width: 20, height: 20,
+                            decoration: BoxDecoration(
+                                color: _kBlue.withValues(alpha: 0.12),
+                                shape: BoxShape.circle),
+                            alignment: Alignment.center,
+                            child: Text('${idx + 1}',
+                                style: TextStyle(
+                                    fontSize: 9, fontWeight: FontWeight.w800,
+                                    color: _kBlue)),
                           ),
-                        ),
-                      ),
-                    ]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                    fontSize: 12, color: _kNavy(context),
+                                    fontWeight: FontWeight.w600),
+                                children: [
+                                  TextSpan(text: r.medicine),
+                                  if (r.dose.isNotEmpty)
+                                    TextSpan(text: '  ${r.dose}',
+                                        style: TextStyle(
+                                            color: _kSlate(context), fontWeight: FontWeight.w500)),
+                                  TextSpan(text: '  ·  ${r.route}  ·  ${r.frequency}',
+                                      style: TextStyle(
+                                          color: _kMuted(context), fontSize: 11,
+                                          fontWeight: FontWeight.w500)),
+                                  if (r.duration.isNotEmpty)
+                                    TextSpan(text: '  ×  ${r.duration}',
+                                        style: TextStyle(
+                                            color: _kMuted(context), fontSize: 11,
+                                            fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ]),
+                        if (r.specialInstruction.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 28),
+                            child: Row(children: [
+                              Icon(Icons.info_outline_rounded,
+                                  size: 10, color: _kAmber),
+                              const SizedBox(width: 4),
+                              Expanded(child: Text(r.specialInstruction,
+                                  style: TextStyle(fontSize: 10, color: _kAmber,
+                                      fontStyle: FontStyle.italic))),
+                            ]),
+                          ),
+                        ],
+                      ],
+                    ),
                   );
                 }),
                 const SizedBox(height: 4),
               ] else
                 eRow('Treatment', '', _treatmentMedFiles),
-              pRow('Notes', fv(_treatNotesCtrl.text.trim())),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
               eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),
         ),
+
+        // ── Doctor's Notes (private) ──────────────────────────────────────
+        if (_treatNotesCtrl.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: sCard("Doctor's Notes", Icons.lock_outline_rounded,
+                _kBlue,
+              Text(_treatNotesCtrl.text.trim(),
+                  style: TextStyle(fontSize: 13, color: _kNavy(context),
+                      fontWeight: FontWeight.w500)),
+            ),
+          ),
       ],
     );
   }
@@ -2205,6 +2490,7 @@ class _PrescriptionRow {
   String route;
   String frequency;
   String duration;
+  String specialInstruction;
 
   _PrescriptionRow({
     this.medicine = '',
@@ -2212,22 +2498,25 @@ class _PrescriptionRow {
     this.route = '',
     this.frequency = '',
     this.duration = '',
+    this.specialInstruction = '',
   });
 
   Map<String, dynamic> toJson() => {
-    'medicine':  medicine,
-    'dose':      dose,
-    'route':     route,
-    'frequency': frequency,
-    'duration':  duration,
+    'medicine':           medicine,
+    'dose':               dose,
+    'route':              route,
+    'frequency':          frequency,
+    'duration':           duration,
+    'specialInstruction': specialInstruction,
   };
 
   static _PrescriptionRow fromJson(Map<String, dynamic> j) => _PrescriptionRow(
-    medicine:  j['medicine']  as String? ?? '',
-    dose:      j['dose']      as String? ?? '',
-    route:     j['route']     as String? ?? '',
-    frequency: j['frequency'] as String? ?? '',
-    duration:  j['duration']  as String? ?? '',
+    medicine:           j['medicine']           as String? ?? '',
+    dose:               j['dose']               as String? ?? '',
+    route:              j['route']              as String? ?? '',
+    frequency:          j['frequency']          as String? ?? '',
+    duration:           j['duration']           as String? ?? '',
+    specialInstruction: j['specialInstruction'] as String? ?? '',
   );
 }
 
@@ -2250,12 +2539,13 @@ const _kRoutes     = ['Oral', 'IV', 'IM', 'SC', 'Topical', 'SL', 'Inhalation', '
 const _kFreqs      = ['OD', 'BD', 'TDS', 'QID', 'SOS', 'PRN', 'HS', 'Weekly', 'Fortnightly', 'Monthly'];
 
 class _AddMedicineSheetState extends State<_AddMedicineSheet> {
-  final _nameCtrl  = TextEditingController();
-  final _doseCtrl  = TextEditingController();
-  final _routeCtrl = TextEditingController();
-  final _freqCtrl  = TextEditingController();
-  final _durCtrl   = TextEditingController();
-  final _nameFocus = FocusNode();
+  final _nameCtrl        = TextEditingController();
+  final _doseCtrl        = TextEditingController();
+  final _routeCtrl       = TextEditingController();
+  final _freqCtrl        = TextEditingController();
+  final _durCtrl         = TextEditingController();
+  final _specialCtrl     = TextEditingController();
+  final _nameFocus       = FocusNode();
 
   List<MedicineSuggestion> _suggestions = [];
   bool _showSugg = false;
@@ -2274,6 +2564,7 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     _routeCtrl.dispose();
     _freqCtrl.dispose();
     _durCtrl.dispose();
+    _specialCtrl.dispose();
     _nameFocus.dispose();
     super.dispose();
   }
@@ -2305,11 +2596,12 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
     final med = _nameCtrl.text.trim();
     if (med.isEmpty) return;
     Navigator.of(context).pop(_PrescriptionRow(
-      medicine:  med,
-      dose:      _doseCtrl.text.trim(),
-      route:     _routeCtrl.text.trim(),
-      frequency: _freqCtrl.text.trim(),
-      duration:  _durCtrl.text.trim(),
+      medicine:           med,
+      dose:               _doseCtrl.text.trim(),
+      route:              _routeCtrl.text.trim(),
+      frequency:          _freqCtrl.text.trim(),
+      duration:           _durCtrl.text.trim(),
+      specialInstruction: _specialCtrl.text.trim(),
     ));
   }
 
@@ -2577,6 +2869,40 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                         ),
                       ),
                     ]),
+                  ),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // ── Special Instruction ────────────────────────────────────────
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Special Instruction',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                          color: _kSlate(context))),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _specialCtrl,
+                    maxLines: 2,
+                    style: TextStyle(fontSize: 14, color: _kNavy(context),
+                        fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Take after food, avoid alcohol…',
+                      hintStyle: TextStyle(color: _kMuted(context), fontSize: 13),
+                      prefixIcon: Icon(Icons.info_outline_rounded,
+                          size: 17, color: _kMuted(context)),
+                      filled: true, fillColor: _kBg(context),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _kBorder(context))),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _kBorder(context))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: _kBlue, width: 1.5)),
+                    ),
                   ),
                 ]),
 
