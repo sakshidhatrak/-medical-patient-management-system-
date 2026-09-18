@@ -31,7 +31,7 @@ public class SurgeryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<SurgeryDto>> create(
             @PathVariable Long patientId,
             @RequestBody SurgeryRequest req,
@@ -42,7 +42,7 @@ public class SurgeryController {
     }
 
     @PutMapping("/{surgeryId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<SurgeryDto>> update(
             @PathVariable Long patientId,
             @PathVariable Long surgeryId,
@@ -53,7 +53,7 @@ public class SurgeryController {
     }
 
     @DeleteMapping("/{surgeryId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable Long patientId, @PathVariable Long surgeryId) {
         service.delete(patientId, surgeryId);

@@ -32,7 +32,7 @@ public class VisitController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<VisitDto>> create(
             @PathVariable Long patientId,
             @RequestBody VisitRequest req,
@@ -43,7 +43,7 @@ public class VisitController {
     }
 
     @PutMapping("/{visitId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<VisitDto>> update(
             @PathVariable Long patientId,
             @PathVariable Long visitId,
@@ -54,7 +54,7 @@ public class VisitController {
     }
 
     @DeleteMapping("/{visitId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable Long patientId,
             @PathVariable Long visitId) {

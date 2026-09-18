@@ -32,7 +32,7 @@ public class RadiologyController {
     }
 
     @PostMapping("/patients/{patientId}/radiology")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<RadiologyDto>> create(
             @PathVariable Long patientId,
             @RequestBody RadiologyRequest req,
@@ -53,7 +53,7 @@ public class RadiologyController {
     }
 
     @DeleteMapping("/radiology/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         repo.deleteById(id);
         return ResponseEntity.ok(ApiResponse.ok("Deleted", null));
