@@ -22,6 +22,7 @@ import '../../../surgeries/presentation/providers/surgery_provider.dart';
 import '../../../visits/domain/entities/visit_entity.dart';
 import '../../../visits/presentation/providers/visit_provider.dart';
 import '../providers/patient_provider.dart';
+import '../../../audit/audit_provider.dart';
 import 'package:medical_patient_management/core/theme/theme_extensions.dart';
 import 'package:medical_patient_management/core/widgets/sync_status_badge.dart';
 
@@ -53,12 +54,13 @@ Map<String, String> _buildVisitPrintMap(
       final presJson = jsonDecode(exam['prescriptions']!) as List;
       final rebuilt = presJson.map((p) {
         final m = p as Map<String, dynamic>;
-        final medicine  = m['medicine']  as String? ?? '';
-        final dose      = m['dose']      as String? ?? '';
-        final route     = m['route']     as String? ?? '';
-        final frequency = m['frequency'] as String? ?? '';
-        final duration  = m['duration']  as String? ?? '';
-        return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}';
+        final medicine           = m['medicine']           as String? ?? '';
+        final dose               = m['dose']               as String? ?? '';
+        final route              = m['route']              as String? ?? '';
+        final frequency          = m['frequency']          as String? ?? '';
+        final duration           = m['duration']           as String? ?? '';
+        final specialInstruction = m['specialInstruction'] as String? ?? '';
+        return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}${specialInstruction.isNotEmpty ? " | $specialInstruction" : ""}';
       }).where((l) => l.isNotEmpty).join('\n');
       if (rebuilt.isNotEmpty) exam['medications'] = rebuilt;
     } catch (_) {}
@@ -178,6 +180,10 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
               child: _PatientHeaderCard(
                 patient: patient,
                 canEditPatient: canEditPatient,
+                onEditPatient: canEditPatient ? () async {
+                  await context.push('/patients/$patientId/edit');
+                  ref.invalidate(patientByIdProvider(patientId));
+                } : null,
                 onDeletePatient: canWrite
                     ? () async {
                         final confirmed = await showDialog<bool>(
@@ -246,12 +252,16 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                           onDocTap: () {
                             if (timeline[i].type == 'visit') {
                               context.push(
-                                  '/patients/$patientId/visits/${timeline[i].id}');
-                            } else if (canWrite) {
+                                  '/patients/$patientId/visits/${timeline[i].id}/view');
+                            } else {
                               context.push(
                                   '/patients/$patientId/surgeries/${timeline[i].id}');
                             }
                           },
+                          onEditTap: canWrite && timeline[i].type == 'visit'
+                              ? () => context.push(
+                                  '/patients/$patientId/visits/${timeline[i].id}')
+                              : null,
                           onDelete: canWrite && timeline[i].type == 'visit'
                               ? () async {
                                   final confirmed = await showDialog<bool>(
@@ -414,132 +424,203 @@ class _TimelineAppBar extends StatelessWidget implements PreferredSizeWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Patient header card — Image #18 design
+// Patient header card — compact, view-only
 // ─────────────────────────────────────────────────────────────────────────────
 class _PatientHeaderCard extends StatelessWidget {
   final PatientEntity patient;
   final bool canEditPatient;
+  final VoidCallback? onEditPatient;
   final VoidCallback? onDeletePatient;
-  const _PatientHeaderCard({required this.patient, this.canEditPatient = false, this.onDeletePatient});
+  const _PatientHeaderCard({required this.patient, this.canEditPatient = false, this.onEditPatient, this.onDeletePatient});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.cardColor,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+    final age    = patient.computedAge > 0 ? '${patient.computedAge} yrs' : null;
+    final gender = patient.sex?.isNotEmpty == true
+        ? (patient.sex!.toLowerCase().startsWith('m') ? 'Male'
+           : patient.sex!.toLowerCase().startsWith('f') ? 'Female'
+           : patient.sex!)
+        : null;
+    final dob = patient.dateOfBirth != null
+        ? DateFormat('dd MMM yyyy').format(patient.dateOfBirth!)
+        : null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10, offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          // Compact initials circle
+          Container(
+            width: 50, height: 50,
+            decoration: BoxDecoration(
+              color: _kAccent.withValues(alpha: 0.10),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                patient.initials.isEmpty ? '?' : patient.initials,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w800,
+                    color: _kAccent),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Name + ID + phone + demography
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  patient.fullName,
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w800,
+                      color: context.textPrimary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    'ID: ${patient.prn}',
+                    if (patient.phone?.isNotEmpty == true) patient.phone!,
+                  ].join('  ·  '),
+                  style: TextStyle(fontSize: 11, color: context.textSecondary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (age != null || gender != null || dob != null) ...[
+                  const SizedBox(height: 5),
+                  Wrap(spacing: 5, runSpacing: 4, children: [
+                    if (gender != null) _DemoBadge(gender,
+                        gender == 'Male' ? Icons.male_rounded : Icons.female_rounded),
+                    if (age != null) _DemoBadge(age, Icons.cake_outlined),
+                    if (dob != null) _DemoBadge(dob, Icons.calendar_today_outlined),
+                  ]),
+                ],
+              ],
+            ),
+          ),
+          // Edit button (admin only)
+          if (onEditPatient != null) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onEditPatient,
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: _kAccent.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.edit_outlined,
+                    color: _kAccent, size: 17),
+              ),
             ),
           ],
-        ),
-        child: Row(
-          children: [
-            // Blue left accent bar
-            Container(width: 4, color: _kAccent),
-            const SizedBox(width: 12),
-            // Person icon
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: _kAccent.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.person_outline_rounded,
-                  color: _kAccent, size: 22),
-            ),
-            // Vertical divider
-            Container(
-              width: 1,
-              height: 38,
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              color: context.borderColor,
-            ),
-            // Name + ID
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      patient.fullName,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: context.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'ID: ${patient.prn}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: _kAccent,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // Delete button
+          if (onDeletePatient != null) ...[
             const SizedBox(width: 8),
-            // Edit button
-            if (canEditPatient)
-              GestureDetector(
-                onTap: () => context.push('/patients/${patient.id}/edit'),
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: _kAccent.withValues(alpha: 0.10),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.edit_outlined,
-                      color: _kAccent, size: 17),
+            GestureDetector(
+              onTap: onDeletePatient,
+              child: Container(
+                width: 36, height: 36,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFFEBEB), shape: BoxShape.circle,
                 ),
+                child: const Icon(Icons.delete_outline_rounded,
+                    color: Color(0xFFE53935), size: 18),
               ),
-            const SizedBox(width: 8),
-            if (onDeletePatient != null)
-              GestureDetector(
-                onTap: onDeletePatient,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFFEBEB),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.delete_outline_rounded,
-                      color: Color(0xFFE53935), size: 17),
-                ),
-              ),
-            const SizedBox(width: 14),
+            ),
           ],
-        ),
+        ]),
       ),
     );
   }
 }
 
+class _DemoBadge extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  const _DemoBadge(this.label, this.icon);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: _kAccent.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 10, color: _kAccent),
+          const SizedBox(width: 3),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w600, color: _kAccent)),
+        ]),
+      );
+}
+
+class _HeaderInfoCell extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  const _HeaderInfoCell({required this.icon, required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: _kAccent.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 15, color: _kAccent),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(value,
+                      style: TextStyle(
+                          fontSize: 12, fontWeight: FontWeight.w700,
+                          color: context.textPrimary),
+                      overflow: TextOverflow.ellipsis),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10, color: context.textSecondary,
+                          fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Single timeline row
 // ─────────────────────────────────────────────────────────────────────────────
-class _TimelineRow extends StatefulWidget {
+class _TimelineRow extends ConsumerStatefulWidget {
   final _TimelineItem item;
   final PatientEntity patient;
   final bool isLast;
   final bool canWrite;
   final List<PhotoEntity> photos;
   final VoidCallback onDocTap;
+  final VoidCallback? onEditTap;
   final VoidCallback? onPrint;
   final VoidCallback? onDelete;
   final bool initiallyExpanded;
@@ -550,16 +631,17 @@ class _TimelineRow extends StatefulWidget {
     required this.canWrite,
     required this.photos,
     required this.onDocTap,
+    this.onEditTap,
     this.onPrint,
     this.onDelete,
     this.initiallyExpanded = false,
   });
 
   @override
-  State<_TimelineRow> createState() => _TimelineRowState();
+  ConsumerState<_TimelineRow> createState() => _TimelineRowState();
 }
 
-class _TimelineRowState extends State<_TimelineRow> {
+class _TimelineRowState extends ConsumerState<_TimelineRow> {
   late bool _expanded;
   bool _showMeds = false;
 
@@ -570,14 +652,23 @@ class _TimelineRowState extends State<_TimelineRow> {
   }
 
   _TimelineItem get item => widget.item;
-  bool get isLast => widget.isLast;
   List<PhotoEntity> get photos => widget.photos;
 
-  Color get _dotColor => item.type == 'visit' ? _kAccent : _kRed;
+  void _showAuditSheet(BuildContext context, String visitId, String patientId) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AuditBottomSheet(
+        visitId: visitId,
+        patientId: patientId,
+        title: 'Edit History',
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final dotColor    = _dotColor;
     final accentColor = item.type == 'visit' ? _kAccent : _kRed;
 
     final examMap = <String, String>{};
@@ -589,49 +680,47 @@ class _TimelineRowState extends State<_TimelineRow> {
         });
       } catch (_) {}
     }
-    // Rebuild medications from structured prescriptions JSON
     if (examMap.containsKey('prescriptions')) {
       try {
         final presJson = jsonDecode(examMap['prescriptions']!) as List;
         final rebuilt = presJson.map((p) {
           final m = p as Map<String, dynamic>;
-          final medicine  = m['medicine']  as String? ?? '';
-          final dose      = m['dose']      as String? ?? '';
-          final route     = m['route']     as String? ?? '';
-          final frequency = m['frequency'] as String? ?? '';
-          final duration  = m['duration']  as String? ?? '';
-          return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}';
+          final medicine           = m['medicine']           as String? ?? '';
+          final dose               = m['dose']               as String? ?? '';
+          final route              = m['route']              as String? ?? '';
+          final frequency          = m['frequency']          as String? ?? '';
+          final duration           = m['duration']           as String? ?? '';
+          final specialInstruction = m['specialInstruction'] as String? ?? '';
+          return '$medicine${dose.isNotEmpty ? " [$dose]" : ""}${route.isNotEmpty ? " ($route)" : ""}${frequency.isNotEmpty ? " - $frequency" : ""}${duration.isNotEmpty ? " × $duration" : ""}${specialInstruction.isNotEmpty ? " | $specialInstruction" : ""}';
         }).where((l) => l.isNotEmpty).join('\n');
         if (rebuilt.isNotEmpty) examMap['medications'] = rebuilt;
       } catch (_) {}
     }
     String ex(String k) => examMap[k] ?? '';
 
-    final dataRows = <({String label, String value, IconData icon, Color color})>[];
-    void add(String label, String val, IconData icon, Color color) {
-      if (val.trim().isNotEmpty) dataRows.add((label: label, value: val.trim(), icon: icon, color: color));
+    final dataRows = <({String label, String value, IconData icon})>[];
+    void add(String label, String val, IconData icon) {
+      if (val.trim().isNotEmpty) dataRows.add((label: label, value: val.trim(), icon: icon));
     }
 
     if (item.visit != null) {
-      add('Known Allergies',          widget.patient.allergies ?? '',      Icons.warning_amber_rounded,       _kAccent);
-      add('Medical History',          widget.patient.medicalHistory ?? '', Icons.history_outlined,            _kAccent);
-      add('Chief Complaint',          item.visit!.complaints ?? '',        Icons.description_outlined,        _kAccent);
-      add('Previous History',         ex('previousHistory'),               Icons.history_edu_outlined,        _kAccent);
-      add('General Examination',      ex('examGeneral'),                   Icons.search_outlined,             _kAccent);
-      add('Neurological Examination', ex('examNeurological'),              Icons.psychology_outlined,         _kAccent);
-      add('Imaging',                  ex('imaging'),                       Icons.image_outlined,              _kAccent);
-      add('Other Investigation',      ex('otherInvestigation'),            Icons.science_outlined,            _kAccent);
-      add('Impression',               item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline,         _kAccent);
-      add('Treatment Plan',           item.visit!.plan ?? '',              Icons.map_outlined,                _kAccent);
-      add('Advice',                   ex('advice'),                        Icons.chat_bubble_outline_rounded, _kAccent);
-      add('Notes',                    item.visit!.notes ?? '',             Icons.lock_outline_rounded,        _kAccent);
+      add('Chief Complaint',          item.visit!.complaints ?? '',         Icons.description_outlined);
+      add('Previous History',         ex('previousHistory'),                Icons.history_edu_outlined);
+      add('General Examination',      ex('examGeneral'),                    Icons.search_outlined);
+      add('Neurological Examination', ex('examNeurological'),               Icons.psychology_outlined);
+      add('Imaging',                  ex('imaging'),                        Icons.image_outlined);
+      add('Other Investigation',      ex('otherInvestigation'),             Icons.science_outlined);
+      add('Impression',               item.visit!.clinicalImpression ?? '', Icons.lightbulb_outline);
+      add('Treatment Plan',           item.visit!.plan ?? '',               Icons.map_outlined);
+      add('Advice',                   ex('advice'),                         Icons.chat_bubble_outline_rounded);
+      add('Notes',                    item.visit!.notes ?? '',              Icons.lock_outline_rounded);
     } else {
-      add('Procedure',        item.title,    Icons.medical_services_outlined, _kAccent);
-      add('Pre-op Diagnosis', item.subtitle, Icons.assignment_outlined,       _kAccent);
+      add('Procedure',        item.title,    Icons.medical_services_outlined);
+      add('Pre-op Diagnosis', item.subtitle, Icons.assignment_outlined);
     }
 
-    final bp   = (item.visit?.bp?.isNotEmpty == true)   ? item.visit!.bp!   : ex('bp');
-    final wt   = (item.visit?.weight?.isNotEmpty == true) ? item.visit!.weight! : ex('weight');
+    final bp   = (item.visit?.bp?.isNotEmpty == true)     ? item.visit!.bp!          : ex('bp');
+    final wt   = (item.visit?.weight?.isNotEmpty == true)  ? item.visit!.weight!      : ex('weight');
     final temp = (item.visit?.temperature?.isNotEmpty == true) ? item.visit!.temperature! : ex('temperature');
     final hasVitals = bp.isNotEmpty || wt.isNotEmpty || temp.isNotEmpty;
 
@@ -641,239 +730,178 @@ class _TimelineRowState extends State<_TimelineRow> {
         ? medsRaw.split('\n').where((l) => l.trim().isNotEmpty).length
         : 0;
 
-    final hasBody = hasVitals || dataRows.isNotEmpty || hasMeds || photos.isNotEmpty;
+    // Summary line: impression or complaint (first 80 chars)
+    final summaryLine = item.visit != null
+        ? (item.visit!.clinicalImpression?.trim().isNotEmpty == true
+            ? item.visit!.clinicalImpression!.trim()
+            : item.visit!.complaints?.trim() ?? '')
+        : item.subtitle.trim();
 
-    return Stack(
-      children: [
-        // Timeline vertical line — drawn behind everything, full height of row
-        if (!isLast)
-          Positioned(
-            left: 13,
-            top: 22,
-            bottom: 0,
-            child: Container(width: 1.5, color: context.borderColor),
-          ),
+    final hasDetails = hasMeds;
 
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Timeline dot
-        SizedBox(
-          width: 28,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 12, height: 12,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(
-                    color: dotColor.withValues(alpha: 0.35),
-                    blurRadius: 6, offset: const Offset(0, 2),
-                  )],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: context.cardColor,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: accentColor.withValues(alpha: 0.15)),
-                boxShadow: [BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 8, offset: const Offset(0, 2),
-                )],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── Header (date + type/status + 3 action buttons) ──────
-                  InkWell(
-                    onTap: hasBody ? () => setState(() => _expanded = !_expanded) : null,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(14),
-                      topRight: Radius.circular(14),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // Date block
-                          _DateStack(date: item.date, accentColor: accentColor),
-                          // Divider
-                          Container(
-                            width: 1, height: 64,
-                            margin: const EdgeInsets.symmetric(horizontal: 12),
-                            color: accentColor.withValues(alpha: 0.18),
-                          ),
-                          // Visit type + status chips + action buttons — all one line
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.type == 'visit'
-                                      ? (item.visit?.visitType.label ?? 'OPD Visit')
-                                      : item.title,
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: context.textPrimary),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    _ActionBtn(
-                                      icon: Icons.remove_red_eye_outlined,
-                                      label: 'View',
-                                      onTap: widget.onDocTap,
-                                      color: accentColor,
-                                    ),
-                                    if (widget.onPrint != null) ...[
-                                      const SizedBox(width: 8),
-                                      _ActionBtn(
-                                        icon: Icons.print_outlined,
-                                        label: 'Print',
-                                        onTap: widget.onPrint!,
-                                        color: accentColor,
-                                      ),
-                                    ],
-                                    if (widget.canWrite) ...[
-                                      const SizedBox(width: 8),
-                                      _ActionBtn(
-                                        icon: Icons.edit_outlined,
-                                        label: 'Edit',
-                                        onTap: widget.onDocTap,
-                                        color: accentColor,
-                                      ),
-                                      if (widget.onDelete != null) ...[
-                                        const SizedBox(width: 8),
-                                        _ActionBtn(
-                                          icon: Icons.delete_outline_rounded,
-                                          label: 'Delete',
-                                          onTap: widget.onDelete!,
-                                          color: const Color(0xFFEF4444),
-                                        ),
-                                      ],
-                                    ],
-                                    if (hasBody) ...[
-                                      const SizedBox(width: 8),
-                                      Icon(
-                                        _expanded
-                                            ? Icons.keyboard_arrow_up_rounded
-                                            : Icons.keyboard_arrow_down_rounded,
-                                        size: 20,
-                                        color: accentColor,
-                                      ),
-                                    ],
-                                    const Spacer(),
-                                    SyncStatusBadge(syncStatus: item.syncStatus),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // ── Expanded body — section list ────────────────────────
-                  if (_expanded && hasBody) ...[
-                    Divider(height: 1, thickness: 1,
-                        color: accentColor.withValues(alpha: 0.12)),
-
-                    // Vitals row
-                    if (hasVitals)
-                      _SectionRow(
-                        icon: Icons.favorite_border_rounded,
-                        iconColor: _kAccent,
-                        title: 'Vitals',
-                        value: [
-                          if (bp.isNotEmpty)   'SP: $bp',
-                          if (wt.isNotEmpty)   'Weight: $wt',
-                          if (temp.isNotEmpty) 'Temp: $temp',
-                        ].join('   '),
-                        isLast: dataRows.isEmpty && !hasMeds && photos.isEmpty,
-                      ),
-
-                    // Data rows (all except medications)
-                    ...dataRows.asMap().entries.map((e) {
-                      final r       = e.value;
-                      final rowLast = e.key == dataRows.length - 1 &&
-                          !hasMeds && photos.isEmpty;
-                      return _SectionRow(
-                        icon: r.icon,
-                        iconColor: r.color,
-                        title: r.label,
-                        value: r.value,
-                        isLast: rowLast,
-                      );
-                    }),
-
-                    // Treatment / Medicines row
-                    if (hasMeds)
-                      _SectionRow(
-                        icon: Icons.medication_outlined,
-                        iconColor: _kAccent,
-                        title: 'Treatment / Medicines',
-                        value: '$medsCount item${medsCount == 1 ? '' : 's'} added',
-                        isLast: photos.isEmpty && !_showMeds,
-                        trailingWidget: GestureDetector(
-                          onTap: () => setState(() => _showMeds = !_showMeds),
-                          child: Padding(
-                            padding: const EdgeInsets.all(4),
-                            child: Icon(
-                              _showMeds
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.remove_red_eye_outlined,
-                              size: 18,
-                              color: _kAccent,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                    // Medicines table — capped height so long lists don't
-                    // make the card enormous; scrollable to see all rows.
-                    if (_showMeds && hasMeds)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 220),
-                          child: SingleChildScrollView(
-                            child: _MedicinesTable(raw: medsRaw),
-                          ),
-                        ),
-                      ),
-
-                    // Attachments
-                    if (photos.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: _AttachmentsSection(photos: photos),
-                      ),
-                  ],
-                ],
-              ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accentColor.withValues(alpha: 0.18)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10, offset: const Offset(0, 3),
             ),
-          ),
+          ],
         ),
-      ]),
-      ], // Stack children
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            // ── Coloured header band ────────────────────────────────────
+            Container(
+              color: accentColor,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(children: [
+                Icon(
+                  item.type == 'visit'
+                      ? Icons.event_note_outlined
+                      : Icons.medical_services_outlined,
+                  size: 15, color: Colors.white70,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  DateFormat('dd MMM yyyy').format(item.date),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700,
+                      color: Colors.white),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    item.type == 'visit'
+                        ? (item.visit?.visitType.label ?? 'OPD Visit')
+                        : 'Surgery',
+                    style: const TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w700,
+                        color: Colors.white),
+                  ),
+                ),
+                const Spacer(),
+                SyncStatusBadge(syncStatus: item.syncStatus),
+              ]),
+            ),
+
+            const SizedBox(height: 10),
+            Divider(height: 1, color: context.borderColor),
+
+            // ── Action buttons ──────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              child: Row(children: [
+                _CardBtn(
+                  icon: Icons.remove_red_eye_outlined,
+                  label: 'View',
+                  color: accentColor,
+                  onTap: widget.onDocTap,
+                ),
+                if (widget.onPrint != null)
+                  _CardBtn(
+                    icon: Icons.print_outlined,
+                    label: 'Print',
+                    color: accentColor,
+                    onTap: widget.onPrint!,
+                  ),
+                if (widget.canWrite) ...[
+                  _CardBtn(
+                    icon: Icons.edit_outlined,
+                    label: 'Edit',
+                    color: accentColor,
+                    onTap: widget.onEditTap ?? widget.onDocTap,
+                  ),
+                  if (widget.onDelete != null)
+                    _CardBtn(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Delete',
+                      color: const Color(0xFFEF4444),
+                      onTap: widget.onDelete!,
+                    ),
+                ],
+                // History button — only for server-synced visits with a numeric id
+                if (item.visit != null &&
+                    item.visit!.id.isNotEmpty &&
+                    RegExp(r'^\d+$').hasMatch(item.visit!.id))
+                  _CardBtn(
+                    icon: Icons.history_rounded,
+                    label: 'History',
+                    color: const Color(0xFF6B7280),
+                    onTap: () => _showAuditSheet(context, item.visit!.id, widget.patient.id),
+                  ),
+              ]),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ── Small helpers inside _TimelineRow ─────────────────────────────────────────
+// ── Card view helpers ─────────────────────────────────────────────────────────
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _InfoChip({required this.icon, required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+        ]),
+      );
+}
+
+class _CardBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  const _CardBtn({required this.icon, required this.label,
+      required this.color, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 4),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+          ]),
+        ),
+      );
+}
+
+// ── Unused legacy chips (kept for reference) ──────────────────────────────────
 class _Chip extends StatelessWidget {
   final String label;
   final Color color;
@@ -2157,6 +2185,7 @@ class _ImageViewerDialog extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // Bottom "Add New Visit" bar
 // ─────────────────────────────────────────────────────────────────────────────
 class _AddVisitBar extends StatelessWidget {
@@ -2189,4 +2218,433 @@ class _AddVisitBar extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Audit history bottom sheet ────────────────────────────────────────────────
+
+class _AuditBottomSheet extends ConsumerWidget {
+  final String visitId;
+  final String patientId;
+  final String title;
+
+  const _AuditBottomSheet({
+    required this.visitId,
+    required this.patientId,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF1A1A3A) : Colors.white;
+    final textMain = isDark ? Colors.white : const Color(0xFF1A2D5A);
+    final textSub = isDark ? const Color(0xFFB8B5DC) : const Color(0xFF6B7280);
+    final divider = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.grey.withValues(alpha: 0.12);
+
+    // Fetch both visit-level and patient-level audit entries
+    final visitAuditAsync = ref.watch(auditLogProvider(
+        (entityType: 'visit', entityId: visitId)));
+    final patientAuditAsync = ref.watch(auditLogProvider(
+        (entityType: 'patient', entityId: patientId)));
+
+    // Merge: loading if either is loading, error if either errors, else combine + sort
+    final auditAsync = visitAuditAsync.when(
+      loading: () => const AsyncLoading<List<AuditEntry>>(),
+      error: (e, s) => AsyncError<List<AuditEntry>>(e, s),
+      data: (visitEntries) => patientAuditAsync.when(
+        loading: () => const AsyncLoading<List<AuditEntry>>(),
+        error: (e, s) => AsyncError<List<AuditEntry>>(e, s),
+        data: (patientEntries) {
+          final merged = [...visitEntries, ...patientEntries]
+            ..sort((a, b) => b.changedAt.compareTo(a.changedAt));
+          return AsyncData<List<AuditEntry>>(merged);
+        },
+      ),
+    );
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.35,
+      maxChildSize: 0.92,
+      builder: (_, scrollCtrl) => Container(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle + title
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : Colors.grey.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(children: [
+                    const Icon(Icons.history_rounded,
+                        size: 20, color: _kAccent),
+                    const SizedBox(width: 8),
+                    Text(title,
+                        style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: textMain)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Icon(Icons.close_rounded,
+                          size: 20, color: textSub),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  Divider(height: 1, color: divider),
+                ],
+              ),
+            ),
+
+            // Content
+            Expanded(
+              child: auditAsync.when(
+                loading: () => Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const CircularProgressIndicator(color: _kAccent),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Loading history…\nThis may take up to 90 s if the server is waking up.',
+                      style: TextStyle(fontSize: 12, color: textSub),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+                error: (e, _) {
+                  final isTimeout = e.toString().contains('TIMEOUT') ||
+                      e.toString().contains('timed out');
+                  final isNoNet = e.toString().contains('NO_CONNECTION') ||
+                      e.toString().contains('internet');
+                  final msg = isTimeout
+                      ? 'The server is still waking up.\nPlease wait a moment and retry.'
+                      : isNoNet
+                          ? 'No internet connection.\nPlease check your network and retry.'
+                          : 'Could not load history.\nPlease retry.';
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            isNoNet
+                                ? Icons.wifi_off_rounded
+                                : Icons.cloud_off_rounded,
+                            size: 48,
+                            color: textSub.withValues(alpha: 0.4),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(msg,
+                              style: TextStyle(fontSize: 13, color: textSub),
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: () {
+                              ref.invalidate(auditLogProvider(
+                                  (entityType: 'visit', entityId: visitId)));
+                              ref.invalidate(auditLogProvider(
+                                  (entityType: 'patient', entityId: patientId)));
+                            },
+                            icon: const Icon(Icons.refresh_rounded, size: 16),
+                            label: const Text('Retry',
+                                style: TextStyle(fontWeight: FontWeight.w700)),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _kAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 10),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                data: (entries) {
+                  if (entries.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.history_toggle_off_rounded,
+                              size: 48,
+                              color: textSub.withValues(alpha: 0.4)),
+                          const SizedBox(height: 12),
+                          Text('No edit history yet',
+                              style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: textSub)),
+                          const SizedBox(height: 6),
+                          Text('Changes will appear here after the first edit',
+                              style: TextStyle(
+                                  fontSize: 12, color: textSub),
+                              textAlign: TextAlign.center),
+                        ],
+                      ),
+                    );
+                  }
+
+                  // Group entries by date
+                  final grouped = <String, List<AuditEntry>>{};
+                  for (final e in entries) {
+                    final key = DateFormat('dd MMM yyyy').format(
+                        e.changedAt.toLocal());
+                    grouped.putIfAbsent(key, () => []).add(e);
+                  }
+
+                  return ListView.builder(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    itemCount: grouped.length,
+                    itemBuilder: (_, gi) {
+                      final dateKey = grouped.keys.elementAt(gi);
+                      final dayEntries = grouped[dateKey]!;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Date header
+                          Padding(
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _kAccent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(dateKey,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: _kAccent)),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: Divider(
+                                      height: 1, color: divider)),
+                            ]),
+                          ),
+
+                          // Entries for that day
+                          ...dayEntries.map((entry) =>
+                              _AuditEntryTile(
+                                entry: entry,
+                                isDark: isDark,
+                                textMain: textMain,
+                                textSub: textSub,
+                                divider: divider,
+                              )),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuditEntryTile extends StatefulWidget {
+  final AuditEntry entry;
+  final bool isDark;
+  final Color textMain;
+  final Color textSub;
+  final Color divider;
+  const _AuditEntryTile({
+    required this.entry,
+    required this.isDark,
+    required this.textMain,
+    required this.textSub,
+    required this.divider,
+  });
+  @override
+  State<_AuditEntryTile> createState() => _AuditEntryTileState();
+}
+
+class _AuditEntryTileState extends State<_AuditEntryTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.entry;
+    final time = DateFormat('hh:mm a').format(e.changedAt.toLocal());
+    final hasOld = e.oldValue != null && e.oldValue!.isNotEmpty;
+    final hasNew = e.newValue != null && e.newValue!.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: widget.isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : const Color(0xFFF8F9FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: widget.divider),
+      ),
+      child: Column(
+        children: [
+          // Header row
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(children: [
+                Container(
+                  width: 32, height: 32,
+                  decoration: BoxDecoration(
+                    color: _kAccent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.edit_note_rounded,
+                      size: 16, color: _kAccent),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(e.displayLabel,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: widget.textMain)),
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Icon(Icons.access_time_rounded,
+                            size: 11, color: widget.textSub),
+                        const SizedBox(width: 3),
+                        Text(time,
+                            style: TextStyle(
+                                fontSize: 11, color: widget.textSub)),
+                        if (e.changedByName != null) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.person_outline_rounded,
+                              size: 11, color: widget.textSub),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(e.changedByName!,
+                                style: TextStyle(
+                                    fontSize: 11, color: widget.textSub),
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ]),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: widget.textSub,
+                ),
+              ]),
+            ),
+          ),
+
+          // Expanded diff view
+          if (_expanded) ...[
+            Divider(height: 1, color: widget.divider),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (hasOld) ...[
+                    _DiffBox(
+                      label: 'Previous',
+                      value: e.oldValue!,
+                      color: const Color(0xFFDC2626),
+                      bg: const Color(0xFFFEF2F2),
+                      isDark: widget.isDark,
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  if (hasNew)
+                    _DiffBox(
+                      label: 'Updated to',
+                      value: e.newValue!,
+                      color: const Color(0xFF16A34A),
+                      bg: const Color(0xFFF0FDF4),
+                      isDark: widget.isDark,
+                    ),
+                  if (!hasOld && !hasNew)
+                    Text('(no change details)',
+                        style: TextStyle(
+                            fontSize: 12, color: widget.textSub)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DiffBox extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final Color bg;
+  final bool isDark;
+  const _DiffBox({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.bg,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isDark ? color.withValues(alpha: 0.12) : bg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: color)),
+            const SizedBox(height: 4),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white70 : const Color(0xFF374151))),
+          ],
+        ),
+      );
 }

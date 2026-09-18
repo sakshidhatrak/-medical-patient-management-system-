@@ -36,6 +36,8 @@ const Map<String, String> kMockPatientData = {
   'notes':
       'Patient is haemodynamically stable. Follow-up echocardiogram scheduled for tomorrow.',
   'advice': 'Low-sodium diet. Avoid strenuous activity. Follow up in 1 week.',
+  'investigationToBeDone': 'CBC, LFT, RFT — repeat within 1 week. Echo in 2 weeks.',
+  'crossConsultation': 'Cardiology — Dr. Mehta at City Hospital.',
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────

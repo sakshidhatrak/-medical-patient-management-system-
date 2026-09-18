@@ -147,13 +147,13 @@ const List<PrintField> kAllPrintFields = [
   ),
   PrintField(
     id: 'examGeneral',
-    label: 'Examination (General)',
+    label: 'General Examination',
     sectionId: kSectionTreatment,
     icon: Icons.search_outlined,
   ),
   PrintField(
     id: 'examNeurological',
-    label: 'Examination (Neurological)',
+    label: 'Neurological Examination',
     sectionId: kSectionTreatment,
     icon: Icons.psychology_outlined,
   ),
@@ -171,7 +171,7 @@ const List<PrintField> kAllPrintFields = [
   ),
   PrintField(
     id: 'otherInvestigation',
-    label: 'Other Investigation',
+    label: 'Other Investigations',
     sectionId: kSectionTreatment,
     icon: Icons.science_outlined,
   ),
@@ -183,13 +183,13 @@ const List<PrintField> kAllPrintFields = [
   ),
   PrintField(
     id: 'treatmentPlan',
-    label: 'Plan',
+    label: 'Treatment Plan',
     sectionId: kSectionTreatment,
     icon: Icons.playlist_add_check_rounded,
   ),
   PrintField(
     id: 'medications',
-    label: 'Treatment / Medications',
+    label: 'Medicine / Treatment',
     sectionId: kSectionTreatment,
     icon: Icons.medication_outlined,
   ),
@@ -201,9 +201,21 @@ const List<PrintField> kAllPrintFields = [
   ),
   PrintField(
     id: 'advice',
-    label: 'Advice',
+    label: 'Instructions',
     sectionId: kSectionTreatment,
     icon: Icons.tips_and_updates_outlined,
+  ),
+  PrintField(
+    id: 'investigationToBeDone',
+    label: 'Investigation Should be done',
+    sectionId: kSectionTreatment,
+    icon: Icons.assignment_late_outlined,
+  ),
+  PrintField(
+    id: 'crossConsultation',
+    label: 'Cross Consultation',
+    sectionId: kSectionTreatment,
+    icon: Icons.people_outline_rounded,
   ),
 ];
 

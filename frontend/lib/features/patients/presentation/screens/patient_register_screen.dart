@@ -1727,7 +1727,12 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ),
           sCard('Clinical Snapshot', Icons.health_and_safety_outlined, _kAmber,
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              pRow('Known Allergies', fv(_allergyCtrl.text.trim())),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(fv(_allergyCtrl.text.trim()),
+                    style: TextStyle(fontSize: 13, color: _kNavy(context),
+                        fontWeight: FontWeight.w600)),
+              ),
               pRow('Medical History', fv(_historyCtrl.text.trim())),
             ]),
           ),

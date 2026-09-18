@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../error/exceptions.dart';
 import '../network/api_client.dart';
 import '../offline/offline_database.dart';
 import '../offline/web_offline_store.dart';
@@ -311,6 +312,12 @@ class SyncEngine {
       debugPrint('[SyncEngine] synced ${item.entityType}/${item.entityId}');
       return (remapped: remapped, success: true);
     } catch (e) {
+      // 404: server entity is gone — retrying forever won't help, discard cleanly.
+      if (e is NotFoundException) {
+        await _queue.markDone(item.id);
+        debugPrint('[SyncEngine] discarded ${item.entityType}/${item.entityId}: not found on server');
+        return (remapped: false, success: false);
+      }
       await _queue.incrementAttempt(item.id, e.toString());
       debugPrint('[SyncEngine] failed ${item.entityType}/${item.entityId}: $e');
       return (remapped: false, success: false);
@@ -1156,6 +1163,61 @@ final localPhotoStoreProvider = Provider<LocalPhotoStore>(
 
 final patientIdMapProvider = Provider<PatientIdMap>(
     (ref) => PatientIdMap(ref.watch(offlineDatabaseProvider)));
+
+// ── Local audit log cache ─────────────────────────────────────────
+
+class LocalAuditCache {
+  final OfflineDatabase _db;
+  LocalAuditCache(this._db);
+
+  /// Replace all audit log entries with the fresh batch from the server.
+  Future<void> replaceAll(List<Map<String, dynamic>> entries) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    final batch = db.batch();
+    batch.delete('audit_log');
+    for (final e in entries) {
+      batch.insert(
+        'audit_log',
+        {
+          'id':          e['id'],
+          'entity_type': e['entityType'],
+          'entity_id':   e['entityId'],
+          'field_name':  e['fieldName'],
+          'old_value':   e['oldValue'],
+          'new_value':   e['newValue'],
+          'changed_at':  e['changedAt'],
+          'changed_by':  e['changedByName'],
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<List<Map<String, dynamic>>> getForEntity(
+      String entityType, String entityId) async {
+    if (kIsWeb) return [];
+    final db = await _db.database;
+    return db.query(
+      'audit_log',
+      where: 'entity_type = ? AND entity_id = ?',
+      whereArgs: [entityType, entityId],
+      orderBy: 'changed_at DESC',
+    );
+  }
+
+  Future<bool> hasData() async {
+    if (kIsWeb) return false;
+    final db = await _db.database;
+    final count = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM audit_log'));
+    return (count ?? 0) > 0;
+  }
+}
+
+final localAuditCacheProvider = Provider<LocalAuditCache>(
+    (ref) => LocalAuditCache(ref.watch(offlineDatabaseProvider)));
 
 // ── Auto-sync on connectivity restore ────────────────────────────
 
