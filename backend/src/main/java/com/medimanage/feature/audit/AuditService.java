@@ -39,6 +39,12 @@ public class AuditService {
                 .stream().map(EditAuditLogDto::from).toList();
     }
 
+    /** Returns all audit entries — used for bulk mobile cache sync at login. */
+    public List<EditAuditLogDto> getAllAuditLogs() {
+        return repo.findAllByOrderByChangedAtDesc()
+                .stream().map(EditAuditLogDto::from).toList();
+    }
+
     /**
      * Returns a FieldChange if old != new, null otherwise.
      * Treats null and empty string as equivalent to avoid spurious audit entries.

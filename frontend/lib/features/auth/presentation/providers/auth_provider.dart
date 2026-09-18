@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/storage/storage_provider.dart';
 import '../../../../core/usecases/use_case.dart';
+import '../../../audit/audit_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
 import '../../data/datasources/auth_local_datasource.dart';
 import '../../data/datasources/auth_remote_datasource.dart';
@@ -81,6 +82,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final svc = ref.read(medicineServiceProvider);
       unawaited(svc.seedMasterIfEmpty());
       unawaited(svc.syncDrugsFromApi());
+      unawaited(syncAuditLogsFromApi(ref));
     }
   }
 
@@ -99,6 +101,7 @@ class AuthNotifier extends Notifier<AuthState> {
       // from the backend. Both are fire-and-forget.
       unawaited(svc.seedMasterIfEmpty());
       unawaited(svc.syncDrugsFromApi());
+      unawaited(syncAuditLogsFromApi(ref));
     }
   }
 
