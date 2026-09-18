@@ -37,7 +37,7 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 6,
+      version: 7,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -257,6 +257,22 @@ class OfflineDatabase {
         await db.execute('ALTER TABLE photos ADD COLUMN caption TEXT');
       } catch (_) {}
     }
+    if (oldVersion < 7) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS audit_log (
+          id           INTEGER PRIMARY KEY,
+          entity_type  TEXT NOT NULL,
+          entity_id    INTEGER NOT NULL,
+          field_name   TEXT NOT NULL,
+          old_value    TEXT,
+          new_value    TEXT,
+          changed_at   TEXT NOT NULL,
+          changed_by   TEXT
+        )
+      ''');
+      await db.execute(
+          'CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)');
+    }
   }
 
   void _createSchema(Batch batch) {
@@ -360,6 +376,22 @@ class OfflineDatabase {
         server_id TEXT NOT NULL
       )
     ''');
+
+    // ── Audit log cache ─────────────────────────────────────────────
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id           INTEGER PRIMARY KEY,
+        entity_type  TEXT NOT NULL,
+        entity_id    INTEGER NOT NULL,
+        field_name   TEXT NOT NULL,
+        old_value    TEXT,
+        new_value    TEXT,
+        changed_at   TEXT NOT NULL,
+        changed_by   TEXT
+      )
+    ''');
+    batch.execute(
+        'CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)');
 
     // ── Sync queue ──────────────────────────────────────────────
     batch.execute('''

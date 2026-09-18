@@ -14,6 +14,12 @@ public class AuditController {
 
     private final AuditService auditService;
 
+    /** GET /audit/all — bulk fetch for mobile cache sync at login. */
+    @GetMapping("/all")
+    public ResponseEntity<ApiResponse<List<EditAuditLogDto>>> getAllAuditLogs() {
+        return ResponseEntity.ok(ApiResponse.ok(auditService.getAllAuditLogs()));
+    }
+
     /** GET /audit/{entityType}/{entityId}  e.g. /audit/visit/42 */
     @GetMapping("/{entityType}/{entityId}")
     public ResponseEntity<ApiResponse<List<EditAuditLogDto>>> getAuditLog(
