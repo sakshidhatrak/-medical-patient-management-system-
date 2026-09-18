@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -93,6 +94,25 @@ public class PatientService {
         p.setMedicalHistory(req.medicalHistory() != null ? req.medicalHistory() : p.getMedicalHistory());
         p.setPreviousHistory(req.previousHistory() != null ? req.previousHistory() : p.getPreviousHistory());
         p.setNotes(req.notes() != null ? req.notes() : p.getNotes());
+        p.setUpdatedBy(actor);
+        return PatientDto.from(repo.save(p));
+    }
+
+    @Transactional
+    public PatientDto patch(Long id, Map<String, Object> updates, Long actorId) {
+        Patient p = findOrThrow(id);
+        if (Boolean.FALSE.equals(updates.get("isActive"))) {
+            p.setActive(false);
+            p.setDeletedAt(Instant.now());
+        }
+        if (updates.containsKey("notes"))           p.setNotes((String) updates.get("notes"));
+        if (updates.containsKey("allergies"))        p.setAllergies((String) updates.get("allergies"));
+        if (updates.containsKey("weight"))           p.setWeight((String) updates.get("weight"));
+        if (updates.containsKey("bloodPressure"))    p.setBloodPressure((String) updates.get("bloodPressure"));
+        if (updates.containsKey("temperature"))      p.setTemperature((String) updates.get("temperature"));
+        if (updates.containsKey("medicalHistory"))   p.setMedicalHistory((String) updates.get("medicalHistory"));
+        if (updates.containsKey("previousHistory"))  p.setPreviousHistory((String) updates.get("previousHistory"));
+        User actor = userRepo.findById(actorId).orElse(null);
         p.setUpdatedBy(actor);
         return PatientDto.from(repo.save(p));
     }

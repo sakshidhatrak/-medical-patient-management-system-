@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/patients")
@@ -41,7 +42,7 @@ public class PatientController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF','DOCTOR')")
     public ResponseEntity<ApiResponse<PatientDto>> create(
             @Valid @RequestBody PatientRequest req,
             Authentication auth) {
@@ -51,7 +52,7 @@ public class PatientController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF','DOCTOR')")
     public ResponseEntity<ApiResponse<PatientDto>> update(
             @PathVariable Long id,
             @Valid @RequestBody PatientRequest req,
@@ -60,8 +61,18 @@ public class PatientController {
         return ResponseEntity.ok(ApiResponse.ok(service.update(id, req, actorId)));
     }
 
+    @PatchMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','STAFF','DOCTOR')")
+    public ResponseEntity<ApiResponse<PatientDto>> patch(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> updates,
+            Authentication auth) {
+        Long actorId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(ApiResponse.ok(service.patch(id, updates, actorId)));
+    }
+
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Patient deleted", null));

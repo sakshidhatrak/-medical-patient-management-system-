@@ -30,7 +30,7 @@ public class PrescriptionController {
     }
 
     @PostMapping("/patients/{patientId}/visits/{visitId}/prescriptions")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<PrescriptionDto>> create(
             @PathVariable Long patientId,
             @PathVariable Long visitId,
@@ -42,7 +42,7 @@ public class PrescriptionController {
     }
 
     @PutMapping("/prescriptions/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<PrescriptionDto>> update(
             @PathVariable Long id,
             @RequestBody PrescriptionRequest req,
@@ -52,7 +52,7 @@ public class PrescriptionController {
     }
 
     @DeleteMapping("/prescriptions/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Prescription deleted", null));
