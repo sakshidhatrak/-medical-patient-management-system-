@@ -1,6 +1,7 @@
 package com.medimanage.feature.visit;
 
 import com.medimanage.common.exception.ResourceNotFoundException;
+import com.medimanage.feature.audit.AuditService;
 import com.medimanage.feature.patient.Patient;
 import com.medimanage.feature.patient.PatientRepository;
 import com.medimanage.feature.user.User;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -22,6 +24,7 @@ public class VisitService {
     private final VisitRepository visitRepo;
     private final PatientRepository patientRepo;
     private final UserRepository userRepo;
+    private final AuditService auditService;
 
     public List<VisitDto> list(Long patientId) {
         return visitRepo.findAllByPatientIdAndIsActiveTrue(
@@ -81,27 +84,34 @@ public class VisitService {
         User actor = userRepo.findById(actorId).orElse(null);
         Visit v = findOrThrow(patientId, visitId);
 
-        if (req.visitDate()        != null) v.setVisitDate(req.visitDate());
-        if (req.visitType()        != null) v.setVisitType(req.visitType());
-        if (req.complaints()       != null) v.setComplaints(req.complaints());
-        if (req.notes()            != null) v.setNotes(req.notes());
-        if (req.bp()               != null) v.setBp(req.bp());
-        if (req.pulse()            != null) v.setPulse(req.pulse());
-        if (req.temperature()      != null) v.setTemperature(req.temperature());
-        if (req.spo2()             != null) v.setSpo2(req.spo2());
-        if (req.weight()           != null) v.setWeight(req.weight());
-        if (req.height()           != null) v.setHeight(req.height());
-        if (req.examPhysical()     != null) v.setExamPhysical(req.examPhysical());
-        if (req.examSystemic()     != null) v.setExamSystemic(req.examSystemic());
-        if (req.examRadiology()    != null) v.setExamRadiology(req.examRadiology());
-        if (req.clinicalImpression() != null) v.setClinicalImpression(req.clinicalImpression());
-        if (req.plan()             != null) v.setPlan(req.plan());
-        if (req.doctorAssigned()   != null) v.setDoctorAssigned(req.doctorAssigned());
-        if (req.medications()      != null) v.setMedications(req.medications());
-        if (req.examination()      != null) v.setExamination(req.examination());
-        if (req.status()           != null) v.setStatus(req.status());
+        List<AuditService.FieldChange> changes = new ArrayList<>();
+
+        if (req.visitType()          != null) { changes.add(AuditService.diff("visitType",          v.getVisitType(),          req.visitType()));          v.setVisitType(req.visitType()); }
+        if (req.complaints()         != null) { changes.add(AuditService.diff("complaints",          v.getComplaints(),         req.complaints()));          v.setComplaints(req.complaints()); }
+        if (req.notes()              != null) { changes.add(AuditService.diff("notes",               v.getNotes(),              req.notes()));               v.setNotes(req.notes()); }
+        if (req.bp()                 != null) { changes.add(AuditService.diff("bp",                  v.getBp(),                 req.bp()));                  v.setBp(req.bp()); }
+        if (req.pulse()              != null) { changes.add(AuditService.diff("pulse",               v.getPulse(),              req.pulse()));               v.setPulse(req.pulse()); }
+        if (req.temperature()        != null) { changes.add(AuditService.diff("temperature",         v.getTemperature(),        req.temperature()));         v.setTemperature(req.temperature()); }
+        if (req.spo2()               != null) { changes.add(AuditService.diff("spo2",                v.getSpo2(),               req.spo2()));                v.setSpo2(req.spo2()); }
+        if (req.weight()             != null) { changes.add(AuditService.diff("weight",              v.getWeight(),             req.weight()));              v.setWeight(req.weight()); }
+        if (req.height()             != null) { changes.add(AuditService.diff("height",              v.getHeight(),             req.height()));              v.setHeight(req.height()); }
+        if (req.examPhysical()       != null) { changes.add(AuditService.diff("examPhysical",        v.getExamPhysical(),       req.examPhysical()));        v.setExamPhysical(req.examPhysical()); }
+        if (req.examSystemic()       != null) { changes.add(AuditService.diff("examSystemic",        v.getExamSystemic(),       req.examSystemic()));        v.setExamSystemic(req.examSystemic()); }
+        if (req.examRadiology()      != null) { changes.add(AuditService.diff("examRadiology",       v.getExamRadiology(),      req.examRadiology()));       v.setExamRadiology(req.examRadiology()); }
+        if (req.clinicalImpression() != null) { changes.add(AuditService.diff("clinicalImpression",  v.getClinicalImpression(), req.clinicalImpression()));  v.setClinicalImpression(req.clinicalImpression()); }
+        if (req.plan()               != null) { changes.add(AuditService.diff("plan",                v.getPlan(),               req.plan()));                v.setPlan(req.plan()); }
+        if (req.doctorAssigned()     != null) { changes.add(AuditService.diff("doctorAssigned",      v.getDoctorAssigned(),     req.doctorAssigned()));      v.setDoctorAssigned(req.doctorAssigned()); }
+        if (req.medications()        != null) { changes.add(AuditService.diff("medications",         v.getMedications(),        req.medications()));         v.setMedications(req.medications()); }
+        if (req.examination()        != null) { changes.add(AuditService.diff("examination",         v.getExamination(),        req.examination()));         v.setExamination(req.examination()); }
+        if (req.status()             != null) { changes.add(AuditService.diff("status",              v.getStatus(),             req.status()));              v.setStatus(req.status()); }
+        if (req.visitDate()          != null)   v.setVisitDate(req.visitDate());
+
         v.setUpdatedBy(actor);
-        return VisitDto.from(visitRepo.save(v));
+        VisitDto result = VisitDto.from(visitRepo.save(v));
+
+        auditService.logChanges("visit", visitId, changes, actor);
+
+        return result;
     }
 
     @Transactional
