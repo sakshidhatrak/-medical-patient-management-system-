@@ -2,6 +2,7 @@ package com.medimanage.feature.patient;
 
 import com.medimanage.common.PageResponse;
 import com.medimanage.common.exception.ResourceNotFoundException;
+import com.medimanage.feature.audit.AuditService;
 import com.medimanage.feature.patient.dto.PatientDto;
 import com.medimanage.feature.patient.dto.PatientRequest;
 import com.medimanage.feature.user.User;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +26,7 @@ public class PatientService {
 
     private final PatientRepository repo;
     private final UserRepository userRepo;
+    private final AuditService auditService;
 
     public PageResponse<PatientDto> list(String search, int page, int size) {
         var pageable = PageRequest.of(page - 1, size, Sort.by("createdAt").descending());
@@ -76,6 +79,19 @@ public class PatientService {
     public PatientDto update(Long id, PatientRequest req, Long actorId) {
         User actor = userRepo.findById(actorId).orElse(null);
         Patient p = findOrThrow(id);
+
+        List<AuditService.FieldChange> changes = new ArrayList<>();
+        changes.add(AuditService.diff("firstName",       p.getFirstName(),       req.firstName()));
+        changes.add(AuditService.diff("lastName",        p.getLastName(),        req.lastName()));
+        changes.add(AuditService.diff("phone",           p.getPhone(),           req.phone()));
+        changes.add(AuditService.diff("allergies",       p.getAllergies(),        req.allergies()));
+        changes.add(AuditService.diff("medicalHistory",  p.getMedicalHistory(),  req.medicalHistory()));
+        changes.add(AuditService.diff("previousHistory", p.getPreviousHistory(), req.previousHistory()));
+        changes.add(AuditService.diff("notes",           p.getNotes(),           req.notes()));
+        changes.add(AuditService.diff("weight",          p.getWeight(),          req.weight()));
+        changes.add(AuditService.diff("bloodPressure",   p.getBloodPressure(),   req.bloodPressure()));
+        changes.add(AuditService.diff("temperature",     p.getTemperature(),     req.temperature()));
+
         p.setFirstName(req.firstName());
         p.setLastName(req.lastName() != null ? req.lastName() : p.getLastName());
         p.setAge(req.age() != null ? req.age() : p.getAge());
@@ -95,26 +111,32 @@ public class PatientService {
         p.setPreviousHistory(req.previousHistory() != null ? req.previousHistory() : p.getPreviousHistory());
         p.setNotes(req.notes() != null ? req.notes() : p.getNotes());
         p.setUpdatedBy(actor);
-        return PatientDto.from(repo.save(p));
+        PatientDto result = PatientDto.from(repo.save(p));
+
+        auditService.logChanges("patient", id, changes, actor);
+        return result;
     }
 
     @Transactional
     public PatientDto patch(Long id, Map<String, Object> updates, Long actorId) {
         Patient p = findOrThrow(id);
-        if (Boolean.FALSE.equals(updates.get("isActive"))) {
-            p.setActive(false);
-            p.setDeletedAt(Instant.now());
-        }
-        if (updates.containsKey("notes"))           p.setNotes((String) updates.get("notes"));
-        if (updates.containsKey("allergies"))        p.setAllergies((String) updates.get("allergies"));
-        if (updates.containsKey("weight"))           p.setWeight((String) updates.get("weight"));
-        if (updates.containsKey("bloodPressure"))    p.setBloodPressure((String) updates.get("bloodPressure"));
-        if (updates.containsKey("temperature"))      p.setTemperature((String) updates.get("temperature"));
-        if (updates.containsKey("medicalHistory"))   p.setMedicalHistory((String) updates.get("medicalHistory"));
-        if (updates.containsKey("previousHistory"))  p.setPreviousHistory((String) updates.get("previousHistory"));
+
+        List<AuditService.FieldChange> changes = new ArrayList<>();
+        if (updates.containsKey("notes"))           { changes.add(AuditService.diff("notes",           p.getNotes(),           (String) updates.get("notes")));           p.setNotes((String) updates.get("notes")); }
+        if (updates.containsKey("allergies"))        { changes.add(AuditService.diff("allergies",        p.getAllergies(),        (String) updates.get("allergies")));        p.setAllergies((String) updates.get("allergies")); }
+        if (updates.containsKey("weight"))           { changes.add(AuditService.diff("weight",           p.getWeight(),          (String) updates.get("weight")));           p.setWeight((String) updates.get("weight")); }
+        if (updates.containsKey("bloodPressure"))    { changes.add(AuditService.diff("bloodPressure",    p.getBloodPressure(),   (String) updates.get("bloodPressure")));    p.setBloodPressure((String) updates.get("bloodPressure")); }
+        if (updates.containsKey("temperature"))      { changes.add(AuditService.diff("temperature",      p.getTemperature(),     (String) updates.get("temperature")));      p.setTemperature((String) updates.get("temperature")); }
+        if (updates.containsKey("medicalHistory"))   { changes.add(AuditService.diff("medicalHistory",   p.getMedicalHistory(),  (String) updates.get("medicalHistory")));   p.setMedicalHistory((String) updates.get("medicalHistory")); }
+        if (updates.containsKey("previousHistory"))  { changes.add(AuditService.diff("previousHistory",  p.getPreviousHistory(), (String) updates.get("previousHistory")));  p.setPreviousHistory((String) updates.get("previousHistory")); }
+        if (Boolean.FALSE.equals(updates.get("isActive"))) { p.setActive(false); p.setDeletedAt(Instant.now()); }
+
         User actor = userRepo.findById(actorId).orElse(null);
         p.setUpdatedBy(actor);
-        return PatientDto.from(repo.save(p));
+        PatientDto result = PatientDto.from(repo.save(p));
+
+        auditService.logChanges("patient", id, changes, actor);
+        return result;
     }
 
     @Transactional
