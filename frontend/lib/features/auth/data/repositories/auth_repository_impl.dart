@@ -35,6 +35,7 @@ class AuthRepositoryImpl implements AuthRepository {
         _local.saveUser(user),
         _local.saveToken(token: token, refreshToken: token),
         _local.saveCredHash(_hashCreds(email, password)),
+        _local.saveCredentials(email: email.trim().toLowerCase(), password: password),
       ]);
       return Right(user.toEntity());
     } on UnauthorizedException catch (e) {

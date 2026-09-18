@@ -16,8 +16,10 @@ abstract interface class AuthLocalDataSource {
   Future<UserModel?> getUser();
 
   Future<void> saveCredHash(String hash);
-
   Future<String?> getCredHash();
+
+  Future<void> saveCredentials({required String email, required String password});
+  Future<({String email, String password})?> getCredentials();
 
   Future<void> clearAll();
 }
@@ -67,6 +69,21 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   @override
   Future<String?> getCredHash() =>
       _storage.read(key: AppConfig.credHashKey);
+
+  @override
+  Future<void> saveCredentials({required String email, required String password}) =>
+      Future.wait([
+        _storage.write(key: AppConfig.credEmailKey, value: email),
+        _storage.write(key: AppConfig.credPassKey,  value: password),
+      ]);
+
+  @override
+  Future<({String email, String password})?> getCredentials() async {
+    final email = await _storage.read(key: AppConfig.credEmailKey);
+    final pass  = await _storage.read(key: AppConfig.credPassKey);
+    if (email == null || pass == null) return null;
+    return (email: email, password: pass);
+  }
 
   @override
   Future<void> clearAll() => _storage.deleteAll();

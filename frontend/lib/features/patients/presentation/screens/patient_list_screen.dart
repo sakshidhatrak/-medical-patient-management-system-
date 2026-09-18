@@ -134,11 +134,26 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen>
             onLogout: () async {
               final pending = await ref.read(offlineQueueProvider).pending();
               if (pending.isNotEmpty && context.mounted) {
-                final proceed = await showDialog<bool>(
+                final result = await showDialog<Object>(
                   context: context,
-                  builder: (ctx) => _PendingSyncDialog(pendingCount: pending.length),
+                  barrierDismissible: false,
+                  builder: (ctx) => _PendingSyncDialog(initialItems: pending),
                 );
-                if (proceed != true) return;
+                if (result == 'synced' && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(children: [
+                        Icon(Icons.cloud_done_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text('Data synced successfully. You can now safely logout.'),
+                      ]),
+                      backgroundColor: Color(0xFF2E7D32),
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+                  return;
+                }
+                if (result != true) return;
               }
               ref.read(authProvider.notifier).logout();
             },
@@ -314,7 +329,7 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen>
 
 // ── Clinic + user header ───────────────────────────────────────────────────────
 
-class _ClinicHeader extends StatelessWidget {
+class _ClinicHeader extends ConsumerStatefulWidget {
   final UserEntity? user;
   final VoidCallback onLogout;
   final bool isDark;
@@ -330,16 +345,109 @@ class _ClinicHeader extends StatelessWidget {
   });
 
   @override
+  ConsumerState<_ClinicHeader> createState() => _ClinicHeaderState();
+}
+
+class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
+  bool _isSyncing = false;
+  int _pendingCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshPending();
+  }
+
+  Future<void> _refreshPending() async {
+    final items = await ref.read(offlineQueueProvider).pending();
+    if (mounted) setState(() => _pendingCount = items.length);
+  }
+
+  Future<void> _syncNow() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
+    try {
+      final synced = await ref.read(syncEngineProvider).syncAll();
+      await _refreshPending(); // updates _pendingCount with live value
+      if (!mounted) return;
+      if (_pendingCount == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(children: [
+              const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text(synced > 0
+                  ? '$synced record${synced == 1 ? '' : 's'} synced successfully.'
+                  : 'All data is already synced.'),
+            ]),
+            backgroundColor: const Color(0xFF2E7D32),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(children: [
+              const Icon(Icons.sync_problem_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(
+                synced > 0
+                    ? '$synced synced, $_pendingCount still pending. Check network.'
+                    : '$_pendingCount record${_pendingCount == 1 ? '' : 's'} could not be synced. Check network.',
+              )),
+            ]),
+            backgroundColor: const Color(0xFFE65100),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            backgroundColor: const Color(0xFFD32F2F),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final initials = user != null
-        ? '${user!.firstName[0]}${user!.lastName.isNotEmpty ? user!.lastName[0] : ''}'
+    // When background auto-sync (connectivity restore) succeeds, update badge + toast.
+    ref.listen<({int count, DateTime at})?>(syncSuccessProvider, (_, result) {
+      if (result == null) return;
+      _refreshPending();
+      if (!mounted) return;
+      final label = result.count == 1 ? '1 record' : '${result.count} records';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF1B5E20),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 4),
+          content: Row(children: [
+            const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text('$label synced automatically',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+          ]),
+        ),
+      );
+    });
+
+    final initials = widget.user != null
+        ? '${widget.user!.firstName[0]}${widget.user!.lastName.isNotEmpty ? widget.user!.lastName[0] : ''}'
             .toUpperCase()
         : 'AU';
-    final name = user?.fullName ?? 'Admin User';
-    final role = user?.roleDisplayName ?? 'Admin';
 
     return Container(
-      color: headerBg,
+      color: widget.headerBg,
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -351,13 +459,11 @@ class _ClinicHeader extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Clinic logo
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: Image.asset(
                       'assets/images/app_logo.png',
-                      width: 46,
-                      height: 46,
+                      width: 46, height: 46,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         width: 46, height: 46,
@@ -371,75 +477,111 @@ class _ClinicHeader extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Clinic name + tagline (full remaining width)
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'The Brain & Spine Clinic',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
-                            color: _kMaroon,
-                            height: 1.2,
-                          ),
-                        ),
-                        Text(
-                          'Excellence. Ethics. Efficiency.',
-                          style: TextStyle(
-                            fontSize: 8.5,
-                            fontStyle: FontStyle.italic,
-                            color: _kMaroon,
-                          ),
-                        ),
+                        Text('The Brain & Spine Clinic',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: _kMaroon,
+                              height: 1.2,
+                            )),
+                        Text('Excellence. Ethics. Efficiency.',
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              fontStyle: FontStyle.italic,
+                              color: _kMaroon,
+                            )),
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              // ── Row 2: toggle + avatar + logout (right-aligned) ──────────
+              // ── Row 2: toggle + sync + avatar + logout ───────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _ThemeTogglePill(isDark: isDark),
-                  const SizedBox(width: 10),
-                  CircleAvatar(
-                    radius: 15,
-                    backgroundColor: _kBlue,
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                      ),
+                  _ThemeTogglePill(isDark: widget.isDark),
+                  const SizedBox(width: 8),
+                  // Manual sync button with pending badge
+                  GestureDetector(
+                    onTap: _syncNow,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 34, height: 34,
+                          decoration: BoxDecoration(
+                            color: widget.isDark ? _kDarkField : const Color(0xFFF0F4FF),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: widget.isDark
+                                  ? Colors.white.withValues(alpha: 0.1)
+                                  : Colors.grey.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: _isSyncing
+                              ? const Padding(
+                                  padding: EdgeInsets.all(9),
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Color(0xFF1565C0)),
+                                )
+                              : Icon(Icons.cloud_sync_rounded, size: 17,
+                                  color: _pendingCount > 0
+                                      ? const Color(0xFF1565C0)
+                                      : (widget.isDark ? Colors.white54 : _kNavy)),
+                        ),
+                        if (_pendingCount > 0 && !_isSyncing)
+                          Positioned(
+                            top: -4, right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: const BoxDecoration(
+                                  color: Color(0xFFD32F2F), shape: BoxShape.circle),
+                              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                              child: Text(
+                                _pendingCount > 99 ? '99+' : '$_pendingCount',
+                                style: const TextStyle(
+                                    fontSize: 9, fontWeight: FontWeight.w800,
+                                    color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 8),
+                  CircleAvatar(
+                    radius: 15,
+                    backgroundColor: _kBlue,
+                    child: Text(initials,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        )),
+                  ),
+                  const SizedBox(width: 8),
                   GestureDetector(
-                    onTap: onLogout,
+                    onTap: widget.onLogout,
                     child: Container(
-                      width: 34,
-                      height: 34,
+                      width: 34, height: 34,
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? _kDarkField
-                            : const Color(0xFFF0F4FF),
+                        color: widget.isDark ? _kDarkField : const Color(0xFFF0F4FF),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: isDark
+                          color: widget.isDark
                               ? Colors.white.withValues(alpha: 0.1)
                               : Colors.grey.withValues(alpha: 0.2),
                         ),
                       ),
-                      child: Icon(
-                        Icons.logout_rounded,
-                        size: 16,
-                        color: isDark ? Colors.white70 : _kNavy,
-                      ),
+                      child: Icon(Icons.logout_rounded, size: 16,
+                          color: widget.isDark ? Colors.white70 : _kNavy),
                     ),
                   ),
                 ],
@@ -821,10 +963,98 @@ Map<String, String> _patientDataMap(PatientEntity patient) {
   };
 }
 
+// ── Pending item helpers ──────────────────────────────────────────────────────
+
+IconData _syncItemIcon(String entityType) => switch (entityType) {
+  'patients'      => Icons.person_rounded,
+  'visits'        => Icons.medical_information_rounded,
+  'surgeries'     => Icons.healing_rounded,
+  'prescriptions' => Icons.medication_rounded,
+  'examinations'  => Icons.biotech_rounded,
+  _               => Icons.sync_rounded,
+};
+
+String _syncItemLabel(SyncItem item) {
+  final op = switch (item.operation) {
+    'insert' => 'New',
+    'update' => 'Update',
+    'delete' => 'Delete',
+    'patch'  => 'Edit',
+    _        => item.operation,
+  };
+  switch (item.entityType) {
+    case 'patients':
+      final first = item.payload['firstName'] as String? ?? '';
+      final last  = item.payload['lastName']  as String? ?? '';
+      final name  = '$first $last'.trim();
+      return '$op Patient${name.isNotEmpty ? ': $name' : ''}';
+    case 'visits':
+      final raw = item.payload['visitDate'] as String?;
+      if (raw != null) {
+        try { return '$op Visit: ${DateFormat('dd MMM yyyy').format(DateTime.parse(raw))}'; }
+        catch (_) {}
+      }
+      return '$op Visit';
+    case 'surgeries':
+      final raw = item.payload['surgeryDate'] as String?;
+      if (raw != null) {
+        try { return '$op Surgery: ${DateFormat('dd MMM yyyy').format(DateTime.parse(raw))}'; }
+        catch (_) {}
+      }
+      return '$op Surgery';
+    case 'prescriptions': return '$op Prescription';
+    case 'examinations':  return '$op Examination';
+    default: return '$op ${item.entityType}';
+  }
+}
+
 // ── Logout confirmation dialog ─────────────────────────────────────────────
-class _PendingSyncDialog extends StatelessWidget {
-  final int pendingCount;
-  const _PendingSyncDialog({required this.pendingCount});
+class _PendingSyncDialog extends ConsumerStatefulWidget {
+  final List<SyncItem> initialItems;
+  const _PendingSyncDialog({required this.initialItems});
+
+  @override
+  ConsumerState<_PendingSyncDialog> createState() => _PendingSyncDialogState();
+}
+
+class _PendingSyncDialogState extends ConsumerState<_PendingSyncDialog> {
+  bool _isSyncing = false;
+  String? _syncError;
+  late List<SyncItem> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = List.from(widget.initialItems);
+  }
+
+  Future<void> _dismissItem(SyncItem item) async {
+    await ref.read(offlineQueueProvider).markDone(item.id);
+    setState(() => _items.removeWhere((i) => i.id == item.id));
+    if (_items.isEmpty && mounted) Navigator.pop(context, 'synced');
+  }
+
+  Future<void> _syncNow() async {
+    setState(() { _isSyncing = true; _syncError = null; });
+    try {
+      final synced = await ref.read(syncEngineProvider).syncAll();
+      final remaining = await ref.read(offlineQueueProvider).pending();
+      if (!mounted) return;
+      if (remaining.isEmpty) {
+        Navigator.pop(context, 'synced');
+      } else {
+        setState(() {
+          _isSyncing = false;
+          _items = remaining;
+          _syncError = synced > 0
+              ? '$synced synced, ${remaining.length} could not be synced. Check network & retry.'
+              : '${remaining.length} record${remaining.length == 1 ? '' : 's'} could not be synced. Check network & retry.';
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _isSyncing = false; _syncError = e.toString(); });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -832,6 +1062,9 @@ class _PendingSyncDialog extends StatelessWidget {
     final bgColor = isDark ? const Color(0xFF1A1A3A) : Colors.white;
     final textPrimary = isDark ? const Color(0xFFEEECFF) : const Color(0xFF1A1A3A);
     final textSub = isDark ? const Color(0xFFB8B5DC) : const Color(0xFF6E6A63);
+    final dividerColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.grey.withValues(alpha: 0.15);
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -847,11 +1080,9 @@ class _PendingSyncDialog extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFEBEB),
-                    shape: BoxShape.circle,
+                  width: 64, height: 64,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFEBEB), shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.cloud_off_rounded,
                       size: 32, color: Color(0xFFD32F2F)),
@@ -864,7 +1095,7 @@ class _PendingSyncDialog extends StatelessWidget {
                         color: Color(0xFFD32F2F), shape: BoxShape.circle),
                     alignment: Alignment.center,
                     child: Text(
-                      pendingCount > 99 ? '99+' : '$pendingCount',
+                      _items.length > 99 ? '99+' : '${_items.length}',
                       style: const TextStyle(
                           fontSize: 10, fontWeight: FontWeight.w800,
                           color: Colors.white),
@@ -880,12 +1111,87 @@ class _PendingSyncDialog extends StatelessWidget {
                     color: textPrimary)),
             const SizedBox(height: 8),
             Text(
-              '$pendingCount record${pendingCount == 1 ? '' : 's'} not yet synced to server.',
+              '${_items.length} record${_items.length == 1 ? '' : 's'} not yet synced to server.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: textSub),
             ),
             const SizedBox(height: 12),
-            // Warning box
+
+            // ── Pending items list ─────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : const Color(0xFFF5F7FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: dividerColor),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  itemCount: _items.length,
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: dividerColor),
+                  itemBuilder: (_, i) {
+                    final item = _items[i];
+                    final label = _syncItemLabel(item);
+                    final error = item.lastError;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(_syncItemIcon(item.entityType),
+                              size: 15, color: _kBlue),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(label,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: textPrimary)),
+                                if (error != null && error.isNotEmpty)
+                                  Text(
+                                    error.length > 70
+                                        ? '${error.substring(0, 70)}…'
+                                        : error,
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFFD32F2F)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _timeAgo(DateTime.parse(item.queuedAt)),
+                            style: TextStyle(fontSize: 10, color: textSub),
+                          ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () => _dismissItem(item),
+                            child: const Icon(Icons.close_rounded,
+                                size: 16, color: Color(0xFFD32F2F)),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            // Warning / error box
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -902,7 +1208,9 @@ class _PendingSyncDialog extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Logging out now may cause data loss if this device is the only copy.',
+                      _syncError != null
+                          ? 'Sync failed: $_syncError'
+                          : 'Logging out now may cause data loss if this device is the only copy.',
                       style: const TextStyle(
                           fontSize: 11, color: Color(0xFFD32F2F),
                           fontWeight: FontWeight.w500),
@@ -911,12 +1219,36 @@ class _PendingSyncDialog extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            // Buttons
+            const SizedBox(height: 16),
+            // Sync Now — primary action (full width)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isSyncing ? null : _syncNow,
+                icon: _isSyncing
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.cloud_sync_rounded, size: 18),
+                label: Text(_isSyncing ? 'Syncing...' : 'Sync Now',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1565C0),
+                  disabledBackgroundColor: const Color(0xFF1565C0).withValues(alpha: 0.6),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // Cancel | Logout row
             Row(children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context, false),
+                  onPressed: _isSyncing ? null : () => Navigator.pop(context, false),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                         color: isDark
@@ -935,9 +1267,10 @@ class _PendingSyncDialog extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: _isSyncing ? null : () => Navigator.pop(context, true),
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFD32F2F),
+                    disabledBackgroundColor: const Color(0xFFD32F2F).withValues(alpha: 0.5),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(vertical: 13),

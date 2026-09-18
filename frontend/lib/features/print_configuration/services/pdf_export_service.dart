@@ -84,8 +84,156 @@ const _kMaroon       = PdfColor.fromInt(0xFF994E89); // kept for compat
 const _kPageBorder   = PdfColor.fromInt(0xFFD4AAAA); // light red page border
 
 // ── Main PDF assembly ─────────────────────────────────────────────────────────
+//
+// Primary path: rasterise opd_paper.pdf as background, overlay dynamic text
+// at calibrated coordinates. Falls back to manual letterhead if asset missing.
 
 Future<Uint8List> _assemblePdf(
+  Set<String> enabledIds,
+  Map<String, String> data,
+  Uint8List? logoBytes,
+) async {
+  try {
+    final assetData     = await rootBundle.load('assets/templates/opd_paper.pdf');
+    final templateBytes = assetData.buffer.asUint8List();
+    final raster        = await Printing.raster(templateBytes, pages: [0], dpi: 300).first;
+    final bgBytes       = await raster.toPng();
+    return _buildTemplatePdf(enabledIds, data, pw.MemoryImage(bgBytes));
+  } catch (_) {}
+  return _buildManualPdf(enabledIds, data, logoBytes);
+}
+
+// ── Template-based PDF (opd_paper.pdf background + overlaid dynamic text) ────
+
+Future<Uint8List> _buildTemplatePdf(
+  Set<String> enabledIds,
+  Map<String, String> data,
+  pw.MemoryImage bgImage,
+) async {
+  final font     = await PdfGoogleFonts.interRegular();
+  final fontBold = await PdfGoogleFonts.interMedium();
+  final fontItal = await PdfGoogleFonts.interItalic();
+
+  final fn   = data['firstName'] ?? '';
+  final ln   = data['lastName'] ?? '';
+  final name = [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
+  final date = data['date'] ?? DateFormat('dd-MM-yyyy').format(DateTime.now());
+
+  // OPD paper original dimensions
+  const kOpdW = 288.0;
+  const kOpdH = 432.0;
+
+  // Scale to A4 — everything scales proportionally, layout stays identical
+  final kPageW = PdfPageFormat.a4.width;    // 595.28 pt
+  final kPageH = PdfPageFormat.a4.height;   // 841.89 pt
+  final sx     = kPageW / kOpdW;            // ≈ 2.066  (horizontal scale)
+  final sy     = kPageH / kOpdH;            // ≈ 1.949  (vertical scale)
+
+  // Calibrated overlay coordinates — scaled from OPD originals
+  final kNameX = 113.5 * sx;
+  final kNameY = 76.2  * sy;
+  final kNameW = 106.0 * sx;
+  final kDateX = 239.5 * sx;
+  final kDateW = 47.0  * sx;
+
+  // Body area — sidebar stays visible, all positions scaled
+  final kBodyL = 64.0  * sx;
+  final kBodyT = 87.0  * sy;
+  final kBodyW = 218.0 * sx;
+  final kFootH = 24.0  * sy;
+
+  // Content font scale independent of page scale — 1.5 → 11pt body text on A4
+  const kFontScale = 1.5;
+  final sections = _buildSectionsTemplate(enabledIds, data, font, fontBold, fontItal, scale: kFontScale);
+
+  final doc = pw.Document(title: 'Patient Medical Report', author: _Clinic.doctor);
+
+  final marginRight = kPageW - kBodyL - kBodyW;
+
+  // Signature footer — rendered once at the bottom of the last page
+  final signatureFooter = pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Container(height: 0.5, color: _kGreenDiv),
+      pw.SizedBox(height: 4 * sy),
+      pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
+              pw.SizedBox(height: 2 * sy),
+              pw.Text("Doctor's Signature",
+                  style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
+            ],
+          ),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
+              pw.SizedBox(height: 2 * sy),
+              pw.Text("Next Visit Date",
+                  style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+
+  doc.addPage(
+    pw.MultiPage(
+      pageTheme: pw.PageTheme(
+        pageFormat: PdfPageFormat(kPageW, kPageH),
+        margin: pw.EdgeInsets.only(
+          left: kBodyL,
+          top: kBodyT,
+          right: marginRight,
+          bottom: kFootH,
+        ),
+        // Template background + patient name/date overlay on every page
+        buildBackground: (context) => pw.FullPage(
+          ignoreMargins: true,
+          child: pw.Stack(
+            children: [
+              pw.Positioned.fill(
+                child: pw.Image(bgImage, fit: pw.BoxFit.fill),
+              ),
+              pw.Positioned(
+                left: kNameX, top: kNameY - 8,
+                child: pw.SizedBox(
+                  width: kNameW,
+                  child: pw.Text(name,
+                      style: pw.TextStyle(font: fontBold, fontSize: 7.5 * kFontScale, color: PdfColor.fromInt(0xFF101A3A))),
+                ),
+              ),
+              pw.Positioned(
+                left: kDateX, top: kNameY - 8,
+                child: pw.SizedBox(
+                  width: kDateW,
+                  child: pw.Text(date,
+                      style: pw.TextStyle(font: fontBold, fontSize: 7.5 * kFontScale, color: PdfColor.fromInt(0xFF101A3A))),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      // Signature footer only on the last page
+      footer: (context) => context.pageNumber == context.pagesCount
+          ? signatureFooter
+          : pw.SizedBox(),
+      build: (context) => sections,
+    ),
+  );
+
+  return doc.save();
+}
+
+// ── Manual letterhead fallback (used when template asset is unavailable) ──────
+
+Future<Uint8List> _buildManualPdf(
   Set<String> enabledIds,
   Map<String, String> data,
   Uint8List? logoBytes,
@@ -97,9 +245,9 @@ Future<Uint8List> _assemblePdf(
   final fontItal = pw.Font.helveticaOblique();
 
   // Using built-in PDF fonts — no internet required
-  final clinicFont  = pw.Font.helveticaBold();    // clinic name
-  final doctorFont  = pw.Font.timesBold();         // doctor name
-  final taglineFont = pw.Font.timesItalic();        // tagline
+  final clinicFont  = pw.Font.helveticaBold();
+  final doctorFont  = pw.Font.timesBold();
+  final taglineFont = pw.Font.timesItalic();
 
   doc.addPage(
     pw.Page(
@@ -112,9 +260,7 @@ Future<Uint8List> _assemblePdf(
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
-            // ── Two-column letterhead header ───────────────────────────────
             _buildHeader(font, fontBold, fontItal, logo, clinicFont, doctorFont, taglineFont),
-            // ── Body: sidebar LEFT, patient row + sections RIGHT ──────────
             pw.Expanded(
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -124,7 +270,6 @@ Future<Uint8List> _assemblePdf(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                       children: [
-                        // Patient name starts after the green sidebar border
                         _buildPatientRow(data, font, fontBold),
                         pw.Container(height: 0.8, color: _kGreenDiv),
                         pw.Expanded(
@@ -483,6 +628,299 @@ pw.Widget _buildPatientRow(
   );
 }
 
+// ── Compact sections layout for template background (218 pt body width) ──────
+//
+// Uses 8 pt body / 7.5 pt heading, 65 pt label width, start-aligned rows so
+// multi-line values line up with the first line of their label. Vitals are
+// rendered as an inline trio with abbreviated labels so they fit on one line.
+
+List<pw.Widget> _buildSectionsTemplate(
+  Set<String> enabled,
+  Map<String, String> data,
+  pw.Font font,
+  pw.Font fontBold,
+  pw.Font fontItal, {
+  double scale = 1.0,
+}) {
+  final double fs     = 7.5  * scale;   // body text
+  final double fsh    = 7.0  * scale;   // section heading
+  final double lw     = 62.0 * scale;   // label column width
+  final double hp     = 5.0  * scale;   // horizontal padding inside section
+  final double rowGap = 2.0  * scale;   // space between consecutive field rows
+  const kC          = PdfColor.fromInt(0xFF101A3A); // values + headings
+  const kLabelColor = PdfColor.fromInt(0xFF6B7280); // muted grey for labels
+  const kAccent     = PdfColor.fromInt(0xFF3B82F6); // blue left-border accent
+  const kDivider    = PdfColor.fromInt(0xFFE5E7EB); // section divider
+  const kVitalBdr   = PdfColor.fromInt(0xFF3B82F6); // vital box border (blue, no fill)
+
+  String dv(String k) => enabled.contains(k) ? (data[k]?.trim() ?? '') : '';
+
+  // ── single field row ──────────────────────────────────────────────────────
+  // RichText with justify: label+value inline, all lines (incl. continuation)
+  // stretch to fill the full available width — no blank right-side gaps.
+  pw.Widget fr(String label, String value) => pw.Padding(
+    padding: pw.EdgeInsets.only(bottom: rowGap),
+    child: label.isEmpty
+        ? pw.Text(value,
+            textAlign: pw.TextAlign.justify,
+            style: pw.TextStyle(font: font, fontSize: fs, color: kC))
+        : pw.RichText(
+            textAlign: pw.TextAlign.justify,
+            text: pw.TextSpan(
+              children: [
+                pw.TextSpan(
+                  text: '$label : ',
+                  style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor),
+                ),
+                pw.TextSpan(
+                  text: value,
+                  style: pw.TextStyle(font: font, fontSize: fs, color: kC),
+                ),
+              ],
+            ),
+          ),
+  );
+
+  // ── section block — bold header + content below ──────────────────────────
+  pw.Widget sec(String title, List<pw.Widget> items) => pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Padding(
+        padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 3 * scale),
+        child: pw.Text(title,
+            style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kC, letterSpacing: 0)),
+      ),
+      pw.Padding(
+        padding: pw.EdgeInsets.fromLTRB(hp + 3, 2 * scale, hp, 3 * scale),
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: items),
+      ),
+      pw.Container(height: 0.5, color: kDivider),
+      pw.SizedBox(height: 2 * scale),
+    ],
+  );
+
+  // ── inline section — header + value on the same line ─────────────────────
+  pw.Widget secInline(String title, String value) => pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: [
+      pw.Padding(
+        padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 3 * scale),
+        child: pw.RichText(
+          text: pw.TextSpan(children: [
+            pw.TextSpan(
+              text: '$title : ',
+              style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kC, letterSpacing: 0),
+            ),
+            pw.TextSpan(
+              text: value,
+              style: pw.TextStyle(font: font, fontSize: fs, color: kC),
+            ),
+          ]),
+        ),
+      ),
+      pw.Container(height: 0.5, color: kDivider),
+      pw.SizedBox(height: 2 * scale),
+    ],
+  );
+
+  final sections = <pw.Widget>[];
+
+  // PATIENT INFO — no section header, clubs directly under template name row
+  {
+    final phone   = dv('phone');
+    final address = dv('address');
+    final email   = dv('email');
+    final hasAny  = phone.isNotEmpty || address.isNotEmpty || email.isNotEmpty;
+    if (hasAny) {
+      sections.add(pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Padding(
+            padding: pw.EdgeInsets.fromLTRB(hp, 2 * scale, hp, 3 * scale),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+              children: [
+                if (phone.isNotEmpty)   fr('Phone',   phone),
+                if (address.isNotEmpty) fr('Address', address),
+                if (email.isNotEmpty)   fr('Email',   email),
+              ],
+            ),
+          ),
+          pw.Container(height: 0.5, color: kDivider),
+          pw.SizedBox(height: 2 * scale),
+        ],
+      ));
+    }
+  }
+
+  // 1. KNOWN ALLERGIES
+  if (dv('allergies').isNotEmpty)
+    sections.add(secInline('KNOWN ALLERGIES', dv('allergies')));
+
+  // 2. CHIEF COMPLAINT
+  if (dv('chiefComplaint').isNotEmpty)
+    sections.add(secInline('CHIEF COMPLAINT', dv('chiefComplaint')));
+
+  // 3. PREVIOUS HISTORY
+  if (dv('previousHistory').isNotEmpty)
+    sections.add(secInline('PREVIOUS HISTORY', dv('previousHistory')));
+
+  // 4. EXAMINATION FINDING — a. Vitals  b. General Examination  c. Neurological Examination
+  {
+    final hasW  = dv('weight').isNotEmpty;
+    final hasBP = dv('bloodPressure').isNotEmpty;
+    final hasT  = dv('temperature').isNotEmpty;
+    final items = <pw.Widget>[
+      // a. Vitals — Weight : val   BP : val   Temp : val  (all inline on one row)
+      if (hasW || hasBP || hasT) pw.Padding(
+        padding: pw.EdgeInsets.only(bottom: rowGap),
+        child: pw.Row(
+          children: [
+            if (hasW) ...[
+              pw.RichText(text: pw.TextSpan(children: [
+                pw.TextSpan(text: 'Weight : ', style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor)),
+                pw.TextSpan(text: dv('weight'),   style: pw.TextStyle(font: font,     fontSize: fs, color: kC)),
+              ])),
+              if (hasBP || hasT) pw.SizedBox(width: 12),
+            ],
+            if (hasBP) ...[
+              pw.RichText(text: pw.TextSpan(children: [
+                pw.TextSpan(text: 'BP : ',              style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor)),
+                pw.TextSpan(text: dv('bloodPressure'),  style: pw.TextStyle(font: font,     fontSize: fs, color: kC)),
+              ])),
+              if (hasT) pw.SizedBox(width: 12),
+            ],
+            if (hasT) pw.RichText(text: pw.TextSpan(children: [
+              pw.TextSpan(text: 'Temp : ',      style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor)),
+              pw.TextSpan(text: dv('temperature'), style: pw.TextStyle(font: font,  fontSize: fs, color: kC)),
+            ])),
+          ],
+        ),
+      ),
+      // b. General Examination
+      if (dv('examGeneral').isNotEmpty)      fr('General Examination',      dv('examGeneral')),
+      // c. Neurological Examination
+      if (dv('examNeurological').isNotEmpty) fr('Neurological Examination', dv('examNeurological')),
+    ];
+    if (items.isNotEmpty) sections.add(sec('EXAMINATION FINDING', items));
+  }
+
+  // 5. PREVIOUS INVESTIGATIONS — a. Imaging  b. Other Investigations
+  {
+    final items = <pw.Widget>[
+      if (dv('imaging').isNotEmpty)            fr('Imaging',              dv('imaging')),
+      if (dv('otherInvestigation').isNotEmpty) fr('Other Investigations', dv('otherInvestigation')),
+    ];
+    if (items.isNotEmpty) sections.add(sec('PREVIOUS INVESTIGATIONS', items));
+  }
+
+  // 6. IMPRESSION
+  {
+    final items = <pw.Widget>[
+      if (dv('clinicalDiagnosis').isNotEmpty) fr('Diagnosis',  dv('clinicalDiagnosis')),
+      if (dv('diagnosis').isNotEmpty)         fr('Impression', dv('diagnosis')),
+    ];
+    if (items.isNotEmpty) sections.add(sec('IMPRESSION', items));
+  }
+
+  // 7. TREATMENT PLAN
+  if (dv('treatmentPlan').isNotEmpty)
+    sections.add(sec('TREATMENT PLAN', [fr('', dv('treatmentPlan'))]));
+
+  // 8. MEDICINE / TREATMENT
+  if (dv('medications').isNotEmpty) {
+    final cellPad = pw.EdgeInsets.all(2.0 * scale);
+
+    pw.Widget hCell(String t) => pw.Padding(
+          padding: cellPad,
+          child: pw.Text(t,
+              style: pw.TextStyle(font: fontBold, fontSize: fs, color: kC)),
+        );
+
+    pw.Widget dCell(String t) => pw.Padding(
+          padding: cellPad,
+          child: pw.Text(t.trim().isEmpty ? '-' : t.trim(),
+              style: pw.TextStyle(font: font, fontSize: fs, color: kC)),
+        );
+
+    final meds = _parseMedsForPdf(dv('medications'));
+    if (meds.isNotEmpty) {
+      sections.add(sec('MEDICINE / TREATMENT', [
+        pw.Table(
+          tableWidth: pw.TableWidth.max,
+          border: pw.TableBorder.all(color: _kBorder, width: 0.4),
+          columnWidths: const {
+            0: pw.FlexColumnWidth(3),  // Medicine
+            1: pw.FlexColumnWidth(2),  // Dose
+            2: pw.FlexColumnWidth(2),  // Route
+            3: pw.FlexColumnWidth(3),  // Frequency
+            4: pw.FlexColumnWidth(3),  // Duration
+          },
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.white),
+              children: ['Medicine', 'Dose', 'Route', 'Frequency', 'Duration']
+                  .map(hCell)
+                  .toList(),
+            ),
+            ...meds.asMap().entries.map((e) {
+              final m  = e.value;
+              final bg = e.key.isOdd
+                  ? const PdfColor.fromInt(0xFFF8FAFC)
+                  : null;
+              return pw.TableRow(
+                decoration: bg != null ? pw.BoxDecoration(color: bg) : null,
+                children: [
+                  pw.Padding(
+                    padding: cellPad,
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          m.medicine.trim().isEmpty ? '-' : m.medicine.trim(),
+                          style: pw.TextStyle(
+                              font: font, fontSize: fs, color: kC),
+                        ),
+                        if (m.specialInstruction.isNotEmpty)
+                          pw.Text('* ${m.specialInstruction}',
+                              style: pw.TextStyle(
+                                  font: font,
+                                  fontSize: fs - 1,
+                                  color: const PdfColor.fromInt(0xFFB07D2A),
+                                  fontStyle: pw.FontStyle.italic)),
+                      ],
+                    ),
+                  ),
+                  dCell(m.dose),
+                  dCell(m.route),
+                  dCell(m.frequency),
+                  dCell(m.duration),
+                ],
+              );
+            }),
+          ],
+        ),
+      ]));
+    }
+  }
+
+  // 9. ADVICE — a. Instructions  b. Investigation Should be done  c. Cross Consultation
+  {
+    final items = <pw.Widget>[
+      if (dv('advice').isNotEmpty)                fr('Instructions',               dv('advice')),
+      if (dv('investigationToBeDone').isNotEmpty) fr('Investigation Should be done', dv('investigationToBeDone')),
+      if (dv('crossConsultation').isNotEmpty)     fr('Cross Consultation',         dv('crossConsultation')),
+    ];
+    if (items.isNotEmpty) sections.add(sec('ADVICE', items));
+  }
+
+  // NOTES
+  if (dv('notes').isNotEmpty)
+    sections.add(sec('NOTES', [fr('', dv('notes'))]));
+
+  return sections;
+}
+
 // ── All clinical sections ─────────────────────────────────────────────────────
 
 pw.Widget _buildSections(
@@ -529,7 +967,7 @@ pw.Widget _buildSections(
   // KNOWN ALLERGIES
   if (d('allergies').isNotEmpty)
     sections.add(_section('KNOWN ALLERGIES', fontBold, [
-      _fieldRow('Allergies', d('allergies'), font, fontBold),
+      _fieldRow('', d('allergies'), font, fontBold),
     ]));
 
   // PRESENTING COMPLAINTS
@@ -900,7 +1338,7 @@ pw.Widget _buildFooter(
 
 Future<Uint8List> _assemblePdfIsolate(
         (List<String>, Map<String, String>, Uint8List?) args) =>
-    _assemblePdf(Set<String>.from(args.$1), args.$2, args.$3);
+    _buildManualPdf(Set<String>.from(args.$1), args.$2, args.$3);
 
 // ── Lightweight plain-text fallback PDF ───────────────────────────────────────
 

@@ -55,7 +55,8 @@ const Set<String> _kAllFieldIds = {
   'previousHistory', 'chiefComplaint',
   'examGeneral', 'examNeurological',
   'clinicalDiagnosis', 'imaging', 'otherInvestigation',
-  'diagnosis', 'treatmentPlan', 'medications', 'notes', 'advice',
+  'diagnosis', 'treatmentPlan', 'medications', 'notes',
+  'advice', 'investigationToBeDone', 'crossConsultation',
 };
 
 const Set<String> _kEmergencyFields = {
@@ -67,8 +68,10 @@ const Set<String> _kEmergencyFields = {
 const Set<String> _kDoctorFields = {
   'firstName', 'lastName', 'age',
   'weight', 'bloodPressure', 'temperature',
-  'chiefComplaint', 'examGeneral', 'examNeurological',
-  'clinicalDiagnosis', 'diagnosis', 'treatmentPlan', 'medications', 'notes', 'advice',
+  'allergies', 'chiefComplaint', 'previousHistory',
+  'examGeneral', 'examNeurological',
+  'clinicalDiagnosis', 'diagnosis', 'treatmentPlan', 'medications', 'notes',
+  'advice', 'investigationToBeDone', 'crossConsultation',
 };
 
 const List<PrintTemplate> kBuiltInTemplates = [

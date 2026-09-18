@@ -12,7 +12,9 @@ class AppConfig {
   static const String tokenKey = 'auth_access_token';
   static const String refreshTokenKey = 'auth_refresh_token';
   static const String userKey = 'current_user';
-  static const String credHashKey = 'auth_cred_hash'; // SHA-256(email:password)
+  static const String credHashKey  = 'auth_cred_hash'; // SHA-256(email:password)
+  static const String credEmailKey = 'auth_cred_email';
+  static const String credPassKey  = 'auth_cred_pass';  // stored encrypted by device keystore
 
   // API endpoints (Spring Boot backend, paths relative to /api)
   static const String loginEndpoint = '/auth/login';

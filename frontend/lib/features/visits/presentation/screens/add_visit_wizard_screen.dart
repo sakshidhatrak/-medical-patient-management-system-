@@ -107,9 +107,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   final _treatmentMedFiles  = <({String name, Uint8List bytes})>[];
   final _prescriptionRows   = <_PrescriptionRow>[]; // Structured prescriptions
   final _treatNotesCtrl       = TextEditingController();
-  final _adviceCtrl           = TextEditingController();
-  final _crossConsultCtrl     = TextEditingController();
-  final _crossConsultFiles    = <({String name, Uint8List bytes})>[];
+  final _adviceCtrl                  = TextEditingController();
+  final _crossConsultCtrl            = TextEditingController();
+  final _crossConsultFiles           = <({String name, Uint8List bytes})>[];
+  final _investigationToBeDoneCtrl   = TextEditingController();
+  final _investigationToBeDoneFiles  = <({String name, Uint8List bytes})>[];
 
   // ── Vitals (per visit) ────────────────────────────────────────────────────
   final _weightCtrl = TextEditingController();
@@ -133,23 +135,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   final _pat1TempCtrl       = TextEditingController();
   final _pat1AllergyCtrl    = TextEditingController();
 
-  static const _stepLabels = ['Patient Info', 'Treatment & Advice', 'Preview & Print'];
+  static const _stepLabels = ['Visit Details', 'Preview & Print'];
   static const _stepSubtitles = [
-    'Auto-populated · Review & continue',
-    'Enter treatment details',
+    'Patient info & treatment details',
     'Review & export visit record',
   ];
   static const _stepIcons = [
-    Icons.person_outline_rounded,
-    Icons.medical_services_outlined,
+    Icons.edit_note_outlined,
     Icons.print_outlined,
   ];
 
   @override
   void initState() {
     super.initState();
-    _step = widget.visitId != null ? 2 : 0;
-    _pageCtrl = PageController(initialPage: _step);
+    _step = 0;
+    _pageCtrl = PageController(initialPage: 0);
     if (widget.visitId != null) {
       _visitLoading = true;
     }
@@ -164,6 +164,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
       _diagnosisCtrl, _treatmentCtrl,
       _treatNotesCtrl, _adviceCtrl, _crossConsultCtrl,
+      _investigationToBeDoneCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
       _pat1FirstNameCtrl, _pat1LastNameCtrl, _pat1AgeCtrl,
       _pat1PhoneCtrl, _pat1AltPhoneCtrl, _pat1EmailCtrl,
@@ -223,8 +224,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             _prescriptionRows.add(_PrescriptionRow(medicine: line.trim()));
           }
         }
-        se(_adviceCtrl,              'advice');
-        se(_crossConsultCtrl,        'crossConsultation');
+        se(_adviceCtrl,                 'advice');
+        se(_investigationToBeDoneCtrl,  'investigationToBeDone');
+        se(_crossConsultCtrl,           'crossConsultation');
         se(_bpCtrl,                  'bp');
         se(_weightCtrl,              'weight');
         se(_tempCtrl,                'temperature');
@@ -291,8 +293,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       add('medications', _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'));
     }
-    add('advice',            _adviceCtrl.text.trim());
-    add('crossConsultation', _crossConsultCtrl.text.trim());
+    add('advice',                _adviceCtrl.text.trim());
+    add('investigationToBeDone', _investigationToBeDoneCtrl.text.trim());
+    add('crossConsultation',     _crossConsultCtrl.text.trim());
     add('bp',                _bpCtrl.text.trim());
     add('weight',            _weightCtrl.text.trim());
     add('temperature',       _tempCtrl.text.trim());
@@ -310,12 +313,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _weightCtrl, _bpCtrl, _tempCtrl,
     ];
     return ctrls.any((c) => c.text.trim().isNotEmpty) ||
-        _prescriptionRows.isNotEmpty    ||
-        _prevHistoryFiles.isNotEmpty    || _chiefComplaintFiles.isNotEmpty ||
-        _examGeneralFiles.isNotEmpty    || _examNeurologicalFiles.isNotEmpty ||
-        _clinicalDiagnosisFiles.isNotEmpty || _imagingFiles.isNotEmpty ||
-        _otherInvestFiles.isNotEmpty    || _impressionFiles.isNotEmpty ||
-        _planFiles.isNotEmpty           || _treatmentMedFiles.isNotEmpty;
+        _prescriptionRows.isNotEmpty           ||
+        _prevHistoryFiles.isNotEmpty           || _chiefComplaintFiles.isNotEmpty ||
+        _examGeneralFiles.isNotEmpty           || _examNeurologicalFiles.isNotEmpty ||
+        _clinicalDiagnosisFiles.isNotEmpty     || _imagingFiles.isNotEmpty ||
+        _otherInvestFiles.isNotEmpty           || _impressionFiles.isNotEmpty ||
+        _planFiles.isNotEmpty                  || _treatmentMedFiles.isNotEmpty ||
+        _investigationToBeDoneFiles.isNotEmpty || _crossConsultFiles.isNotEmpty;
   }
 
   // ── Upload all files picked in the wizard for a given visitId ────────────
@@ -332,8 +336,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       (_otherInvestFiles,       PhotoCategory.visit,       'Other Investigation'),
       (_impressionFiles,        PhotoCategory.treatment,   'Impression'),
       (_planFiles,              PhotoCategory.treatment,   'Treatment Plan'),
-      (_treatmentMedFiles,      PhotoCategory.treatment,   'Medicines'),
-      (_crossConsultFiles,      PhotoCategory.visit,       'Cross Consultation'),
+      (_treatmentMedFiles,             PhotoCategory.treatment,   'Medicines'),
+      (_investigationToBeDoneFiles,    PhotoCategory.visit,       'Investigation Should be done'),
+      (_crossConsultFiles,             PhotoCategory.visit,       'Cross Consultation'),
     ];
 
     int uploaded = 0;
@@ -454,7 +459,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           // Keep _saving = true (button disabled) during file upload so a
           // second tap cannot create a duplicate visit while files are uploading.
           await _uploadVisitFiles(visit.id);
-          if (_patient != null) unawaited(_savePatientEdits(_patient!));
+          if (_patient != null) {
+            await _savePatientEdits(_patient!);
+            ref.invalidate(patientByIdProvider(widget.patientId));
+          }
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
@@ -477,9 +485,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             _saving    = false;
             _savedVisit = visit;
             _justSaved  = true;
-            _step       = 2;
+            _step       = 1;
           });
-          unawaited(_pageCtrl.animateToPage(2,
+          unawaited(_pageCtrl.animateToPage(1,
               duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
         } else {
           if (mounted) setState(() => _saving = false);
@@ -521,7 +529,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           }
           // Keep _saving = true during file upload (same fix as new-visit path).
           await _uploadVisitFiles(widget.visitId!);
-          if (_patient != null) unawaited(_savePatientEdits(_patient!));
+          if (_patient != null) {
+            await _savePatientEdits(_patient!);
+            ref.invalidate(patientByIdProvider(widget.patientId));
+          }
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Row(children: [
@@ -547,9 +558,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             _saving    = false;
             _justSaved  = true;
             _savedVisit = updatedVisit;
-            _step       = 2;
+            _step       = 1;
           });
-          unawaited(_pageCtrl.animateToPage(2,
+          unawaited(_pageCtrl.animateToPage(1,
               duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
         } else {
           if (mounted) setState(() => _saving = false);
@@ -625,10 +636,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'age':            _patient!.age != null ? '${_patient!.age} yrs' : '—',
       'address':        _patient!.address ?? '—',
       'email':          pn('email'),
-      'weight':         _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : pn('weight'),
-      'bloodPressure':  _bpCtrl.text.trim().isNotEmpty ? _bpCtrl.text.trim() : pn('bloodPressure'),
-      'temperature':    _tempCtrl.text.trim().isNotEmpty ? _tempCtrl.text.trim() : pn('temperature'),
-      'allergies':      _patient?.allergies?.isNotEmpty == true ? _patient!.allergies! : pn('allergies'),
+      'weight':         _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : (_pat1WeightCtrl.text.trim().isNotEmpty ? _pat1WeightCtrl.text.trim() : pn('weight')),
+      'bloodPressure':  _bpCtrl.text.trim().isNotEmpty ? _bpCtrl.text.trim() : (_pat1BpCtrl.text.trim().isNotEmpty ? _pat1BpCtrl.text.trim() : pn('bloodPressure')),
+      'temperature':    _tempCtrl.text.trim().isNotEmpty ? _tempCtrl.text.trim() : (_pat1TempCtrl.text.trim().isNotEmpty ? _pat1TempCtrl.text.trim() : pn('temperature')),
+      'allergies':      _pat1AllergyCtrl.text.trim().isNotEmpty ? _pat1AllergyCtrl.text.trim() : (_patient?.allergies?.isNotEmpty == true ? _patient!.allergies! : pn('allergies')),
       'medicalHistory': pn('clinicalNotes'),
       'previousHistory':_prevHistoryCtrl.text.trim(),
       'chiefComplaint': _complaintCtrl.text.trim(),
@@ -641,7 +652,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'treatmentPlan':  _treatmentCtrl.text.trim(),
       'medications':    _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.specialInstruction.isNotEmpty ? " — ${r.specialInstruction}" : ""}').join('\n'),
-      'advice':         _adviceCtrl.text.trim(),
+      'advice':              _adviceCtrl.text.trim(),
+      'investigationToBeDone': _investigationToBeDoneCtrl.text.trim(),
+      'crossConsultation':   _crossConsultCtrl.text.trim(),
       'visitType':      visit.visitType.label,
     };
     context.push('/print-config');
@@ -864,46 +877,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     }
 
     final vp      = MediaQuery.of(context).viewPadding;
-    final isLast    = _step == 1;
-    final isPreview = _step == 2;
     return Scaffold(
       backgroundColor: _kBg(context),
-      resizeToAvoidBottomInset: false,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: isPreview ? null : Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: SizedBox(
-          width: double.infinity,
-          height: 54,
-          child: ElevatedButton.icon(
-            onPressed: _saving ? null : (isLast ? _save : _nextStep),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _kBlue,
-              foregroundColor: Colors.white,
-              disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
-              elevation: 6,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-              textStyle: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            icon: _saving
-                ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : Icon(isLast
-                    ? Icons.check_circle_outline_rounded
-                    : Icons.arrow_forward_rounded,
-                    size: 18),
-            label: _saving
-                ? const SizedBox.shrink()
-                : Text(isLast
-                    ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
-                    : 'Continue'),
-          ),
-        ),
-      ),
+      resizeToAvoidBottomInset: true,
+      bottomNavigationBar: _buildBottomNav(),
       body: Column(children: [
         SizedBox(height: vp.top),
         _buildWizardHeader(),
@@ -914,13 +891,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             physics: const NeverScrollableScrollPhysics(),
             children: [
               _buildStep1(patientAsync),
-              _buildStep2(),
               _buildStep3(),
             ],
           ),
         ),
-        _buildBottomNav(),
-        SizedBox(height: vp.bottom),
       ]),
     );
   }
@@ -933,8 +907,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       IconButton(
         icon: Icon(Icons.arrow_back_ios_new, size: 18, color: _kNavy(context)),
         onPressed: () {
-          if (_step == 2) {
-            // If saved/edit mode: go to patient timeline; if unsaved draft: go back to treatment
+          if (_step == 1) {
+            // If saved/edit mode: go to patient timeline; if unsaved draft: go back to form
             final isUnsaved = _savedVisit == null && widget.visitId == null;
             if (isUnsaved) {
               _prevStep();
@@ -967,7 +941,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           color: _kBlue,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text('Step ${_step + 1} of 3',
+        child: Text('Step ${_step + 1} of 2',
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white)),
       ),
@@ -1017,12 +991,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 alignment: Alignment.center,
                 child: isDone
                     ? Icon(Icons.check_rounded, size: 16, color: Colors.white)
-                    : idx == 2
-                        ? Icon(Icons.print_outlined, size: 16, color: Colors.white)
-                        : Text('${idx + 1}',
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w800,
-                                color: isCurrent ? Colors.white : _kMuted(context))),
+                    : Text('${idx + 1}',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w800,
+                            color: isCurrent ? Colors.white : _kMuted(context))),
               ),
               const SizedBox(height: 4),
               Text(_stepLabels[idx],
@@ -1035,21 +1007,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         }),
         // Print icon shortcut (active only on step 3)
         GestureDetector(
-          onTap: _step == 2 ? _openPrint : null,
+          onTap: _step == 1 ? _openPrint : null,
           child: Container(
             margin: const EdgeInsets.only(left: 10),
             width: 30, height: 30,
             decoration: BoxDecoration(
-              color: _step == 2
+              color: _step == 1
                   ? _kBlue.withValues(alpha: 0.15)
                   : _kWiz(context),
               shape: BoxShape.circle,
               border: Border.all(
-                  color: _step == 2 ? _kBlue : _kBorder(context), width: 1.5),
+                  color: _step == 1 ? _kBlue : _kBorder(context), width: 1.5),
             ),
             alignment: Alignment.center,
             child: Icon(Icons.open_in_new_rounded, size: 14,
-                color: _step == 2 ? _kBlue : _kMuted(context)),
+                color: _step == 1 ? _kBlue : _kMuted(context)),
           ),
         ),
       ],
@@ -1058,11 +1030,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Bottom nav ────────────────────────────────────────────────────────────
   Widget _buildBottomNav() {
-    final isPreview = _step == 2;
+    final isPreview = _step == 1;
+    final isLast    = _step == 0;
 
     return Container(
       color: _kCard(context),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 12 + MediaQuery.of(context).padding.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (!isPreview) ...[
           ClipRRect(
@@ -1074,67 +1047,108 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               color: _kBlue,
             ),
           ),
-          const SizedBox(height: 8),
-        ],
-        if (isPreview) ...[
+          const SizedBox(height: 10),
+          // Back + primary action on one row
           Row(children: [
-            if (widget.visitId != null) ...[
-              Expanded(
+            if (_step > 0) ...[
+              SizedBox(
+                height: 52,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    setState(() => _step = 1);
-                    _pageCtrl.jumpToPage(1);
-                  },
-                  icon: Icon(Icons.edit_outlined, size: 16),
-                  label: Text('Edit'),
+                  onPressed: _saving ? null : _prevStep,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _kSlate(context),
                     side: BorderSide(color: _kBorder(context), width: 1.5),
-                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    textStyle: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700),
+                        borderRadius: BorderRadius.circular(14)),
+                    textStyle: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700),
                   ),
+                  icon: const Icon(Icons.arrow_back_ios_new, size: 16),
+                  label: const Text('Back'),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
             ],
             Expanded(
-              child: FilledButton.icon(
-                onPressed: () => context.go('/patients/${widget.patientId}'),
-                icon: Icon(Icons.person_outlined, size: 17),
-                label: Text('Patient'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _kBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  textStyle: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700),
+              child: SizedBox(
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _saving ? null : (isLast ? _save : _nextStep),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kBlue,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: _kBlue.withValues(alpha: 0.5),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    textStyle: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w700),
+                  ),
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18, height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : Icon(isLast
+                          ? Icons.check_circle_outline_rounded
+                          : Icons.arrow_forward_rounded,
+                          size: 18),
+                  label: _saving
+                      ? const SizedBox.shrink()
+                      : Text(isLast
+                          ? (widget.visitId == null ? 'Save Visit' : 'Update Visit')
+                          : 'Continue'),
                 ),
               ),
             ),
           ]),
-        ] else if (_step > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _saving ? null : _prevStep,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _kSlate(context),
-                side: BorderSide(color: _kBorder(context), width: 1.5),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 20, vertical: 12),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+        ] else ...[
+          // Preview step: Edit + Go to Patient
+          Row(children: [
+            if (widget.visitId != null) ...[
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() => _step = 0);
+                      _pageCtrl.jumpToPage(0);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _kSlate(context),
+                      side: BorderSide(color: _kBorder(context), width: 1.5),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      textStyle: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ),
               ),
-              icon: Icon(Icons.arrow_back_ios_new, size: 16),
-              label: Text('Back'),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: SizedBox(
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: () => context.go('/patients/${widget.patientId}'),
+                  icon: const Icon(Icons.person_outlined, size: 17),
+                  label: const Text('Patient'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _kBlue,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
             ),
-          ),
-        // Spacer so FAB doesn't overlap the Back button
-        if (!isPreview) const SizedBox(height: 60),
+          ]),
+        ],
       ]),
     );
   }
@@ -1212,6 +1226,23 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Step 1 : Patient Info (editable) ──────────────────────────────────────
   Widget _buildStep1(AsyncValue<PatientEntity?> patientAsync) {
+    // Photo setup (needed for step-2 sections, must be unconditional ref.watch)
+    final allPtPhotos = ref.watch(photoProvider(widget.patientId)).photos;
+    final visitPhotos = widget.visitId != null
+        ? allPtPhotos.where((p) => p.visitId == widget.visitId).toList()
+        : <PhotoEntity>[];
+    List<PhotoEntity> ep(String caption) =>
+        visitPhotos.where((p) => p.caption == caption).toList();
+    const knownCaptions = {
+      'Previous History', 'Chief Complaint', 'General Examination',
+      'Neurological Examination', 'Imaging', 'Other Investigation',
+      'Impression', 'Treatment Plan', 'Medicines',
+      'Cross Consultation', 'Clinical Diagnosis',
+    };
+    final orphanPhotos = visitPhotos
+        .where((p) => p.caption == null || !knownCaptions.contains(p.caption))
+        .toList();
+
     return patientAsync.when(
       loading: () => const Center(
           child: CircularProgressIndicator(color: _kBlue)),
@@ -1231,105 +1262,105 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               title: 'Visit Details',
               icon: Icons.calendar_today_outlined,
               color: _kBlue,
-              child: Column(children: [
-                // Visit Date
-                GestureDetector(
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: _visitDate,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now().add(const Duration(days: 1)),
-                      builder: (c, w) => Theme(
-                        data: Theme.of(c).copyWith(
-                          colorScheme: const ColorScheme.light(
-                              primary: _kBlue),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Visit Date (tap to pick)
+                Expanded(
+                  flex: 5,
+                  child: GestureDetector(
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: context,
+                        initialDate: _visitDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime.now().add(const Duration(days: 1)),
+                        builder: (c, w) => Theme(
+                          data: Theme.of(c).copyWith(
+                            colorScheme: const ColorScheme.light(primary: _kBlue),
+                          ),
+                          child: w!,
                         ),
-                        child: w!,
+                      );
+                      if (d != null) setState(() => _visitDate = d);
+                    },
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Visit Date',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                              color: _kSlate(context))),
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _kWiz(context),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: _kBorder(context)),
+                        ),
+                        child: Row(children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 15, color: _kBlue),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              DateFormat('dd MMM yyyy').format(_visitDate),
+                              style: TextStyle(fontSize: 13, color: _kNavy(context),
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Icon(Icons.edit_outlined, size: 13, color: _kMuted(context)),
+                        ]),
                       ),
-                    );
-                    if (d != null) setState(() => _visitDate = d);
-                  },
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Visit Date',
-                        style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600,
+                    ]),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // Visit Type
+                Expanded(
+                  flex: 4,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Visit Type',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                             color: _kSlate(context))),
-                    const SizedBox(height: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 13),
-                      decoration: BoxDecoration(
-                        color: _kWiz(context),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _kBorder(context)),
+                    const SizedBox(height: 5),
+                    DropdownButtonFormField<String>(
+                      value: _visitType.label,
+                      dropdownColor: _kCard(context),
+                      iconEnabledColor: _kMuted(context),
+                      isExpanded: true,
+                      items: _kVisitTypeLabels
+                          .map((l) => DropdownMenuItem(
+                                value: l,
+                                child: Text(l,
+                                    style: TextStyle(color: _kNavy(context), fontSize: 13)),
+                              ))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _visitType = switch (v) {
+                          'Emergency' => VisitType.emergency,
+                          'Follow-up' => VisitType.followUp,
+                          _           => VisitType.opd,
+                        });
+                      },
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.local_hospital_outlined,
+                            size: 15, color: _kMuted(context)),
+                        filled: true, fillColor: _kWiz(context),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 10),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: _kBorder(context))),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: _kBorder(context))),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: _kBlue, width: 1.5)),
                       ),
-                      child: Row(children: [
-                        Icon(Icons.calendar_today_outlined,
-                            size: 17, color: _kMuted(context)),
-                        const SizedBox(width: 10),
-                        Text(
-                          DateFormat('dd MMMM yyyy').format(_visitDate),
-                          style: TextStyle(
-                              fontSize: 14, color: _kNavy(context),
-                              fontWeight: FontWeight.w500),
-                        ),
-                        const Spacer(),
-                        Icon(Icons.edit_outlined, size: 15, color: _kMuted(context)),
-                      ]),
+                      style: TextStyle(
+                          fontSize: 13, color: _kNavy(context), fontWeight: FontWeight.w500),
                     ),
                   ]),
                 ),
-                const SizedBox(height: 12),
-                // Visit Type
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Visit Type',
-                      style: TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600,
-                          color: _kSlate(context))),
-                  const SizedBox(height: 6),
-                  DropdownButtonFormField<String>(
-                    value: _visitType.label,
-                    dropdownColor: _kCard(context),
-                    iconEnabledColor: _kMuted(context),
-                    items: _kVisitTypeLabels
-                        .map((l) => DropdownMenuItem(
-                              value: l,
-                              child: Text(l,
-                                  style: TextStyle(
-                                      color: _kNavy(context), fontSize: 14)),
-                            ))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _visitType = switch (v) {
-                        'Emergency' => VisitType.emergency,
-                        'Follow-up' => VisitType.followUp,
-                        _           => VisitType.opd,
-                      });
-                    },
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(
-                          Icons.local_hospital_outlined, size: 17, color: _kMuted(context)),
-                      filled: true, fillColor: _kWiz(context),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 12),
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _kBorder(context))),
-                      enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide(color: _kBorder(context))),
-                      focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide:
-                              BorderSide(color: _kBlue, width: 1.5)),
-                    ),
-                    style: TextStyle(
-                        fontSize: 14, color: _kNavy(context), fontWeight: FontWeight.w500),
-                  ),
-                ]),
               ]),
             ),
 
@@ -1375,26 +1406,292 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ]),
             ),
 
-            // ── Vitals & Clinical Snapshot (editable) ─────────────────────
+            // ── Vitals ─────────────────────────────────────────────────────
             _WizardCard(
-              title: 'Vitals & Clinical Snapshot',
+              title: 'Vitals',
               icon: Icons.monitor_heart_outlined,
               color: _kBlue,
-              child: Column(children: [
+              child: Row(children: [
+                Expanded(child: _editField('Weight', _pat1WeightCtrl, hint: 'kg')),
+                const SizedBox(width: 12),
+                Expanded(child: _editField('Blood Pressure', _pat1BpCtrl, hint: 'mmHg')),
+                const SizedBox(width: 12),
+                Expanded(child: _editField('Temperature', _pat1TempCtrl, hint: '°F')),
+              ]),
+            ),
+
+            // ════════════════════════════════════════════════════════
+            // Treatment & Advice section (previously Step 2)
+            // ════════════════════════════════════════════════════════
+
+            const SizedBox(height: 6),
+
+            // Orphan photos (uploaded before caption feature)
+            if (orphanPhotos.isNotEmpty) ...[
+              _WizardCard(
+                title: 'Previously Uploaded',
+                icon: Icons.cloud_done_rounded,
+                color: _kBlue,
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${orphanPhotos.length} file${orphanPhotos.length == 1 ? '' : 's'} attached',
+                      style: TextStyle(fontSize: 12, color: _kSlate(context))),
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 6,
+                      children: orphanPhotos.map(_existingPhotoChip).toList()),
+                ]),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            // 1. Known Allergies
+            _WizardCard(
+              title: 'Known Allergies',
+              icon: Icons.warning_amber_outlined,
+              color: _kRed,
+              child: _editField('Known Allergies', _pat1AllergyCtrl,
+                  maxLines: 2, hint: 'e.g. Penicillin, Sulfa drugs'),
+            ),
+
+            // 2. Chief Complaint
+            _WizardCard(
+              title: 'Chief Complaint',
+              icon: Icons.report_problem_outlined,
+              color: _kBlue,
+              child: _fieldWithUpload(
+                label: 'Chief Complaint',
+                controller: _complaintCtrl,
+                files: _chiefComplaintFiles,
+                onFilesChange: (f) => _chiefComplaintFiles..clear()..addAll(f),
+                existingPhotos: ep('Chief Complaint'),
+                prefixIcon: Icons.report_problem_outlined,
+                hint: 'Primary reason for visit…',
+              ),
+            ),
+
+            // 3. Previous History
+            _WizardCard(
+              title: 'Previous History',
+              icon: Icons.history_edu_outlined,
+              color: _kBlue,
+              child: _fieldWithUpload(
+                label: 'Previous History',
+                controller: _prevHistoryCtrl,
+                files: _prevHistoryFiles,
+                onFilesChange: (f) => _prevHistoryFiles..clear()..addAll(f),
+                existingPhotos: ep('Previous History'),
+                prefixIcon: Icons.history_edu_outlined,
+                hint: 'Enter previous medical history…',
+              ),
+            ),
+
+            // 4. Examination Finding
+            _WizardCard(
+              title: 'Examination Finding',
+              icon: Icons.person_search_outlined,
+              color: _kBlue2,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // a. Vitals
+                Text('a. Vitals',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                        color: _kSlate(context))),
+                const SizedBox(height: 8),
                 Row(children: [
-                  Expanded(child: _editField('Weight', _pat1WeightCtrl,
-                      hint: 'kg')),
-                  const SizedBox(width: 12),
-                  Expanded(child: _editField('Blood Pressure', _pat1BpCtrl,
-                      hint: 'mmHg')),
-                  const SizedBox(width: 12),
-                  Expanded(child: _editField('Temperature', _pat1TempCtrl,
-                      hint: '°F')),
+                  Expanded(child: _editField('Weight', _weightCtrl, hint: 'kg')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _editField('Blood Pressure', _bpCtrl, hint: 'mmHg')),
+                  const SizedBox(width: 10),
+                  Expanded(child: _editField('Temperature', _tempCtrl, hint: '°F')),
+                ]),
+                const SizedBox(height: 14),
+                // b. General / c. Neurological tabs
+                Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _examTab = 'general'),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: _examTab == 'general' ? _kBlue : _kCard(context),
+                          borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(10),
+                              bottomLeft: Radius.circular(10)),
+                          border: Border.all(
+                              color: _examTab == 'general' ? _kBlue : _kBorder(context)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('b. General',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600,
+                                color: _examTab == 'general' ? Colors.white : _kSlate(context))),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _examTab = 'neurological'),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        decoration: BoxDecoration(
+                          color: _examTab == 'neurological' ? _kBlue : _kCard(context),
+                          borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(10),
+                              bottomRight: Radius.circular(10)),
+                          border: Border.all(
+                              color: _examTab == 'neurological' ? _kBlue : _kBorder(context)),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('c. Neurological',
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600,
+                                color: _examTab == 'neurological' ? Colors.white : _kSlate(context))),
+                      ),
+                    ),
+                  ),
                 ]),
                 const SizedBox(height: 10),
-                _editField('Known Allergies', _pat1AllergyCtrl,
-                    maxLines: 2, hint: 'e.g. Penicillin, Sulfa drugs'),
+                if (_examTab == 'general') ...[
+                  _fieldWithUpload(
+                    label: 'General Examination',
+                    controller: _examGeneralCtrl,
+                    files: _examGeneralFiles,
+                    onFilesChange: (f) => _examGeneralFiles..clear()..addAll(f),
+                    existingPhotos: ep('General Examination'),
+                    prefixIcon: Icons.person_search_outlined,
+                    hint: 'General examination findings…',
+                    maxLines: 3,
+                  ),
+                ] else ...[
+                  _fieldWithUpload(
+                    label: 'Neurological Examination',
+                    controller: _examNeurologicalCtrl,
+                    files: _examNeurologicalFiles,
+                    onFilesChange: (f) => _examNeurologicalFiles..clear()..addAll(f),
+                    existingPhotos: ep('Neurological Examination'),
+                    prefixIcon: Icons.psychology_outlined,
+                    hint: 'Neurological examination findings…',
+                    maxLines: 3,
+                  ),
+                ],
               ]),
+            ),
+
+            // 5. Previous Investigations
+            _WizardCard(
+              title: 'Previous Investigations',
+              icon: Icons.science_outlined,
+              color: _kBlue,
+              child: Column(children: [
+                _fieldWithUpload(
+                  label: 'Imaging',
+                  controller: _imagingCtrl,
+                  files: _imagingFiles,
+                  onFilesChange: (f) => _imagingFiles..clear()..addAll(f),
+                  existingPhotos: ep('Imaging'),
+                  prefixIcon: Icons.image_search_rounded,
+                  hint: 'Imaging findings (X-Ray, MRI, CT…)',
+                ),
+                const SizedBox(height: 12),
+                _fieldWithUpload(
+                  label: 'Other Investigations',
+                  controller: _otherInvestCtrl,
+                  files: _otherInvestFiles,
+                  onFilesChange: (f) => _otherInvestFiles..clear()..addAll(f),
+                  existingPhotos: ep('Other Investigation'),
+                  prefixIcon: Icons.biotech_outlined,
+                  hint: 'Lab reports, other tests…',
+                ),
+              ]),
+            ),
+
+            // 6. Impression
+            _WizardCard(
+              title: 'Impression',
+              icon: Icons.lightbulb_outline_rounded,
+              color: _kBlue,
+              child: _fieldWithUpload(
+                label: 'Impression',
+                controller: _diagnosisCtrl,
+                files: _impressionFiles,
+                onFilesChange: (f) => _impressionFiles..clear()..addAll(f),
+                existingPhotos: ep('Impression'),
+                prefixIcon: Icons.rule_outlined,
+                hint: 'Clinical impression / assessment…',
+              ),
+            ),
+
+            // 7. Treatment Plan
+            _WizardCard(
+              title: 'Treatment Plan',
+              icon: Icons.assignment_outlined,
+              color: _kBlue,
+              child: _fieldWithUpload(
+                label: 'Treatment Plan',
+                controller: _treatmentCtrl,
+                files: _planFiles,
+                onFilesChange: (f) => _planFiles..clear()..addAll(f),
+                existingPhotos: ep('Treatment Plan'),
+                prefixIcon: Icons.assignment_outlined,
+                hint: 'Recommended treatment plan…',
+              ),
+            ),
+
+            // 8. Medicine / Treatment
+            _WizardCard(
+              title: 'Medicine / Treatment',
+              icon: Icons.medication_outlined,
+              color: _kBlue,
+              child: _buildMedicationTable(),
+            ),
+
+            // 9. Advice
+            _WizardCard(
+              title: 'Advice',
+              icon: Icons.tips_and_updates_outlined,
+              color: _kBlue,
+              child: Column(children: [
+                _vField(
+                  label: 'a. Instructions',
+                  controller: _adviceCtrl,
+                  maxLines: 3,
+                  prefixIcon: Icons.tips_and_updates_outlined,
+                  hint: 'Instructions given to patient…',
+                ),
+                const SizedBox(height: 12),
+                _fieldWithUpload(
+                  label: 'b. Investigation Should be done',
+                  controller: _investigationToBeDoneCtrl,
+                  files: _investigationToBeDoneFiles,
+                  onFilesChange: (f) => _investigationToBeDoneFiles..clear()..addAll(f),
+                  existingPhotos: ep('Investigation Should be done'),
+                  prefixIcon: Icons.assignment_late_outlined,
+                  hint: 'Tests / investigations to be done…',
+                ),
+                const SizedBox(height: 12),
+                _fieldWithUpload(
+                  label: 'c. Cross Consultation',
+                  controller: _crossConsultCtrl,
+                  files: _crossConsultFiles,
+                  onFilesChange: (f) => _crossConsultFiles..clear()..addAll(f),
+                  existingPhotos: ep('Cross Consultation'),
+                  prefixIcon: Icons.people_outline_rounded,
+                  hint: 'Referred to / consulted with…',
+                ),
+              ]),
+            ),
+
+            // Doctor's Notes (private)
+            _WizardCard(
+              title: "Doctor's Notes",
+              icon: Icons.lock_outline_rounded,
+              color: _kBlue,
+              child: _vField(
+                label: 'Notes (for your reference only)',
+                controller: _treatNotesCtrl,
+                maxLines: 4,
+                hint: 'Private notes — will not appear on the patient sheet…',
+              ),
             ),
           ],
         );
@@ -2223,7 +2520,12 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ),
           sCard('Clinical Snapshot', Icons.health_and_safety_outlined,
               _kBlue,
-            pRow('Known Allergies', fv(p?.allergies ?? n('allergies'))),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(fv(p?.allergies ?? n('allergies')),
+                  style: TextStyle(fontSize: 13, color: _kNavy(context),
+                      fontWeight: FontWeight.w600)),
+            ),
           ),
         ),
 

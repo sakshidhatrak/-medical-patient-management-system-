@@ -57,28 +57,25 @@ final _kSectionDefs = <_S>[
     ('ID Type', 'idProofType'),
     ('ID No.', 'idProofNumber'),
   ]),
-  _S('VITALS', Icons.monitor_heart_outlined, [
+  _S('KNOWN ALLERGIES', Icons.warning_amber_rounded, [
+    ('Known Allergies', 'allergies'),
+  ]),
+  _S('CHIEF COMPLAINT', Icons.report_problem_outlined, [
+    ('Chief Complaint', 'chiefComplaint'),
+  ]),
+  _S('PREVIOUS HISTORY', Icons.history_edu_outlined, [
+    ('Previous History', 'previousHistory'),
+  ]),
+  _S('EXAMINATION FINDING', Icons.search_outlined, [
     ('Weight', 'weight'),
     ('Blood Pressure', 'bloodPressure'),
     ('Temperature', 'temperature'),
-  ]),
-  _S('KNOWN ALLERGIES', Icons.warning_amber_rounded, [
-    ('Allergies', 'allergies'),
-  ]),
-  _S('PAST MEDICAL HISTORY', Icons.history_outlined, [
-    ('Medical History', 'medicalHistory'),
-  ]),
-  _S('PRESENTING COMPLAINTS & CLINICAL HISTORY', Icons.assignment_outlined, [
-    ('Chief Complaint', 'chiefComplaint'),
-    ('Previous History', 'previousHistory'),
-  ]),
-  _S('EXAMINATION FINDINGS', Icons.search_outlined, [
     ('General Examination', 'examGeneral'),
     ('Neurological Examination', 'examNeurological'),
   ]),
   _S('PREVIOUS INVESTIGATIONS', Icons.description_outlined, [
     ('Imaging', 'imaging'),
-    ('Other Investigation', 'otherInvestigation'),
+    ('Other Investigations', 'otherInvestigation'),
   ]),
   _S('IMPRESSION', Icons.lightbulb_outline_rounded, [
     ('Clinical Diagnosis', 'clinicalDiagnosis'),
@@ -87,13 +84,12 @@ final _kSectionDefs = <_S>[
   _S('TREATMENT PLAN', Icons.assignment_turned_in_outlined, [
     ('Treatment Plan', 'treatmentPlan'),
   ]),
-  _S('TREATMENT (MEDICINES)', Icons.medication_outlined, [
-    ('Medications', 'medications'),
+  _S('MEDICINE / TREATMENT', Icons.medication_outlined, [
+    ('Medicine / Treatment', 'medications'),
   ], rxIcon: true),
   _S('ADVICE', Icons.health_and_safety_outlined, [
-    ('Advice', 'advice'),
-  ]),
-  _S('CROSS REFERENCE (OTHER DOCTOR CONSULTATION)', Icons.people_outline, [
+    ('Instructions', 'advice'),
+    ('Investigation Should be done', 'investigationToBeDone'),
     ('Cross Consultation', 'crossConsultation'),
   ]),
 ];
@@ -299,18 +295,16 @@ class _ReportScreenState extends ConsumerState<_ReportScreen> {
       }
     }
 
-    // Indices match _kSectionDefs order
-    addFull(_kSectionDefs[0]);              // Patient Contact & ID
-    addPaired(_kSectionDefs[1], _kSectionDefs[2]); // Vitals | Allergies
-    addFull(_kSectionDefs[3]);              // Medical History
-    addFull(_kSectionDefs[4]);              // Presenting Complaints
-    addFull(_kSectionDefs[5]);              // Examination Findings
-    addFull(_kSectionDefs[6]);              // Previous Investigations
-    addFull(_kSectionDefs[7]);              // Impression
-    addFull(_kSectionDefs[8]);              // Treatment Plan
-    addFull(_kSectionDefs[9]);              // Treatment (Medicines)
-    addFull(_kSectionDefs[10]);             // Advice
-    addFull(_kSectionDefs[11]);             // Cross Reference
+    addFull(_kSectionDefs[0]);  // Patient Contact & ID
+    addFull(_kSectionDefs[1]);  // Known Allergies
+    addFull(_kSectionDefs[2]);  // Chief Complaint
+    addFull(_kSectionDefs[3]);  // Previous History
+    addFull(_kSectionDefs[4]);  // Examination Finding
+    addFull(_kSectionDefs[5]);  // Previous Investigations
+    addFull(_kSectionDefs[6]);  // Impression
+    addFull(_kSectionDefs[7]);  // Treatment Plan
+    addFull(_kSectionDefs[8]);  // Medicine / Treatment
+    addFull(_kSectionDefs[9]);  // Advice
 
     return result;
   }
@@ -1448,9 +1442,13 @@ class _MedsMiniTable extends StatelessWidget {
 
   List<List<String>> _parse() {
     return raw.split('\n').where((l) => l.trim().isNotEmpty).map((line) {
-      final doseMatch   = RegExp(r'\[([^\]]+)\]').firstMatch(line);
+      // Extract special instruction first (anything after last " | ")
+      final pipeIdx = line.lastIndexOf(' | ');
+      final lineMain = pipeIdx >= 0 ? line.substring(0, pipeIdx).trim() : line;
+      final specialInstruction = pipeIdx >= 0 ? line.substring(pipeIdx + 3).trim() : '';
+      final doseMatch   = RegExp(r'\[([^\]]+)\]').firstMatch(lineMain);
       final dose        = doseMatch?.group(1) ?? '';
-      final withoutDose = line.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
+      final withoutDose = lineMain.replaceFirst(doseMatch?.group(0) ?? '', '').trim();
       final routeMatch  = RegExp(r'\(([^)]+)\)').firstMatch(withoutDose);
       final route       = routeMatch?.group(1) ?? '';
       final withoutRoute = withoutDose.replaceFirst(routeMatch?.group(0) ?? '', '').trim();
@@ -1460,7 +1458,7 @@ class _MedsMiniTable extends StatelessWidget {
       final mulIdx   = right.indexOf(' × ');
       final frequency = mulIdx >= 0 ? right.substring(0, mulIdx).trim() : right;
       final duration  = mulIdx >= 0 ? right.substring(mulIdx + 3).trim() : '';
-      return [medicine, dose, route, frequency, duration];
+      return [medicine, dose, route, frequency, duration, specialInstruction];
     }).toList();
   }
 
@@ -1500,9 +1498,37 @@ class _MedsMiniTable extends StatelessWidget {
           decoration: BoxDecoration(color: borderColor.withValues(alpha: 0.5)),
           children: headers.map((h) => cell(h, isHeader: true)).toList(),
         ),
-        ...rows.map((r) => TableRow(
-              children: r.map((v) => cell(v)).toList(),
-            )),
+        ...rows.map((r) {
+          final specialInstruction = r.length > 5 ? r[5] : '';
+          return TableRow(
+            children: [
+              // Medicine cell — includes special instruction if present
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      r[0].isEmpty ? '—' : r[0],
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
+                    ),
+                    if (specialInstruction.isNotEmpty)
+                      Text(
+                        '* $specialInstruction',
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                          color: Color(0xFFB07D2A),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              ...r.skip(1).take(4).map((v) => cell(v)),
+            ],
+          );
+        }),
       ],
     );
   }
