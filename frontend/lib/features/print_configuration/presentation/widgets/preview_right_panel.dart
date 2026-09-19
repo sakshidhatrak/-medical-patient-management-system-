@@ -940,33 +940,38 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
     final notifier = ref.read(printConfigProvider.notifier);
     final botPad   = MediaQuery.of(context).padding.bottom;
 
+    // Count total & enabled across filled fields only
+    final allFilled = _kSectionDefs
+        .expand((s) => s.fields)
+        .where((f) =>
+            (widget.patientData[f.$2] ?? '').isNotEmpty &&
+            widget.patientData[f.$2] != '—')
+        .toList();
+    final totalCount   = allFilled.length;
+    final enabledCount = allFilled.where((f) => enabled.contains(f.$2)).length;
+
     return Scaffold(
       backgroundColor: context.bgColor,
       appBar: AppBar(
-        backgroundColor: context.cardColor,
-        elevation: 0.5,
+        backgroundColor: const Color(0xFF4B55CC),
+        elevation: 0,
         surfaceTintColor: Colors.transparent,
-        shadowColor: Colors.black12,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF4B55CC)),
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 17),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'Final Preview',
-          style: TextStyle(
-            color: Color(0xFF4B55CC),
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
+          'Report Preview',
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
         ),
         actions: [
           TextButton(
             onPressed: () => notifier.reset(),
-            child: const Text(
+            child: Text(
               'Reset All',
               style: TextStyle(
-                color: Color(0xFF4B55CC),
-                fontSize: 14,
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -981,7 +986,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               children: [
                 // Section cards — only show sections that have actual data
-                for (int i = 0; i < _kSectionDefs.length; i++) ...[
+                for (int i = 0; i < _kSectionDefs.length; i++)
                   Builder(builder: (ctx) {
                     final s = _kSectionDefs[i];
                     final filled = s.fields
@@ -1014,7 +1019,6 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                       onToggleField: notifier.toggleField,
                     );
                   }),
-                ],
               ],
             ),
           ),
@@ -1024,25 +1028,33 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
             decoration: BoxDecoration(
               color: context.cardColor,
               border: Border(top: BorderSide(color: context.borderColor)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
             ),
             child: Row(
               children: [
-                // Cancel
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: (_saving || _printing) ? null : () => Navigator.of(context).pop(),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF4B55CC),
-                      side: const BorderSide(color: Color(0xFF4B55CC), width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Cancel',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                // Cancel — text only
+                TextButton(
+                  onPressed: (_saving || _printing)
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF4B55CC),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 15),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
+                  child: const Text('Cancel',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 // Print
                 Expanded(
                   child: ElevatedButton(
@@ -1057,7 +1069,8 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                     ),
                     child: _printing
                         ? const SizedBox(
-                            width: 16, height: 16,
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Row(
@@ -1075,7 +1088,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Save Report
+                // Save
                 Expanded(
                   child: ElevatedButton(
                     onPressed: (_saving || _printing) ? null : _save,
@@ -1089,7 +1102,8 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                     ),
                     child: _saving
                         ? const SizedBox(
-                            width: 16, height: 16,
+                            width: 16,
+                            height: 16,
                             child: CircularProgressIndicator(
                                 strokeWidth: 2, color: Colors.white))
                         : const Row(
@@ -1152,6 +1166,295 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
   }
 }
 
+// ── Summary header card ───────────────────────────────────────────────────────
+
+class _SummaryHeader extends StatelessWidget {
+  final int enabledCount;
+  final int totalCount;
+  const _SummaryHeader({required this.enabledCount, required this.totalCount});
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = totalCount > 0
+        ? (enabledCount / totalCount * 100).round()
+        : 0;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4B55CC), Color(0xFF353FBB)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4B55CC).withValues(alpha: 0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Select Report Fields',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$enabledCount of $totalCount fields enabled',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.82),
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$pct%',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+              Text(
+                'included',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Field tile grid — 2-per-row for short values, full-width for long ─────────
+
+class _FieldTileGrid extends StatelessWidget {
+  final List<(String, String)> filledFields;
+  final Set<String> enabled;
+  final Map<String, String> patientData;
+  final ValueChanged<String> onToggleField;
+
+  const _FieldTileGrid({
+    required this.filledFields,
+    required this.enabled,
+    required this.patientData,
+    required this.onToggleField,
+  });
+
+  static const _kBlue = Color(0xFF4B55CC);
+
+  bool _isLong(String value) => value.length > 40 || value.contains('\n');
+
+  @override
+  Widget build(BuildContext context) {
+    // Pair up short fields; long fields get their own full-width row
+    final rows = <List<(String, String)>>[];
+    int i = 0;
+    while (i < filledFields.length) {
+      final f     = filledFields[i];
+      final val   = patientData[f.$2] ?? '';
+      final long  = _isLong(val);
+      if (long) {
+        rows.add([f]);
+        i++;
+      } else if (i + 1 < filledFields.length) {
+        final next    = filledFields[i + 1];
+        final nextVal = patientData[next.$2] ?? '';
+        if (_isLong(nextVal)) {
+          rows.add([f]);
+          i++;
+        } else {
+          rows.add([f, next]);
+          i += 2;
+        }
+      } else {
+        rows.add([f]);
+        i++;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows.asMap().entries.map((entry) {
+        final rowIdx = entry.key;
+        final row    = entry.value;
+        return Padding(
+          padding: EdgeInsets.only(top: rowIdx == 0 ? 0 : 8),
+          child: row.length == 2
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _Tile(
+                      f: row[0], enabled: enabled,
+                      patientData: patientData,
+                      onToggle: onToggleField,
+                    )),
+                    const SizedBox(width: 8),
+                    Expanded(child: _Tile(
+                      f: row[1], enabled: enabled,
+                      patientData: patientData,
+                      onToggle: onToggleField,
+                    )),
+                  ],
+                )
+              : _Tile(
+                  f: row[0], enabled: enabled,
+                  patientData: patientData,
+                  onToggle: onToggleField,
+                ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _Tile extends StatelessWidget {
+  final (String, String) f;
+  final Set<String> enabled;
+  final Map<String, String> patientData;
+  final ValueChanged<String> onToggle;
+
+  const _Tile({
+    required this.f,
+    required this.enabled,
+    required this.patientData,
+    required this.onToggle,
+  });
+
+  static const _kBlue = Color(0xFF4B55CC);
+
+  @override
+  Widget build(BuildContext context) {
+    final isOn    = enabled.contains(f.$2);
+    final value   = patientData[f.$2] ?? '';
+    final hasVal  = value.isNotEmpty && value != '—';
+    final isLong  = value.length > 40 || value.contains('\n');
+
+    return GestureDetector(
+      onTap: () => onToggle(f.$2),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isOn
+                ? _kBlue.withValues(alpha: 0.4)
+                : context.borderColor,
+          ),
+        ),
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Checkbox + label
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: isOn ? _kBlue : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: isOn ? _kBlue : context.borderColor,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isOn
+                      ? const Icon(Icons.check_rounded,
+                          size: 10, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    f.$1,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: isOn ? _kBlue : context.textSecondary,
+                      letterSpacing: 0.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            // Value card
+            if (hasVal) ...[
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isOn
+                      ? Colors.white.withValues(alpha: 0.75)
+                      : context.cardColor,
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isOn
+                        ? _kBlue.withValues(alpha: 0.15)
+                        : context.borderColor,
+                  ),
+                ),
+                child: Text(
+                  value,
+                  maxLines: isLong ? 4 : 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: isOn
+                        ? context.textPrimary
+                        : context.textSecondary,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── Info header card ──────────────────────────────────────────────────────────
 
 class _CfgInfoCard extends StatelessWidget {
@@ -1211,11 +1514,11 @@ class _CfgInfoCard extends StatelessWidget {
   }
 }
 
-// ── Section config card ───────────────────────────────────────────────────────
+// ── Section config card — modern floating card with gradient icon + progress ───
 
 class _SectionConfigCard extends StatelessWidget {
   final _S section;
-  final List<(String, String)> filledFields; // only fields that have data
+  final List<(String, String)> filledFields;
   final Set<String> enabled;
   final bool isExpanded;
   final Map<String, String> patientData;
@@ -1235,198 +1538,207 @@ class _SectionConfigCard extends StatelessWidget {
     required this.onToggleField,
   });
 
+  static const _kBlue  = Color(0xFF4B55CC);
+  static const _kGreen = Color(0xFF22C55E);
+  static const _kAmber = Color(0xFFF59E0B);
+
+  static const _iconGradients = [
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+    [Color(0xFF4B55CC), Color(0xFF6B75EC)],
+  ];
+
+  String _toTitleCase(String s) => s.split(' ').map((w) {
+        if (w.isEmpty) return w;
+        return w[0].toUpperCase() + w.substring(1).toLowerCase();
+      }).join(' ');
+
   @override
   Widget build(BuildContext context) {
-    final allOn  = filledFields.every((f) => enabled.contains(f.$2));
-    final count  = filledFields.where((f) => enabled.contains(f.$2)).length;
-    final total  = filledFields.length;
-    final sub    = section.rxIcon
-        ? 'Medicines & instructions'
-        : '$count of $total ${total == 1 ? 'field' : 'fields'} selected';
+    final allOn = filledFields.every((f) => enabled.contains(f.$2));
+    final anyOn = filledFields.any((f)  => enabled.contains(f.$2));
+    final count = filledFields.where((f) => enabled.contains(f.$2)).length;
+    final total = filledFields.length;
+    final pct   = total > 0 ? count / total : 0.0;
+
+    final sIdx = _kSectionDefs.indexOf(section) % _iconGradients.length;
+    final grad = _iconGradients[sIdx < 0 ? 0 : sIdx];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
         decoration: BoxDecoration(
           color: context.cardColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: context.borderColor),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: allOn
+                  ? _kBlue.withValues(alpha: 0.10)
+                  : Colors.black.withValues(alpha: 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
-        child: Column(
-          children: [
-            // Header row
-            InkWell(
-              onTap: onToggleExpand,
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(14),
-                topRight: const Radius.circular(14),
-                bottomLeft: Radius.circular(isExpanded ? 0 : 14),
-                bottomRight: Radius.circular(isExpanded ? 0 : 14),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                child: Row(
-                  children: [
-                    // Section icon
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(
-                        color: context.primarySurf,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(section.icon, color: const Color(0xFF4B55CC), size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    // Title + count
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: Column(
+            children: [
+              // ── Header ────────────────────────────────────────────────
+              InkWell(
+                onTap: onToggleExpand,
+                borderRadius: BorderRadius.vertical(
+                  top: const Radius.circular(16),
+                  bottom: Radius.circular(isExpanded ? 0 : 16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            section.title,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: context.textPrimary,
-                              letterSpacing: 0.15,
+                          // Circular icon
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: grad,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: section.rxIcon
+                                ? const Center(
+                                    child: Text(
+                                      'Rx',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        fontStyle: FontStyle.italic,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : Icon(section.icon,
+                                    color: Colors.white, size: 17),
+                          ),
+                          const SizedBox(width: 13),
+                          // Title + status text
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _toTitleCase(section.title),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: context.textPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  allOn
+                                      ? 'All $total fields included'
+                                      : anyOn
+                                          ? '$count of $total fields selected'
+                                          : 'No fields included',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: anyOn
+                                        ? _kBlue
+                                        : context.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            sub,
-                            style: TextStyle(
-                              fontSize: 12,
+                          // Toggle switch
+                          Transform.scale(
+                            scale: 0.85,
+                            child: Switch(
+                              value: allOn,
+                              onChanged: onToggleSection,
+                              activeColor: Colors.white,
+                              activeTrackColor: _kBlue,
+                              inactiveThumbColor: Colors.white,
+                              inactiveTrackColor: context.textDisabled,
+                              trackOutlineColor:
+                                  WidgetStateProperty.all(Colors.transparent),
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                            ),
+                          ),
+                          // Animated chevron
+                          AnimatedRotation(
+                            turns: isExpanded ? 0.5 : 0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
                               color: context.textSecondary,
+                              size: 22,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    // Toggle switch
-                    Transform.scale(
-                      scale: 0.88,
-                      child: Switch(
-                        value: allOn,
-                        onChanged: onToggleSection,
-                        activeColor: Colors.white,
-                        activeTrackColor: const Color(0xFF4B55CC),
-                        inactiveThumbColor: Colors.white,
-                        inactiveTrackColor: context.textDisabled,
-                        trackOutlineColor:
-                            WidgetStateProperty.all(Colors.transparent),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      // ── Progress bar ───────────────────────────────────
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Stack(
+                          children: [
+                            Container(
+                                height: 4,
+                                color: const Color(0xFFF3F4F6)),
+                            AnimatedFractionallySizedBox(
+                              duration: const Duration(milliseconds: 300),
+                              widthFactor: pct,
+                              child: Container(
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: grad,
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    // Chevron
-                    Icon(
-                      isExpanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      color: context.textSecondary,
-                      size: 22,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            // Expanded field list — only filled fields shown
-            if (isExpanded) ...[
-              Divider(height: 1, thickness: 0.5, color: context.borderColor),
-              for (final f in filledFields)
-                _FieldCheckRow(
-                  label: f.$1,
-                  value: patientData[f.$2] ?? '',
-                  isEnabled: enabled.contains(f.$2),
-                  onTap: () => onToggleField(f.$2),
-                ),
-              const SizedBox(height: 4),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Individual field row (inside expanded section) ────────────────────────────
-
-class _FieldCheckRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool isEnabled;
-  final VoidCallback onTap;
-
-  const _FieldCheckRow({
-    required this.label,
-    required this.value,
-    required this.isEnabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final filled = value.isNotEmpty && value != '—';
-    final isMeds = label == 'Medications';
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(72, 10, 14, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Label + checkbox row
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isEnabled ? context.textPrimary : context.textDisabled,
-                      fontWeight: isEnabled ? FontWeight.w500 : FontWeight.w400,
-                    ),
+                    ],
                   ),
                 ),
-                Checkbox(
-                  value: isEnabled,
-                  onChanged: (_) => onTap(),
-                  activeColor: const Color(0xFF4B55CC),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+              ),
+              // ── Expanded field tiles ─────────────────────────────────
+              if (isExpanded) ...[
+                Divider(height: 1, thickness: 0.5, color: context.borderColor),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  child: _FieldTileGrid(
+                    filledFields: filledFields,
+                    enabled: enabled,
+                    patientData: patientData,
+                    onToggleField: onToggleField,
+                  ),
                 ),
               ],
-            ),
-            // Value display
-            if (!filled)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  'No data entered',
-                  style: TextStyle(fontSize: 11, color: context.textDisabled, fontStyle: FontStyle.italic),
-                ),
-              )
-            else if (isMeds)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, right: 4),
-                child: _MedsMiniTable(raw: value, isEnabled: isEnabled),
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  value,
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isEnabled ? context.textSecondary : context.textDisabled,
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -135,13 +135,19 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
           // stored them with visitId = null (different server id), but locally
           // they have the correct numeric visit_id after remapVisitId ran.
           final allLocalRows = await _store.getForPatient(patientId);
+          // Exclude any local row whose storagePath already appears in the server
+          // response — avoids duplicate tiles when the backend assigned a different
+          // numeric id than the local UUID but refers to the same physical file.
+          final serverStoragePaths = photos.map((p) => p.storagePath).toSet();
           final linkedLocal = allLocalRows
               .where((r) {
-                final id  = r['id'] as String;
-                final vid = r['visit_id'] as String?;
-                final sid = r['surgery_id'] as String?;
-                final uploaded = (r['is_uploaded'] as int? ?? 0) == 1;
+                final id          = r['id'] as String;
+                final vid         = r['visit_id'] as String?;
+                final sid         = r['surgery_id'] as String?;
+                final uploaded    = (r['is_uploaded'] as int? ?? 0) == 1;
+                final storagePath = r['storage_path'] as String? ?? '';
                 return !serverIds.contains(id) &&
+                    !serverStoragePaths.contains(storagePath) &&
                     uploaded &&
                     (vid != null || sid != null);
               })
@@ -158,18 +164,19 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
               return p;
             }
             return PhotoEntity(
-              id:          p.id,
-              patientId:   p.patientId,
-              visitId:     effectiveVisitId,
-              surgeryId:   effectiveSurgeryId,
-              storagePath: p.storagePath,
-              url:         p.url,
-              category:    p.category,
-              caption:     p.caption,
-              isUploaded:  p.isUploaded,
-              localPath:   p.localPath,
-              fileSize:    p.fileSize,
-              createdAt:   p.createdAt,
+              id:               p.id,
+              patientId:        p.patientId,
+              visitId:          effectiveVisitId,
+              surgeryId:        effectiveSurgeryId,
+              storagePath:      p.storagePath,
+              url:              p.url,
+              originalFilename: p.originalFilename,
+              category:         p.category,
+              caption:          p.caption,
+              isUploaded:       p.isUploaded,
+              localPath:        p.localPath,
+              fileSize:         p.fileSize,
+              createdAt:        p.createdAt,
             );
           }).toList();
 

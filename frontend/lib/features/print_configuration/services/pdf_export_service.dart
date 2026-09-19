@@ -59,7 +59,7 @@ const _kLeftBg       = PdfColor.fromInt(0xFFFEF0DD); // cream panel  #FEF0DD
 const _kRedBar       = PdfColor.fromInt(0xFFE42024); // red accent   #E42024
 const _kWhite        = PdfColors.white;
 const _kSub          = PdfColor.fromInt(0xFF494949);
-const _kBorder       = PdfColor.fromInt(0xFFCCCCCC);
+const _kBorder       = PdfColor.fromInt(0xFF888888);
 const _kGrey         = PdfColor.fromInt(0xFF9B9B9B); // underlines
 const _kDot          = PdfColor.fromInt(0xFFCFCFCF); // dot pattern
 
@@ -168,29 +168,14 @@ Future<Uint8List> _buildTemplatePdf(
   final signatureFooter = pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.stretch,
     children: [
-      pw.Container(height: 0.5, color: _kGreenDiv),
       pw.SizedBox(height: 4 * sy),
-      pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
-              pw.SizedBox(height: 2 * sy),
-              pw.Text("Doctor's Signature",
-                  style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
-            ],
-          ),
-          pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.end,
-            children: [
-              pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
-              pw.SizedBox(height: 2 * sy),
-              pw.Text("Next Visit Date",
-                  style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
-            ],
-          ),
+          pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
+          pw.SizedBox(height: 2 * sy),
+          pw.Text("Doctor's Signature",
+              style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
         ],
       ),
     ],
@@ -643,7 +628,7 @@ List<pw.Widget> _buildSectionsTemplate(
   const kHeading    = PdfColor.fromInt(0xFF000000); // section heading — black
   const kLabelColor = PdfColor.fromInt(0xFF101A3A); // same dark navy as values — bold weight provides distinction
   const kAccent     = PdfColor.fromInt(0xFF3B82F6); // blue left-border accent
-  const kDivider    = PdfColor.fromInt(0xFFE5E7EB); // section divider
+  const kDivider    = PdfColor.fromInt(0xFF999999); // section divider
   const kVitalBdr   = PdfColor.fromInt(0xFF3B82F6); // vital box border (blue, no fill)
 
   String dv(String k) => enabled.contains(k) ? (data[k]?.trim() ?? '') : '';
@@ -680,7 +665,7 @@ List<pw.Widget> _buildSectionsTemplate(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         pw.Padding(
-          padding: pw.EdgeInsets.fromLTRB(hp, 6 * scale, hp, 2 * scale),
+          padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 2 * scale),
           child: pw.Text(title,
               style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kHeading, letterSpacing: 0.3)),
         ),
@@ -688,9 +673,9 @@ List<pw.Widget> _buildSectionsTemplate(
           padding: pw.EdgeInsets.fromLTRB(hp + 3, 2 * scale, hp, 2 * scale),
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: items),
         ),
-        pw.SizedBox(height: fs),   // one blank line after content, before divider
+        pw.SizedBox(height: 2 * scale),
         pw.Container(height: 0.5, color: kDivider),
-        pw.SizedBox(height: 5 * scale),
+        pw.SizedBox(height: 2 * scale),
       ],
     ),
   );
@@ -701,7 +686,7 @@ List<pw.Widget> _buildSectionsTemplate(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         pw.Padding(
-          padding: pw.EdgeInsets.fromLTRB(hp, 6 * scale, hp, 2 * scale),
+          padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 2 * scale),
           child: pw.RichText(
             text: pw.TextSpan(children: [
               pw.TextSpan(
@@ -715,7 +700,7 @@ List<pw.Widget> _buildSectionsTemplate(
             ]),
           ),
         ),
-        pw.SizedBox(height: fs),   // one blank line after content, before divider
+        pw.SizedBox(height: 2 * scale),
         pw.Container(height: 0.5, color: kDivider),
         pw.SizedBox(height: 5 * scale),
       ],
@@ -789,6 +774,10 @@ List<pw.Widget> _buildSectionsTemplate(
 
       // Address row: 2-column so value spans full remaining width
       if (addressRow != null) {
+        // Draw the missing border between main table (bottom:none) and address table (top:none)
+        if (mainRows.isNotEmpty) {
+          tableWidgets.add(pw.Container(height: 0.5, color: kDivider));
+        }
         final addrBorder = mainRows.isNotEmpty
             ? pw.TableBorder(top: pw.BorderSide.none, left: side, right: side,
                              bottom: side, horizontalInside: side, verticalInside: side)
