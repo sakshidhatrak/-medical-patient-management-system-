@@ -32,7 +32,7 @@ public class VisitController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR','STAFF')")
     public ResponseEntity<ApiResponse<VisitDto>> create(
             @PathVariable Long patientId,
             @RequestBody VisitRequest req,
