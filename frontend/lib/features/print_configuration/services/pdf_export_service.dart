@@ -83,6 +83,19 @@ pw.Widget _buildDots() {
 const _kMaroon       = PdfColor.fromInt(0xFF994E89); // kept for compat
 const _kPageBorder   = PdfColor.fromInt(0xFFD4AAAA); // light red page border
 
+// ── Font cache (downloaded once, reused across PDF generations) ───────────────
+pw.Font? _cachedFontRegular;
+pw.Font? _cachedFontMedium;
+pw.Font? _cachedFontItalic;
+pw.MemoryImage? _cachedBgImage;
+
+Future<(pw.Font, pw.Font, pw.Font)> _loadFonts() async {
+  _cachedFontRegular ??= await PdfGoogleFonts.interRegular();
+  _cachedFontMedium  ??= await PdfGoogleFonts.interMedium();
+  _cachedFontItalic  ??= await PdfGoogleFonts.interItalic();
+  return (_cachedFontRegular!, _cachedFontMedium!, _cachedFontItalic!);
+}
+
 // ── Main PDF assembly ─────────────────────────────────────────────────────────
 //
 // Primary path: rasterise opd_paper.pdf as background, overlay dynamic text
@@ -94,11 +107,14 @@ Future<Uint8List> _assemblePdf(
   Uint8List? logoBytes,
 ) async {
   try {
-    final assetData     = await rootBundle.load('assets/templates/opd_paper.pdf');
-    final templateBytes = assetData.buffer.asUint8List();
-    final raster        = await Printing.raster(templateBytes, pages: [0], dpi: 300).first;
-    final bgBytes       = await raster.toPng();
-    return _buildTemplatePdf(enabledIds, data, pw.MemoryImage(bgBytes));
+    if (_cachedBgImage == null) {
+      final assetData     = await rootBundle.load('assets/templates/opd_paper.pdf');
+      final templateBytes = assetData.buffer.asUint8List();
+      final raster        = await Printing.raster(templateBytes, pages: [0], dpi: 150).first;
+      final bgBytes       = await raster.toPng();
+      _cachedBgImage      = pw.MemoryImage(bgBytes);
+    }
+    return _buildTemplatePdf(enabledIds, data, _cachedBgImage!);
   } catch (_) {}
   return _buildManualPdf(enabledIds, data, logoBytes);
 }
@@ -110,9 +126,7 @@ Future<Uint8List> _buildTemplatePdf(
   Map<String, String> data,
   pw.MemoryImage bgImage,
 ) async {
-  final font     = await PdfGoogleFonts.interRegular();
-  final fontBold = await PdfGoogleFonts.interMedium();
-  final fontItal = await PdfGoogleFonts.interItalic();
+  final (font, fontBold, fontItal) = await _loadFonts();
 
   final fn   = data['firstName'] ?? '';
   final ln   = data['lastName'] ?? '';
@@ -133,8 +147,8 @@ Future<Uint8List> _buildTemplatePdf(
   final kNameX = 113.5 * sx;
   final kNameY = 76.2  * sy;
   final kNameW = 106.0 * sx;
-  final kDateX = 239.5 * sx;
-  final kDateW = 47.0  * sx;
+  final kDateX = 225.0 * sx;
+  final kDateW = 63.0  * sx;
 
   // Body area — sidebar stays visible, all positions scaled
   final kBodyL = 64.0  * sx;
@@ -192,32 +206,10 @@ Future<Uint8List> _buildTemplatePdf(
           right: marginRight,
           bottom: kFootH,
         ),
-        // Template background + patient name/date overlay on every page
+        // Template background only — name/date shown in Patient Information table
         buildBackground: (context) => pw.FullPage(
           ignoreMargins: true,
-          child: pw.Stack(
-            children: [
-              pw.Positioned.fill(
-                child: pw.Image(bgImage, fit: pw.BoxFit.fill),
-              ),
-              pw.Positioned(
-                left: kNameX, top: kNameY - 8,
-                child: pw.SizedBox(
-                  width: kNameW,
-                  child: pw.Text(name,
-                      style: pw.TextStyle(font: fontBold, fontSize: 7.5 * kFontScale, color: PdfColor.fromInt(0xFF101A3A))),
-                ),
-              ),
-              pw.Positioned(
-                left: kDateX, top: kNameY - 8,
-                child: pw.SizedBox(
-                  width: kDateW,
-                  child: pw.Text(date,
-                      style: pw.TextStyle(font: fontBold, fontSize: 7.5 * kFontScale, color: PdfColor.fromInt(0xFF101A3A))),
-                ),
-              ),
-            ],
-          ),
+          child: pw.Image(bgImage, fit: pw.BoxFit.fill),
         ),
       ),
       // Signature footer only on the last page
@@ -643,12 +635,13 @@ List<pw.Widget> _buildSectionsTemplate(
   double scale = 1.0,
 }) {
   final double fs     = 7.5  * scale;   // body text
-  final double fsh    = 7.0  * scale;   // section heading
+  final double fsh    = 8.0  * scale;   // section heading — bigger & darker
   final double lw     = 62.0 * scale;   // label column width
   final double hp     = 5.0  * scale;   // horizontal padding inside section
-  final double rowGap = 2.0  * scale;   // space between consecutive field rows
-  const kC          = PdfColor.fromInt(0xFF101A3A); // values + headings
-  const kLabelColor = PdfColor.fromInt(0xFF6B7280); // muted grey for labels
+  final double rowGap = 3.5  * scale;   // space between consecutive field rows
+  const kC          = PdfColor.fromInt(0xFF101A3A); // values
+  const kHeading    = PdfColor.fromInt(0xFF000000); // section heading — black
+  const kLabelColor = PdfColor.fromInt(0xFF101A3A); // same dark navy as values — bold weight provides distinction
   const kAccent     = PdfColor.fromInt(0xFF3B82F6); // blue left-border accent
   const kDivider    = PdfColor.fromInt(0xFFE5E7EB); // section divider
   const kVitalBdr   = PdfColor.fromInt(0xFF3B82F6); // vital box border (blue, no fill)
@@ -682,74 +675,145 @@ List<pw.Widget> _buildSectionsTemplate(
   );
 
   // ── section block — bold header + content below ──────────────────────────
-  pw.Widget sec(String title, List<pw.Widget> items) => pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-    children: [
-      pw.Padding(
-        padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 3 * scale),
-        child: pw.Text(title,
-            style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kC, letterSpacing: 0)),
-      ),
-      pw.Padding(
-        padding: pw.EdgeInsets.fromLTRB(hp + 3, 2 * scale, hp, 3 * scale),
-        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: items),
-      ),
-      pw.Container(height: 0.5, color: kDivider),
-      pw.SizedBox(height: 2 * scale),
-    ],
+  pw.Widget sec(String title, List<pw.Widget> items) => pw.Inseparable(
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Padding(
+          padding: pw.EdgeInsets.fromLTRB(hp, 6 * scale, hp, 2 * scale),
+          child: pw.Text(title,
+              style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kHeading, letterSpacing: 0.3)),
+        ),
+        pw.Padding(
+          padding: pw.EdgeInsets.fromLTRB(hp + 3, 2 * scale, hp, 2 * scale),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: items),
+        ),
+        pw.SizedBox(height: fs),   // one blank line after content, before divider
+        pw.Container(height: 0.5, color: kDivider),
+        pw.SizedBox(height: 5 * scale),
+      ],
+    ),
   );
 
   // ── inline section — header + value on the same line ─────────────────────
-  pw.Widget secInline(String title, String value) => pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-    children: [
-      pw.Padding(
-        padding: pw.EdgeInsets.fromLTRB(hp, 3 * scale, hp, 3 * scale),
-        child: pw.RichText(
-          text: pw.TextSpan(children: [
-            pw.TextSpan(
-              text: '$title : ',
-              style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kC, letterSpacing: 0),
-            ),
-            pw.TextSpan(
-              text: value,
-              style: pw.TextStyle(font: font, fontSize: fs, color: kC),
-            ),
-          ]),
+  pw.Widget secInline(String title, String value) => pw.Inseparable(
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Padding(
+          padding: pw.EdgeInsets.fromLTRB(hp, 6 * scale, hp, 2 * scale),
+          child: pw.RichText(
+            text: pw.TextSpan(children: [
+              pw.TextSpan(
+                text: '$title : ',
+                style: pw.TextStyle(font: fontBold, fontSize: fsh, color: kHeading, letterSpacing: 0.3),
+              ),
+              pw.TextSpan(
+                text: value,
+                style: pw.TextStyle(font: font, fontSize: fs, color: kC),
+              ),
+            ]),
+          ),
         ),
-      ),
-      pw.Container(height: 0.5, color: kDivider),
-      pw.SizedBox(height: 2 * scale),
-    ],
+        pw.SizedBox(height: fs),   // one blank line after content, before divider
+        pw.Container(height: 0.5, color: kDivider),
+        pw.SizedBox(height: 5 * scale),
+      ],
+    ),
   );
 
   final sections = <pw.Widget>[];
 
-  // PATIENT INFO — no section header, clubs directly under template name row
+  // PATIENT INFORMATION TABLE
   {
-    final phone   = dv('phone');
-    final address = dv('address');
-    final email   = dv('email');
-    final hasAny  = phone.isNotEmpty || address.isNotEmpty || email.isNotEmpty;
-    if (hasAny) {
-      sections.add(pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-        children: [
-          pw.Padding(
-            padding: pw.EdgeInsets.fromLTRB(hp, 2 * scale, hp, 3 * scale),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-              children: [
-                if (phone.isNotEmpty)   fr('Phone',   phone),
-                if (address.isNotEmpty) fr('Address', address),
-                if (email.isNotEmpty)   fr('Email',   email),
-              ],
-            ),
-          ),
-          pw.Container(height: 0.5, color: kDivider),
-          pw.SizedBox(height: 2 * scale),
-        ],
-      ));
+    String raw(String k) => (data[k]?.trim() ?? '').replaceAll('—', '').trim();
+    final fn      = raw('firstName');
+    final ln      = raw('lastName');
+    final name    = [fn, ln].where((s) => s.isNotEmpty).join(' ');
+    final dateVal = raw('date');
+    final phone   = raw('phone');
+    final email   = raw('email');
+    final age     = raw('age');
+    final gender  = raw('gender');
+    final address = raw('address');
+
+    final rows = <(String, String)>[];
+    if (name.isNotEmpty)    rows.add(('Patient Name', name));
+    if (dateVal.isNotEmpty) rows.add(('Date',         dateVal));
+    if (phone.isNotEmpty)   rows.add(('Phone',        phone));
+    if (email.isNotEmpty)   rows.add(('Email',        email));
+    if (age.isNotEmpty)     rows.add(('Age',          age));
+    if (gender.isNotEmpty)  rows.add(('Gender',       gender));
+    if (address.isNotEmpty) rows.add(('Address',      address));
+
+    if (rows.isNotEmpty) {
+      // Separate address (full-width row) from the rest (2-column pairs)
+      final mainRows   = rows.where((r) => r.$1 != 'Address').toList();
+      final addressRow = rows.where((r) => r.$1 == 'Address').firstOrNull;
+
+      final pad      = pw.EdgeInsets.fromLTRB(4, 2.5 * scale, 4, 2.5 * scale);
+      final lblStyle = pw.TextStyle(font: fontBold, fontSize: fs * 0.9, color: kLabelColor);
+      final valStyle = pw.TextStyle(font: font,     fontSize: fs,        color: kC);
+      const side     = pw.BorderSide(color: kDivider, width: 0.5);
+
+      final tableWidgets = <pw.Widget>[];
+
+      if (mainRows.isNotEmpty) {
+        final tableRows = <pw.TableRow>[];
+        for (int i = 0; i < mainRows.length; i += 2) {
+          final left  = mainRows[i];
+          final right = i + 1 < mainRows.length ? mainRows[i + 1] : null;
+          tableRows.add(pw.TableRow(children: [
+            pw.Padding(padding: pad, child: pw.Text(left.$1,         style: lblStyle)),
+            pw.Padding(padding: pad, child: pw.Text(left.$2,         style: valStyle)),
+            pw.Padding(padding: pad, child: pw.Text(right?.$1 ?? '', style: lblStyle)),
+            pw.Padding(padding: pad, child: pw.Text(right?.$2 ?? '', style: valStyle)),
+          ]));
+        }
+        // If address follows, omit bottom border so tables join seamlessly
+        final mainBorder = addressRow != null
+            ? pw.TableBorder(top: side, left: side, right: side, bottom: pw.BorderSide.none,
+                             horizontalInside: side, verticalInside: side)
+            : pw.TableBorder.all(color: kDivider, width: 0.5);
+        tableWidgets.add(pw.Table(
+          border: mainBorder,
+          columnWidths: {
+            0: pw.FixedColumnWidth(48 * scale),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FixedColumnWidth(48 * scale),
+            3: pw.FlexColumnWidth(2),
+          },
+          children: tableRows,
+        ));
+      }
+
+      // Address row: 2-column so value spans full remaining width
+      if (addressRow != null) {
+        final addrBorder = mainRows.isNotEmpty
+            ? pw.TableBorder(top: pw.BorderSide.none, left: side, right: side,
+                             bottom: side, horizontalInside: side, verticalInside: side)
+            : pw.TableBorder.all(color: kDivider, width: 0.5);
+        tableWidgets.add(pw.Table(
+          border: addrBorder,
+          columnWidths: {
+            0: pw.FixedColumnWidth(48 * scale),
+            1: pw.FlexColumnWidth(1),
+          },
+          children: [
+            pw.TableRow(children: [
+              pw.Padding(padding: pad, child: pw.Text('Address', style: lblStyle)),
+              pw.Padding(padding: pad, child: pw.Text(addressRow.$2, style: valStyle)),
+            ]),
+          ],
+        ));
+      }
+
+      sections.add(sec('PATIENT INFORMATION', [
+        pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+          children: tableWidgets,
+        ),
+      ]));
     }
   }
 
@@ -816,20 +880,21 @@ List<pw.Widget> _buildSectionsTemplate(
 
   // 6. IMPRESSION
   {
-    final items = <pw.Widget>[
-      if (dv('clinicalDiagnosis').isNotEmpty) fr('Diagnosis',  dv('clinicalDiagnosis')),
-      if (dv('diagnosis').isNotEmpty)         fr('Impression', dv('diagnosis')),
-    ];
-    if (items.isNotEmpty) sections.add(sec('IMPRESSION', items));
+    final diag = dv('clinicalDiagnosis');
+    final impr = dv('diagnosis');
+    if (diag.isNotEmpty || impr.isNotEmpty) {
+      final combined = [diag, impr].where((s) => s.isNotEmpty).join(' / ');
+      sections.add(secInline('IMPRESSION', combined));
+    }
   }
 
   // 7. TREATMENT PLAN
   if (dv('treatmentPlan').isNotEmpty)
-    sections.add(sec('TREATMENT PLAN', [fr('', dv('treatmentPlan'))]));
+    sections.add(secInline('TREATMENT PLAN', dv('treatmentPlan')));
 
   // 8. MEDICINE / TREATMENT
   if (dv('medications').isNotEmpty) {
-    final cellPad = pw.EdgeInsets.all(2.0 * scale);
+    final cellPad = pw.EdgeInsets.all(3.5 * scale);
 
     pw.Widget hCell(String t) => pw.Padding(
           padding: cellPad,
@@ -1021,9 +1086,14 @@ pw.Widget _buildSections(
     ]));
 
   // ADVICE — after treatment
-  if (d('advice').isNotEmpty)
+  if (d('advice').isNotEmpty || d('investigationToBeDone').isNotEmpty)
     sections.add(_section('ADVICE', fontBold, [
-      pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+      if (d('advice').isNotEmpty)
+        pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+      if (d('investigationToBeDone').isNotEmpty) ...[
+        if (d('advice').isNotEmpty) pw.SizedBox(height: 4),
+        _fieldRow('Investigation Should be done', d('investigationToBeDone'), font, fontBold),
+      ],
     ]));
 
   // CROSS REFERENCE
@@ -1391,9 +1461,10 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Imaging',             'imaging');
   addRow('Other Investigation', 'otherInvestigation');
   addRow('Impression',          'diagnosis');
-  addRow('Advice',              'advice');
-  addRow('Medications',         'medications');
-  addRow('Cross Consultation',  'crossConsultation');
+  addRow('Advice',                       'advice');
+  addRow('Investigation Should be done', 'investigationToBeDone');
+  addRow('Medications',                  'medications');
+  addRow('Cross Consultation',           'crossConsultation');
   addRow('Notes',               'notes');
 
   doc.addPage(pw.MultiPage(

@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/offline/offline_database.dart';
 import '../../../../core/providers/connectivity_provider.dart';
 import '../../../../core/sync/sync_engine.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../data/datasources/patient_supabase_datasource.dart';
 import '../../data/models/patient_model.dart';
 import '../../domain/entities/patient_entity.dart';
@@ -213,6 +214,10 @@ class PatientsNotifier extends Notifier<PatientsState> {
         page: page + 1,
         clearError: true,
       );
+      // Invalidate per-patient providers so any open detail view gets fresh data.
+      for (final m in models) {
+        ref.invalidate(patientByIdProvider(m.id));
+      }
     } on TimeoutException {
       state = state.copyWith(isLoading: false,
           error: 'Connection timed out. Showing cached data.');
@@ -381,6 +386,12 @@ class PatientsNotifier extends Notifier<PatientsState> {
           operation: 'update',
           payload: model.toFullJson(),
         );
+        // Write local audit entries so History shows this edit immediately
+        // even while offline (replaced by server entries after sync).
+        unawaited(_writeOfflinePatientAudit(
+            state.patients.firstWhere((p) => p.id == patient.id,
+                orElse: () => patient),
+            patient));
       }
       return patient;
     } catch (e) {
@@ -433,6 +444,43 @@ class PatientsNotifier extends Notifier<PatientsState> {
       return [];
     }
   }
+
+  // Writes local audit entries when a patient is edited offline so that
+  // History shows the change immediately without waiting for sync.
+  Future<void> _writeOfflinePatientAudit(
+      PatientEntity old, PatientEntity updated) async {
+    try {
+      final cache = ref.read(localAuditCacheProvider);
+      final user = ref.read(currentUserProvider);
+      final byName = user?.fullName ?? '';
+
+      String? v(String? s) => (s == null || s.trim().isEmpty) ? null : s.trim();
+
+      final changes = <Map<String, String?>>[];
+      void check(String field, String? oldVal, String? newVal) {
+        final o = v(oldVal); final n = v(newVal);
+        if (o != n) changes.add({'field': field, 'old': o, 'new': n});
+      }
+
+      check('firstName',      old.firstName,      updated.firstName);
+      check('lastName',       old.lastName,       updated.lastName);
+      check('phone',          old.phone,          updated.phone);
+      check('allergies',      old.allergies,      updated.allergies);
+      check('medicalHistory', old.medicalHistory, updated.medicalHistory);
+      check('previousHistory',old.previousHistory,updated.previousHistory);
+      check('notes_p',        old.notes,          updated.notes);
+      check('weight_p',       old.weight,         updated.weight);
+      check('bloodPressure',  old.bloodPressure,  updated.bloodPressure);
+      check('temperature_p',  old.temperature,    updated.temperature);
+
+      await cache.insertOfflineEntries(
+        entityType: 'patient',
+        entityId: updated.id,
+        changes: changes,
+        changedBy: byName,
+      );
+    } catch (_) {}
+  }
 }
 
 final patientsProvider =
@@ -445,13 +493,18 @@ final patientByIdProvider =
   if (row != null) {
     final jsonStr = row['data_json'] as String?;
     if (jsonStr != null) {
-      // Refresh from API in the background so next load has fresh data.
+      // Refresh from API in the background; only invalidate if data actually changed
+      // (prevents rebuild→fetch→rebuild infinite loop).
       if (ref.read(isOnlineProvider)) {
+        final cached = PatientModel.fromJson(jsonDecode(jsonStr) as Map<String, dynamic>);
         ref
             .read(patientDataSourceProvider)
             .getPatientById(id)
-            .then((model) =>
-                ref.read(localPatientCacheProvider).upsert(model.toFullJson()))
+            .then((fresh) async {
+              if (fresh.updatedAt == cached.updatedAt) return;
+              await ref.read(localPatientCacheProvider).upsert(fresh.toFullJson());
+              ref.invalidateSelf();
+            })
             .ignore();
       }
       return PatientModel.fromJson(

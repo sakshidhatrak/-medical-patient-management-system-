@@ -148,6 +148,7 @@ class PhotoSpringDataSource implements PhotoDataSource {
       surgeryId: j['surgeryId'] != null ? j['surgeryId'].toString() : null,
       storagePath: j['storagePath'] as String,
       url: displayUrl,
+      originalFilename: j['originalFilename'] as String?,
       category: PhotoCategoryX.fromValue(j['category'] as String? ?? 'visit'),
       caption: j['caption'] as String?,
       isUploaded: j['isUploaded'] as bool? ?? true,

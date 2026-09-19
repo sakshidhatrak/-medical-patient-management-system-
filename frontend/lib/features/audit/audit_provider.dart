@@ -93,26 +93,30 @@ Future<void> syncAuditLogsFromApi(Ref ref) async {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 /// ({entityType: "visit", entityId: "42"})
-/// Reads from local SQLite cache (instant). Falls back to network only when
-/// the cache is empty (first-ever launch before a sync has run).
+/// Always fetches fresh data from network so new edits appear immediately.
+/// When offline: shows local SQLite cache (may include offline-written entries).
+/// If cache is also empty offline, returns [] so History shows "no data" gracefully.
 final auditLogProvider = FutureProvider.family<List<AuditEntry>, ({String entityType, String entityId})>(
   (ref, args) async {
-    // 1. Try local SQLite cache first (instant, works offline).
-    if (!kIsWeb) {
-      final cache = ref.read(localAuditCacheProvider);
-      final rows = await cache.getForEntity(args.entityType, args.entityId);
-      if (rows.isNotEmpty) {
+    // 1. Network-first: always get latest entries from server.
+    try {
+      final api = ref.read(apiClientProvider);
+      final raw = await api.get<dynamic>('/audit/${args.entityType}/${args.entityId}');
+      final data = (raw as Map<String, dynamic>)['data'] as List<dynamic>? ?? [];
+      return data
+          .cast<Map<String, dynamic>>()
+          .map(AuditEntry.fromJson)
+          .toList();
+    } catch (e) {
+      // 2. Network failed — serve from local SQLite cache.
+      if (!kIsWeb) {
+        final rows = await ref
+            .read(localAuditCacheProvider)
+            .getForEntity(args.entityType, args.entityId);
+        // Return cache (may be empty list — UI shows "no cached history" gracefully)
         return rows.map(AuditEntry.fromSqlite).toList();
       }
+      rethrow;
     }
-
-    // 2. Fallback: fetch directly from network (e.g. cache not seeded yet).
-    final api = ref.read(apiClientProvider);
-    final raw = await api.get<dynamic>('/audit/${args.entityType}/${args.entityId}');
-    final data = (raw as Map<String, dynamic>)['data'] as List<dynamic>? ?? [];
-    return data
-        .cast<Map<String, dynamic>>()
-        .map(AuditEntry.fromJson)
-        .toList();
   },
 );

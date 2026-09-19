@@ -311,6 +311,9 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
     }
   }
 
+  /// Refresh photos from the API — called when patient detail screen opens.
+  Future<void> refresh() => _load(arg);
+
   /// Called by patient_provider after the patient's server ID is confirmed.
   /// Uploads any locally-saved pending photos that were queued while the
   /// patient sync was still in-flight.

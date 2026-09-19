@@ -23,6 +23,7 @@ import '../../../visits/domain/entities/visit_entity.dart';
 import '../../../visits/presentation/providers/visit_provider.dart';
 import '../providers/patient_provider.dart';
 import '../../../audit/audit_provider.dart';
+import 'staff_report_preview_screen.dart';
 import 'package:medical_patient_management/core/theme/theme_extensions.dart';
 import 'package:medical_patient_management/core/widgets/sync_status_badge.dart';
 
@@ -78,7 +79,7 @@ Map<String, String> _buildVisitPrintMap(
   return {
     'firstName':       patient.firstName,
     'lastName':        patient.lastName.isEmpty ? '—' : patient.lastName,
-    'date':            DateFormat('dd/MM/yyyy').format(visit.visitDate),
+    'date':            DateFormat('dd-MM-yyyy  hh:mm a').format(visit.visitDate),
     'age':             ageStr,
     'dob':             dob,
     'gender':          gender,
@@ -105,8 +106,9 @@ Map<String, String> _buildVisitPrintMap(
     'treatmentPlan':      _pick(visit.plan,                pn('treatmentPlan')),
     'medications':        _pick(vex(ex('medications'), 'medications'), pn('medications')),
     'crossConsultation':  _pick(ex('crossConsultation'),    pn('crossConsultation')),
-    'advice':             _pick(ex('advice'),              pn('advice')),
-    'visitType':          visit.visitType.label,
+    'advice':                 _pick(ex('advice'),                  pn('advice')),
+    'investigationToBeDone':  _pick(ex('investigationToBeDone'),   ''),
+    'visitType':              visit.visitType.label,
   }..removeWhere((_, v) => v.isEmpty);
 }
 
@@ -128,8 +130,10 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
   void initState() {
     super.initState();
     Future.microtask(() {
+      ref.invalidate(patientByIdProvider(widget.patientId));
       ref.read(visitsProvider(widget.patientId).notifier).refresh();
       ref.read(surgeriesProvider(widget.patientId).notifier).refresh();
+      ref.read(photoProvider(widget.patientId).notifier).refresh();
     });
   }
 
@@ -142,6 +146,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
     final allPhotos      = ref.watch(photoProvider(patientId)).photos;
     final canWrite       = ref.watch(canWriteProvider);
     final canEditPatient = ref.watch(canEditPatientProvider);
+    final isStaff        = ref.watch(isStaffProvider);
 
     return patientAsync.when(
       loading: () => Scaffold(
@@ -163,10 +168,11 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
         final sortedVisits = visits.toList()
           ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
 
-        final timeline = <_TimelineItem>[
+        var timeline = <_TimelineItem>[
           ...sortedVisits.map((v) => _TimelineItem.fromVisit(v)),
           ...surgeries.map((s) => _TimelineItem.fromSurgery(s)),
         ]..sort((a, b) => b.date.compareTo(a.date));
+
 
         return Scaffold(
           backgroundColor: context.bgColor,
@@ -224,10 +230,14 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
 
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () => Future.wait([
-                  ref.read(visitsProvider(patientId).notifier).refresh(),
-                  ref.read(surgeriesProvider(patientId).notifier).refresh(),
-                ]),
+                onRefresh: () async {
+                  ref.invalidate(patientByIdProvider(patientId));
+                  await Future.wait([
+                    ref.read(visitsProvider(patientId).notifier).refresh(),
+                    ref.read(surgeriesProvider(patientId).notifier).refresh(),
+                    ref.read(photoProvider(patientId).notifier).refresh(),
+                  ]);
+                },
                 child: timeline.isEmpty
                   ? LayoutBuilder(builder: (ctx, c) => SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -244,6 +254,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                           isLast: i == timeline.length - 1,
                           initiallyExpanded: i == 0,
                           canWrite: canWrite,
+                          isStaff: isStaff,
                           photos: allPhotos
                               .where((p) =>
                                   p.visitId == timeline[i].id ||
@@ -291,18 +302,29 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                                   }
                                 }
                               : null,
-                          onPrint: timeline[i].visit != null
+                          onPrint: (timeline[i].visit != null)
                               ? () {
                                   final visitPhotos = allPhotos
                                       .where((p) =>
                                           p.visitId == timeline[i].id)
                                       .toList();
-                                  ref
-                                      .read(activePatientDataProvider.notifier)
-                                      .state = _buildVisitPrintMap(
-                                          patient, timeline[i].visit!,
-                                          photos: visitPhotos);
-                                  context.push('/print-config');
+                                  final printMap = _buildVisitPrintMap(
+                                      patient, timeline[i].visit!,
+                                      photos: visitPhotos);
+                                  if (isStaff) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => StaffReportPreviewScreen(
+                                            patientData: printMap),
+                                      ),
+                                    );
+                                  } else {
+                                    ref
+                                        .read(activePatientDataProvider.notifier)
+                                        .state = printMap;
+                                    context.push('/print-config');
+                                  }
                                 }
                               : null,
                         );
@@ -313,7 +335,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
           ]),
 
           floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-          bottomNavigationBar: canWrite
+          bottomNavigationBar: canEditPatient
               ? _AddVisitBar(
                   patientId: patientId,
                   onTap: () => context.push('/patients/$patientId/new-visit'),
@@ -618,6 +640,7 @@ class _TimelineRow extends ConsumerStatefulWidget {
   final PatientEntity patient;
   final bool isLast;
   final bool canWrite;
+  final bool isStaff;
   final List<PhotoEntity> photos;
   final VoidCallback onDocTap;
   final VoidCallback? onEditTap;
@@ -631,6 +654,7 @@ class _TimelineRow extends ConsumerStatefulWidget {
     required this.canWrite,
     required this.photos,
     required this.onDocTap,
+    this.isStaff = false,
     this.onEditTap,
     this.onPrint,
     this.onDelete,
@@ -803,7 +827,9 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
             // ── Action buttons ──────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Row(children: [
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
                 _CardBtn(
                   icon: Icons.remove_red_eye_outlined,
                   label: 'View',
@@ -812,8 +838,10 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
                 ),
                 if (widget.onPrint != null)
                   _CardBtn(
-                    icon: Icons.print_outlined,
-                    label: 'Print',
+                    icon: widget.isStaff
+                        ? Icons.description_outlined
+                        : Icons.print_outlined,
+                    label: widget.isStaff ? 'Report' : 'Print',
                     color: accentColor,
                     onTap: widget.onPrint!,
                   ),
@@ -832,8 +860,9 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
                       onTap: widget.onDelete!,
                     ),
                 ],
-                // History button — only for server-synced visits with a numeric id
-                if (item.visit != null &&
+                // History button — only for server-synced visits, hidden for staff
+                if (!widget.isStaff &&
+                    item.visit != null &&
                     item.visit!.id.isNotEmpty &&
                     RegExp(r'^\d+$').hasMatch(item.visit!.id))
                   _CardBtn(
@@ -843,6 +872,7 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
                     onTap: () => _showAuditSheet(context, item.visit!.id, widget.patient.id),
                   ),
               ]),
+              ),
             ),
           ],
         ),
@@ -1345,7 +1375,7 @@ class _MedicinesTable extends StatelessWidget {
 // Shared attachment helpers
 // ─────────────────────────────────────────────────────────────────────────────
 String _attachFilename(PhotoEntity p) {
-  if (p.caption?.isNotEmpty == true) return p.caption!;
+  if (p.originalFilename?.isNotEmpty == true) return p.originalFilename!;
   final parts = p.storagePath.split('/');
   return parts.isNotEmpty ? parts.last : 'Attachment';
 }
@@ -2035,7 +2065,7 @@ class _PdfReportTile extends StatelessWidget {
   const _PdfReportTile({required this.photo});
 
   String get _filename {
-    if (photo.caption?.isNotEmpty == true) return photo.caption!;
+    if (photo.originalFilename?.isNotEmpty == true) return photo.originalFilename!;
     final parts = photo.storagePath.split('/');
     return parts.isNotEmpty ? parts.last : 'Report';
   }
@@ -2222,7 +2252,7 @@ class _AddVisitBar extends StatelessWidget {
 
 // ── Audit history bottom sheet ────────────────────────────────────────────────
 
-class _AuditBottomSheet extends ConsumerWidget {
+class _AuditBottomSheet extends ConsumerStatefulWidget {
   final String visitId;
   final String patientId;
   final String title;
@@ -2234,7 +2264,25 @@ class _AuditBottomSheet extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AuditBottomSheet> createState() => _AuditBottomSheetState();
+}
+
+class _AuditBottomSheetState extends ConsumerState<_AuditBottomSheet> {
+  @override
+  void initState() {
+    super.initState();
+    // Force fresh network fetch every time History is opened so that
+    // entries created after login (or after an offline→online sync) appear.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.invalidate(auditLogProvider(
+          (entityType: 'visit', entityId: widget.visitId)));
+      ref.invalidate(auditLogProvider(
+          (entityType: 'patient', entityId: widget.patientId)));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF1A1A3A) : Colors.white;
     final textMain = isDark ? Colors.white : const Color(0xFF1A2D5A);
@@ -2245,9 +2293,9 @@ class _AuditBottomSheet extends ConsumerWidget {
 
     // Fetch both visit-level and patient-level audit entries
     final visitAuditAsync = ref.watch(auditLogProvider(
-        (entityType: 'visit', entityId: visitId)));
+        (entityType: 'visit', entityId: widget.visitId)));
     final patientAuditAsync = ref.watch(auditLogProvider(
-        (entityType: 'patient', entityId: patientId)));
+        (entityType: 'patient', entityId: widget.patientId)));
 
     // Merge: loading if either is loading, error if either errors, else combine + sort
     final auditAsync = visitAuditAsync.when(
@@ -2258,6 +2306,8 @@ class _AuditBottomSheet extends ConsumerWidget {
         error: (e, s) => AsyncError<List<AuditEntry>>(e, s),
         data: (patientEntries) {
           final merged = [...visitEntries, ...patientEntries]
+              .where((e) => e.oldValue != null && e.oldValue!.isNotEmpty)
+              .toList()
             ..sort((a, b) => b.changedAt.compareTo(a.changedAt));
           return AsyncData<List<AuditEntry>>(merged);
         },
@@ -2294,7 +2344,7 @@ class _AuditBottomSheet extends ConsumerWidget {
                     const Icon(Icons.history_rounded,
                         size: 20, color: _kAccent),
                     const SizedBox(width: 8),
-                    Text(title,
+                    Text(widget.title,
                         style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w800,
@@ -2358,9 +2408,9 @@ class _AuditBottomSheet extends ConsumerWidget {
                           FilledButton.icon(
                             onPressed: () {
                               ref.invalidate(auditLogProvider(
-                                  (entityType: 'visit', entityId: visitId)));
+                                  (entityType: 'visit', entityId: widget.visitId)));
                               ref.invalidate(auditLogProvider(
-                                  (entityType: 'patient', entityId: patientId)));
+                                  (entityType: 'patient', entityId: widget.patientId)));
                             },
                             icon: const Icon(Icons.refresh_rounded, size: 16),
                             label: const Text('Retry',
@@ -2381,48 +2431,59 @@ class _AuditBottomSheet extends ConsumerWidget {
                 },
                 data: (entries) {
                   if (entries.isEmpty) {
+                    final isOffline = visitAuditAsync.hasError || patientAuditAsync.hasError;
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.history_toggle_off_rounded,
-                              size: 48,
-                              color: textSub.withValues(alpha: 0.4)),
+                          Icon(
+                            isOffline
+                                ? Icons.wifi_off_rounded
+                                : Icons.history_toggle_off_rounded,
+                            size: 48,
+                            color: textSub.withValues(alpha: 0.4)),
                           const SizedBox(height: 12),
-                          Text('No edit history yet',
-                              style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  color: textSub)),
+                          Text(
+                            isOffline
+                                ? 'No cached history'
+                                : 'No edit history yet',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: textSub)),
                           const SizedBox(height: 6),
-                          Text('Changes will appear here after the first edit',
-                              style: TextStyle(
-                                  fontSize: 12, color: textSub),
-                              textAlign: TextAlign.center),
+                          Text(
+                            isOffline
+                                ? 'History will be available once you go online.'
+                                : 'Changes will appear here after the first edit',
+                            style: TextStyle(fontSize: 12, color: textSub),
+                            textAlign: TextAlign.center),
                         ],
                       ),
                     );
                   }
 
-                  // Group entries by date
-                  final grouped = <String, List<AuditEntry>>{};
+                  // Flatten all entries to table rows, grouped by date
+                  final grouped = <String, List<_AuditFlatRow>>{};
                   for (final e in entries) {
-                    final key = DateFormat('dd MMM yyyy').format(
+                    final dateKey = DateFormat('dd MMM yyyy').format(
                         e.changedAt.toLocal());
-                    grouped.putIfAbsent(key, () => []).add(e);
+                    grouped
+                        .putIfAbsent(dateKey, () => [])
+                        .addAll(_flattenAuditEntry(e));
                   }
 
                   return ListView.builder(
                     controller: scrollCtrl,
-                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     itemCount: grouped.length,
                     itemBuilder: (_, gi) {
                       final dateKey = grouped.keys.elementAt(gi);
-                      final dayEntries = grouped[dateKey]!;
+                      final rows = grouped[dateKey]!;
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Date header
+                          // Date badge header
                           Padding(
                             padding:
                                 const EdgeInsets.symmetric(vertical: 10),
@@ -2446,16 +2507,14 @@ class _AuditBottomSheet extends ConsumerWidget {
                                       height: 1, color: divider)),
                             ]),
                           ),
-
-                          // Entries for that day
-                          ...dayEntries.map((entry) =>
-                              _AuditEntryTile(
-                                entry: entry,
-                                isDark: isDark,
-                                textMain: textMain,
-                                textSub: textSub,
-                                divider: divider,
-                              )),
+                          // Single unified table for all rows of this day
+                          _AuditDayTable(
+                            rows: rows,
+                            isDark: isDark,
+                            textMain: textMain,
+                            textSub: textSub,
+                          ),
+                          const SizedBox(height: 8),
                         ],
                       );
                     },
@@ -2470,7 +2529,7 @@ class _AuditBottomSheet extends ConsumerWidget {
   }
 }
 
-class _AuditEntryTile extends StatefulWidget {
+class _AuditEntryTile extends StatelessWidget {
   final AuditEntry entry;
   final bool isDark;
   final Color textMain;
@@ -2484,127 +2543,131 @@ class _AuditEntryTile extends StatefulWidget {
     required this.divider,
   });
   @override
-  State<_AuditEntryTile> createState() => _AuditEntryTileState();
-}
-
-class _AuditEntryTileState extends State<_AuditEntryTile> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final e = widget.entry;
+    final e = entry;
     final time = DateFormat('hh:mm a').format(e.changedAt.toLocal());
-    final hasOld = e.oldValue != null && e.oldValue!.isNotEmpty;
-    final hasNew = e.newValue != null && e.newValue!.isNotEmpty;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: widget.isDark
+        color: isDark
             ? Colors.white.withValues(alpha: 0.04)
             : const Color(0xFFF8F9FF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: widget.divider),
+        border: Border.all(color: divider),
       ),
       child: Column(
         children: [
-          // Header row
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              child: Row(children: [
-                Container(
-                  width: 32, height: 32,
-                  decoration: BoxDecoration(
-                    color: _kAccent.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.edit_note_rounded,
-                      size: 16, color: _kAccent),
+          // Header row — always visible, no tap needed
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: _kAccent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(e.displayLabel,
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: widget.textMain)),
-                      const SizedBox(height: 2),
-                      Row(children: [
-                        Icon(Icons.access_time_rounded,
-                            size: 11, color: widget.textSub),
+                child: const Icon(Icons.edit_note_rounded,
+                    size: 16, color: _kAccent),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(e.displayLabel,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: textMain)),
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      Icon(Icons.access_time_rounded,
+                          size: 11, color: textSub),
+                      const SizedBox(width: 3),
+                      Text(time,
+                          style: TextStyle(fontSize: 11, color: textSub)),
+                      if (e.changedByName != null) ...[
+                        const SizedBox(width: 8),
+                        Icon(Icons.person_outline_rounded,
+                            size: 11, color: textSub),
                         const SizedBox(width: 3),
-                        Text(time,
-                            style: TextStyle(
-                                fontSize: 11, color: widget.textSub)),
-                        if (e.changedByName != null) ...[
-                          const SizedBox(width: 8),
-                          Icon(Icons.person_outline_rounded,
-                              size: 11, color: widget.textSub),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(e.changedByName!,
-                                style: TextStyle(
-                                    fontSize: 11, color: widget.textSub),
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                        ],
-                      ]),
-                    ],
-                  ),
+                        Flexible(
+                          child: Text(e.changedByName!,
+                              style: TextStyle(fontSize: 11, color: textSub),
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ]),
+                  ],
                 ),
-                Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 18,
-                  color: widget.textSub,
-                ),
-              ]),
-            ),
+              ),
+            ]),
           ),
 
-          // Expanded diff view
-          if (_expanded) ...[
-            Divider(height: 1, color: widget.divider),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (hasOld) ...[
-                    _DiffBox(
-                      label: 'Previous',
-                      value: e.oldValue!,
-                      color: const Color(0xFFDC2626),
-                      bg: const Color(0xFFFEF2F2),
-                      isDark: widget.isDark,
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  if (hasNew)
-                    _DiffBox(
-                      label: 'Updated to',
-                      value: e.newValue!,
-                      color: const Color(0xFF16A34A),
-                      bg: const Color(0xFFF0FDF4),
-                      isDark: widget.isDark,
-                    ),
-                  if (!hasOld && !hasNew)
-                    Text('(no change details)',
-                        style: TextStyle(
-                            fontSize: 12, color: widget.textSub)),
-                ],
-              ),
-            ),
-          ],
+          // Diff content — always shown
+          Divider(height: 1, color: divider),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: _buildDiffContent(e),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDiffContent(AuditEntry e) {
+    final hasOld = e.oldValue != null && e.oldValue!.isNotEmpty;
+    final hasNew = e.newValue != null && e.newValue!.isNotEmpty;
+
+    Map<String, dynamic>? oldMap, newMap;
+    try {
+      if (hasOld && e.oldValue!.trimLeft().startsWith('{')) {
+        oldMap = jsonDecode(e.oldValue!) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    try {
+      if (hasNew && e.newValue!.trimLeft().startsWith('{')) {
+        newMap = jsonDecode(e.newValue!) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+
+    if (oldMap != null || newMap != null) {
+      return _JsonDiffTable(
+        oldMap: oldMap ?? {},
+        newMap: newMap ?? {},
+        isDark: isDark,
+        textSub: textSub,
+      );
+    }
+
+    if (!hasOld && !hasNew) {
+      return Text('(no change details)',
+          style: TextStyle(fontSize: 12, color: textSub));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasOld) ...[
+          _DiffBox(
+            label: 'Previous',
+            value: e.oldValue!,
+            color: const Color(0xFFDC2626),
+            bg: const Color(0xFFFEF2F2),
+            isDark: isDark,
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (hasNew)
+          _DiffBox(
+            label: 'Current',
+            value: e.newValue!,
+            color: const Color(0xFF16A34A),
+            bg: const Color(0xFFF0FDF4),
+            isDark: isDark,
+          ),
+      ],
     );
   }
 }
@@ -2647,4 +2710,409 @@ class _DiffBox extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ── JSON diff table (shows only changed key-value pairs) ──────────────────────
+
+class _JsonDiffTable extends StatelessWidget {
+  final Map<String, dynamic> oldMap;
+  final Map<String, dynamic> newMap;
+  final bool isDark;
+  final Color textSub;
+
+  const _JsonDiffTable({
+    required this.oldMap,
+    required this.newMap,
+    required this.isDark,
+    required this.textSub,
+  });
+
+  static const _labels = {
+    'previousHistory':   'Previous History',
+    'examGeneral':       'General Exam',
+    'examNeurological':  'Neurological Exam',
+    'imaging':           'Imaging',
+    'otherInvestigation':'Other Investigation',
+    'clinicalDiagnosis': 'Clinical Diagnosis',
+    'medications':       'Medications',
+    'advice':            'Advice',
+    'crossConsultation': 'Cross Consultation',
+    'bp':                'Blood Pressure',
+    'weight':            'Weight',
+    'temperature':       'Temperature',
+    'spo2':              'SpO2',
+    'pulse':             'Pulse',
+    'examPhysical':      'Physical Exam',
+    'examSystemic':      'Systemic Exam',
+    'examRadiology':     'Radiology',
+  };
+
+  String _label(String key) => _labels[key] ?? key;
+
+  String _display(dynamic val) {
+    if (val == null) return '—';
+    final s = val.toString().trim();
+    if (s.isEmpty) return '—';
+    // Collapse prescription JSON arrays to a count
+    if (s.startsWith('[')) {
+      try {
+        final list = jsonDecode(s) as List;
+        return '${list.length} item${list.length == 1 ? '' : 's'}';
+      } catch (_) {}
+    }
+    return s;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Collect keys from both maps, skip raw 'prescriptions' (medications covers it)
+    final allKeys = <String>{...oldMap.keys, ...newMap.keys}
+      ..remove('prescriptions');
+
+    final changed = allKeys.where((k) {
+      final o = (oldMap[k] ?? '').toString().trim();
+      final n = (newMap[k] ?? '').toString().trim();
+      return o != n;
+    }).toList()..sort();
+
+    if (changed.isEmpty) {
+      return Text('(no visible changes)',
+          style: TextStyle(fontSize: 12, color: textSub));
+    }
+
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.grey.withValues(alpha: 0.18);
+    final headerBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : const Color(0xFFF3F4F6);
+    final rowAlt = isDark
+        ? Colors.white.withValues(alpha: 0.03)
+        : const Color(0xFFFAFAFA);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Table(
+        border: TableBorder.all(
+            color: borderColor, width: 0.8,
+            borderRadius: BorderRadius.circular(8)),
+        columnWidths: const {
+          0: FlexColumnWidth(2.2),
+          1: FlexColumnWidth(3),
+          2: FlexColumnWidth(3),
+        },
+        children: [
+          // Header row
+          TableRow(
+            decoration: BoxDecoration(color: headerBg),
+            children: [
+              _cell('Field',      isHeader: true),
+              _cell('Previous',   isHeader: true, color: const Color(0xFFDC2626)),
+              _cell('Current', isHeader: true, color: const Color(0xFF16A34A)),
+            ],
+          ),
+          // One row per changed key
+          ...changed.asMap().entries.map((entry) {
+            final isEven = entry.key.isEven;
+            return TableRow(
+              decoration: BoxDecoration(
+                  color: isEven ? Colors.transparent : rowAlt),
+              children: [
+                _cell(_label(entry.value)),
+                _cell(_display(oldMap[entry.value]),
+                    color: const Color(0xFFDC2626)),
+                _cell(_display(newMap[entry.value]),
+                    color: const Color(0xFF16A34A)),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _cell(String text, {bool isHeader = false, Color? color}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: isHeader ? 9 : 11,
+            fontWeight: isHeader ? FontWeight.w700 : FontWeight.w500,
+            color: color ??
+                (isDark ? Colors.white70 : const Color(0xFF374151)),
+            letterSpacing: isHeader ? 0.4 : 0,
+          ),
+        ),
+      );
+}
+
+// ── Unified audit flat-table support ─────────────────────────────────────────
+
+class _AuditFlatRow {
+  final String time;
+  final String section;
+  final String field;
+  final String previous;
+  final String updatedTo;
+  final String by;
+  const _AuditFlatRow({
+    required this.time,
+    required this.section,
+    required this.field,
+    required this.previous,
+    required this.updatedTo,
+    required this.by,
+  });
+}
+
+const _kAuditSubLabels = <String, String>{
+  'previousHistory':    'Previous History',
+  'examGeneral':        'General Exam',
+  'examNeurological':   'Neurological Exam',
+  'imaging':            'Imaging',
+  'otherInvestigation': 'Other Investigation',
+  'clinicalDiagnosis':  'Clinical Diagnosis',
+  'medications':        'Medications',
+  'advice':             'Advice',
+  'crossConsultation':  'Cross Consultation',
+  'bp':                 'Blood Pressure',
+  'weight':             'Weight',
+  'temperature':        'Temperature',
+  'spo2':               'SpO2',
+  'pulse':              'Pulse',
+  'examPhysical':       'Physical Exam',
+  'examSystemic':       'Systemic Exam',
+  'examRadiology':      'Radiology',
+};
+
+String _auditSubLabel(String key) => _kAuditSubLabels[key] ?? key;
+
+String _auditDispVal(dynamic v) {
+  if (v == null) return '—';
+  final s = v.toString().trim();
+  if (s.isEmpty) return '—';
+  if (s.startsWith('[')) {
+    try {
+      final list = jsonDecode(s) as List;
+      return '${list.length} item${list.length == 1 ? '' : 's'}';
+    } catch (_) {}
+  }
+  return s;
+}
+
+/// Converts a single AuditEntry into one or more flat table rows.
+/// JSON blob entries (examination) expand to one row per changed sub-field.
+List<_AuditFlatRow> _flattenAuditEntry(AuditEntry e) {
+  final time = DateFormat('hh:mm a').format(e.changedAt.toLocal());
+  final section = e.displayLabel;
+  final by = e.changedByName ?? '';
+
+  Map<String, dynamic>? oldMap, newMap;
+  try {
+    if (e.oldValue?.trimLeft().startsWith('{') == true) {
+      oldMap = jsonDecode(e.oldValue!) as Map<String, dynamic>;
+    }
+  } catch (_) {}
+  try {
+    if (e.newValue?.trimLeft().startsWith('{') == true) {
+      newMap = jsonDecode(e.newValue!) as Map<String, dynamic>;
+    }
+  } catch (_) {}
+
+  if (oldMap != null || newMap != null) {
+    final allKeys = <String>{...?oldMap?.keys, ...?newMap?.keys}
+      ..remove('prescriptions');
+    final changed = allKeys.where((k) {
+      final o = (oldMap?[k] ?? '').toString().trim();
+      final n = (newMap?[k] ?? '').toString().trim();
+      return o != n;
+    }).toList()..sort();
+
+    if (changed.isEmpty) return [];
+    return changed
+        .map((k) => _AuditFlatRow(
+              time: time,
+              section: section,
+              field: _auditSubLabel(k),
+              previous: _auditDispVal(oldMap?[k]),
+              updatedTo: _auditDispVal(newMap?[k]),
+              by: by,
+            ))
+        .toList();
+  }
+
+  return [
+    _AuditFlatRow(
+      time: time,
+      section: section,
+      field: '—',
+      previous: _auditDispVal(e.oldValue),
+      updatedTo: _auditDispVal(e.newValue),
+      by: by,
+    )
+  ];
+}
+
+// ── Single unified table for one date group ───────────────────────────────────
+// 6 columns: Time | Section | Field | Previous | Current | By
+// Horizontally scrollable with a visible drag-able scrollbar.
+
+class _AuditDayTable extends StatefulWidget {
+  final List<_AuditFlatRow> rows;
+  final bool isDark;
+  final Color textMain;
+  final Color textSub;
+
+  const _AuditDayTable({
+    required this.rows,
+    required this.isDark,
+    required this.textMain,
+    required this.textSub,
+  });
+
+  @override
+  State<_AuditDayTable> createState() => _AuditDayTableState();
+}
+
+class _AuditDayTableState extends State<_AuditDayTable> {
+  final _scrollCtrl = ScrollController();
+
+  static const _kNavy = Color(0xFF1A2D5A);
+  static const _cols  = [72.0, 90.0, 105.0, 115.0, 115.0, 80.0];
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark   = widget.isDark;
+    final textMain = widget.textMain;
+    final textSub  = widget.textSub;
+
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.10)
+        : const Color(0xFFE2E8F0);
+    final headerBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : const Color(0xFFF1F5F9);
+    final rowAltBg = isDark
+        ? Colors.white.withValues(alpha: 0.025)
+        : const Color(0xFFFAFBFF);
+    final cellColor = isDark ? Colors.white70 : const Color(0xFF374151);
+
+    Widget vDiv() => Container(width: 0.8, color: borderColor);
+
+    List<Widget> withDividers(List<Widget> cells) {
+      final out = <Widget>[];
+      for (var i = 0; i < cells.length; i++) {
+        out.add(cells[i]);
+        if (i < cells.length - 1) out.add(vDiv());
+      }
+      return out;
+    }
+
+    Widget hdrCell(String t, double w) => SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            child: Text(t,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  color: isDark ? Colors.white70 : _kNavy,
+                )),
+          ),
+        );
+
+    Widget dataCell(String t, double w,
+            {Color? color,
+            FontWeight fw = FontWeight.w500,
+            double fs = 12}) =>
+        SizedBox(
+          width: w,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+            child: Text(t,
+                style: TextStyle(
+                    fontSize: fs,
+                    fontWeight: fw,
+                    color: color ?? cellColor)),
+          ),
+        );
+
+    final headerRow = Container(
+      color: headerBg,
+      child: IntrinsicHeight(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: withDividers([
+            hdrCell('Time',       _cols[0]),
+            hdrCell('Section',    _cols[1]),
+            hdrCell('Field',      _cols[2]),
+            hdrCell('Previous',   _cols[3]),
+            hdrCell('Current', _cols[4]),
+            hdrCell('By',         _cols[5]),
+          ]),
+        ),
+      ),
+    );
+
+    final dataRows = widget.rows.asMap().entries.map((e) {
+      final r = e.value;
+      return Container(
+        decoration: BoxDecoration(
+          color: e.key.isEven ? Colors.transparent : rowAltBg,
+          border: Border(top: BorderSide(color: borderColor, width: 0.8)),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: withDividers([
+              dataCell(r.time,      _cols[0], color: textSub, fs: 11),
+              dataCell(r.section,   _cols[1],
+                  fw: FontWeight.w700,
+                  color: isDark ? _kAccent.withValues(alpha: 0.9) : _kNavy),
+              dataCell(r.field,     _cols[2],
+                  color: textMain.withValues(alpha: 0.85)),
+              dataCell(r.previous,  _cols[3], color: textMain),
+              dataCell(r.updatedTo, _cols[4], color: textMain),
+              dataCell(r.by,        _cols[5], color: textSub, fs: 11),
+            ]),
+          ),
+        ),
+      );
+    }).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Scrollbar(
+          controller: _scrollCtrl,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scrollCtrl,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [headerRow, ...dataRows],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

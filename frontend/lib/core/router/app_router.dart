@@ -42,8 +42,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
         // Staff and read-only roles cannot access clinical write routes
         if (isReadOnly || isStaff) {
-          // Block new visit creation
-          if (loc.endsWith('/new-visit')) {
+          // Block new visit creation for read-only roles; staff can create new visits
+          if (isReadOnly && loc.endsWith('/new-visit')) {
             return loc.substring(0, loc.length - '/new-visit'.length);
           }
 

@@ -23,6 +23,7 @@ import '../../../photos/presentation/providers/photo_provider.dart';
 import '../../../print_configuration/presentation/providers/print_config_provider.dart';
 import '../../domain/entities/visit_entity.dart';
 import '../providers/visit_provider.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../medicines/data/medicine_service.dart';
 
 // ── Fixed accent colours ───────────────────────────────────────────────────────
@@ -404,7 +405,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     _saving = true; // set synchronously before any await so rapid taps are blocked
     final isNew = widget.visitId == null;
 
-    if (isNew && !_hasAnyTreatmentData()) {
+    if (isNew && !ref.read(isStaffProvider) && !_hasAnyTreatmentData()) {
       _saving = false;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Row(children: [
@@ -630,7 +631,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     ref.read(activePatientDataProvider.notifier).state = {
       'firstName':      _patient!.firstName,
       'lastName':       _patient!.lastName,
-      'date':           DateFormat('dd-MM-yyyy').format(DateTime.now()),
+      'date':           DateFormat('dd-MM-yyyy  hh:mm a').format(_visitDate),
       'gender':         gender,
       'phone':          _patient!.phone ?? '—',
       'age':            _patient!.age != null ? '${_patient!.age} yrs' : '—',
@@ -679,8 +680,27 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     ]),
   );
 
+  String _makeFileName(String section, String originalName, {int index = 0}) {
+    final now = DateTime.now();
+    final ts = '${now.day.toString().padLeft(2, '0')}'
+        '${now.month.toString().padLeft(2, '0')}'
+        '${(now.year % 100).toString().padLeft(2, '0')}'
+        '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}'
+        '${now.second.toString().padLeft(2, '0')}';
+    final ext = originalName.contains('.')
+        ? originalName.split('.').last.toLowerCase()
+        : 'jpg';
+    final prn = widget.patientId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final sec = section.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final suffix = index > 0 ? '_$index' : '';
+    return '${prn}_${sec}_$ts$suffix.$ext';
+  }
+
   Future<void> _pickFiles(
-      void Function(List<({String name, Uint8List bytes})>) onPicked) async {
+      void Function(List<({String name, Uint8List bytes})>) onPicked, {
+      String sectionName = '',
+  }) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -720,7 +740,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             source: ImageSource.camera, imageQuality: 85);
         if (img == null || !mounted) return;
         final bytes = await img.readAsBytes();
-        final name = 'camera_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final name = _makeFileName(sectionName, 'photo.jpg');
         onPicked([(name: name, bytes: bytes)]);
       } catch (_) {}
     } else {
@@ -732,9 +752,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           allowMultiple: true,
         );
         if (result != null && result.files.isNotEmpty) {
-          final picked = result.files
-              .where((f) => f.bytes != null)
-              .map((f) => (name: f.name, bytes: f.bytes!))
+          final valid = result.files.where((f) => f.bytes != null).toList();
+          final multi = valid.length > 1;
+          final picked = valid.asMap().entries
+              .map((e) => (
+                    name: _makeFileName(sectionName, e.value.name,
+                        index: multi ? e.key + 1 : 0),
+                    bytes: e.value.bytes!,
+                  ))
               .toList();
           if (picked.isNotEmpty) onPicked(picked);
         }
@@ -795,7 +820,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   icon: Icon(Icons.upload_file_rounded, size: 20,
                       color: files.isNotEmpty ? _kBlue : _kMuted(context)),
                   onPressed: () => _pickFiles((picked) =>
-                      setState(() => onFilesChange([...files, ...picked]))),
+                      setState(() => onFilesChange([...files, ...picked])),
+                      sectionName: label),
                 ),
                 if (files.isNotEmpty)
                   Positioned(
@@ -1314,7 +1340,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 const SizedBox(width: 10),
                 // Visit Type
                 Expanded(
-                  flex: 4,
+                  flex: 5,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('Visit Type',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
@@ -1329,6 +1355,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                           .map((l) => DropdownMenuItem(
                                 value: l,
                                 child: Text(l,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(color: _kNavy(context), fontSize: 13)),
                               ))
                           .toList(),
@@ -1341,8 +1368,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                         });
                       },
                       decoration: InputDecoration(
-                        prefixIcon: Icon(Icons.local_hospital_outlined,
-                            size: 15, color: _kMuted(context)),
                         filled: true, fillColor: _kWiz(context),
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 8, vertical: 10),
@@ -1420,9 +1445,20 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ]),
             ),
 
+            // Known Allergies — visible for all roles
+            const SizedBox(height: 6),
+            _WizardCard(
+              title: 'Known Allergies',
+              icon: Icons.warning_amber_outlined,
+              color: _kBlue,
+              child: _editField('Known Allergies', _pat1AllergyCtrl,
+                  maxLines: 2, hint: 'e.g. Penicillin, Sulfa drugs'),
+            ),
+
             // ════════════════════════════════════════════════════════
-            // Treatment & Advice section (previously Step 2)
+            // Treatment & Advice section — hidden for staff role
             // ════════════════════════════════════════════════════════
+            if (!ref.read(isStaffProvider)) ...[
 
             const SizedBox(height: 6),
 
@@ -1442,15 +1478,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ),
               const SizedBox(height: 12),
             ],
-
-            // 1. Known Allergies
-            _WizardCard(
-              title: 'Known Allergies',
-              icon: Icons.warning_amber_outlined,
-              color: _kRed,
-              child: _editField('Known Allergies', _pat1AllergyCtrl,
-                  maxLines: 2, hint: 'e.g. Penicillin, Sulfa drugs'),
-            ),
 
             // 2. Chief Complaint
             _WizardCard(
@@ -1488,22 +1515,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             _WizardCard(
               title: 'Examination Finding',
               icon: Icons.person_search_outlined,
-              color: _kBlue2,
+              color: _kBlue,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // a. Vitals
-                Text('a. Vitals',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                        color: _kSlate(context))),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(child: _editField('Weight', _weightCtrl, hint: 'kg')),
-                  const SizedBox(width: 10),
-                  Expanded(child: _editField('Blood Pressure', _bpCtrl, hint: 'mmHg')),
-                  const SizedBox(width: 10),
-                  Expanded(child: _editField('Temperature', _tempCtrl, hint: '°F')),
-                ]),
-                const SizedBox(height: 14),
-                // b. General / c. Neurological tabs
                 Row(children: [
                   Expanded(
                     child: GestureDetector(
@@ -1520,7 +1533,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                               color: _examTab == 'general' ? _kBlue : _kBorder(context)),
                         ),
                         alignment: Alignment.center,
-                        child: Text('b. General',
+                        child: Text('General',
                             style: TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w600,
                                 color: _examTab == 'general' ? Colors.white : _kSlate(context))),
@@ -1542,7 +1555,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                               color: _examTab == 'neurological' ? _kBlue : _kBorder(context)),
                         ),
                         alignment: Alignment.center,
-                        child: Text('c. Neurological',
+                        child: Text('Neurological',
                             style: TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w600,
                                 color: _examTab == 'neurological' ? Colors.white : _kSlate(context))),
@@ -1652,7 +1665,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               color: _kBlue,
               child: Column(children: [
                 _vField(
-                  label: 'a. Instructions',
+                  label: 'Instructions',
                   controller: _adviceCtrl,
                   maxLines: 3,
                   prefixIcon: Icons.tips_and_updates_outlined,
@@ -1660,7 +1673,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
                 const SizedBox(height: 12),
                 _fieldWithUpload(
-                  label: 'b. Investigation Should be done',
+                  label: 'Investigation Should be done',
                   controller: _investigationToBeDoneCtrl,
                   files: _investigationToBeDoneFiles,
                   onFilesChange: (f) => _investigationToBeDoneFiles..clear()..addAll(f),
@@ -1670,7 +1683,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
                 const SizedBox(height: 12),
                 _fieldWithUpload(
-                  label: 'c. Cross Consultation',
+                  label: 'Cross Consultation',
                   controller: _crossConsultCtrl,
                   files: _crossConsultFiles,
                   onFilesChange: (f) => _crossConsultFiles..clear()..addAll(f),
@@ -1693,6 +1706,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 hint: 'Private notes — will not appear on the patient sheet…',
               ),
             ),
+            ], // end of Treatment & Advice section (hidden for staff)
           ],
         );
       },
@@ -1723,7 +1737,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   // ── Existing photo chip (shown inline under each section in edit mode) ──────
   Widget _existingPhotoChip(PhotoEntity p) {
-    final filename = p.storagePath.split('/').last;
+    final filename = p.originalFilename ?? p.storagePath.split('/').last;
     return GestureDetector(
       onTap: () {
         if (p.url != null && p.url!.isNotEmpty) {
@@ -1839,9 +1853,8 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _WizardCard(
         title: 'Examination Finding',
         icon: Icons.person_search_outlined,
-        color: _kBlue2,
+        color: _kBlue,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Tab bar
           Row(children: [
             Expanded(
               child: GestureDetector(
@@ -1861,9 +1874,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                   child: Text('General',
                       style: TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w600,
-                          color: _examTab == 'general'
-                              ? Colors.white
-                              : _kSlate(context))),
+                          color: _examTab == 'general' ? Colors.white : _kSlate(context))),
                 ),
               ),
             ),
@@ -1879,17 +1890,13 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                         topRight: Radius.circular(10),
                         bottomRight: Radius.circular(10)),
                     border: Border.all(
-                        color: _examTab == 'neurological'
-                            ? _kBlue
-                            : _kBorder(context)),
+                        color: _examTab == 'neurological' ? _kBlue : _kBorder(context)),
                   ),
                   alignment: Alignment.center,
                   child: Text('Neurological',
                       style: TextStyle(
                           fontSize: 13, fontWeight: FontWeight.w600,
-                          color: _examTab == 'neurological'
-                              ? Colors.white
-                              : _kSlate(context))),
+                          color: _examTab == 'neurological' ? Colors.white : _kSlate(context))),
                 ),
               ),
             ),
@@ -1913,17 +1920,18 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     IconButton(
                       icon: Icon(Icons.upload_file_rounded, size: 20,
                           color: _examGeneralFiles.isNotEmpty
-                              ? _kGreen
+                              ? _kBlue
                               : _kMuted(context)),
                       onPressed: () => _pickFiles((picked) =>
-                          setState(() => _examGeneralFiles.addAll(picked))),
+                          setState(() => _examGeneralFiles.addAll(picked)),
+                          sectionName: 'GeneralExamination'),
                     ),
                     if (_examGeneralFiles.isNotEmpty)
                       Positioned(right: 6, top: 6,
                         child: Container(
                           width: 15, height: 15,
                           decoration: BoxDecoration(
-                              color: _kGreen, shape: BoxShape.circle),
+                              color: _kBlue, shape: BoxShape.circle),
                           alignment: Alignment.center,
                           child: Text('${_examGeneralFiles.length}',
                               style: TextStyle(
@@ -1944,8 +1952,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     borderSide: BorderSide(color: _kBorder(context))),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        BorderSide(color: _kP1, width: 1.5)),
+                    borderSide: BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examGeneralFiles.isNotEmpty) ...[
@@ -1978,18 +1985,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     IconButton(
                       icon: Icon(Icons.upload_file_rounded, size: 20,
                           color: _examNeurologicalFiles.isNotEmpty
-                              ? _kGreen
+                              ? _kBlue
                               : _kMuted(context)),
                       onPressed: () => _pickFiles((picked) =>
                           setState(() =>
-                              _examNeurologicalFiles.addAll(picked))),
+                              _examNeurologicalFiles.addAll(picked)),
+                          sectionName: 'NeurologicalExamination'),
                     ),
                     if (_examNeurologicalFiles.isNotEmpty)
                       Positioned(right: 6, top: 6,
                         child: Container(
                           width: 15, height: 15,
                           decoration: BoxDecoration(
-                              color: _kGreen, shape: BoxShape.circle),
+                              color: _kBlue, shape: BoxShape.circle),
                           alignment: Alignment.center,
                           child: Text('${_examNeurologicalFiles.length}',
                               style: TextStyle(
@@ -2010,8 +2018,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                     borderSide: BorderSide(color: _kBorder(context))),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        BorderSide(color: _kP1, width: 1.5)),
+                    borderSide: BorderSide(color: _kP1, width: 1.5)),
               ),
             ),
             if (_examNeurologicalFiles.isNotEmpty) ...[
@@ -2652,6 +2659,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ] else
                 eRow('Treatment', '', _treatmentMedFiles),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
+              eRow('Investigation Should be done', fv(_investigationToBeDoneCtrl.text.trim()), _investigationToBeDoneFiles),
               eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),

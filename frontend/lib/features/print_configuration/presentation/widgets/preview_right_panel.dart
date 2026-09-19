@@ -1048,7 +1048,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                   child: ElevatedButton(
                     onPressed: (_saving || _printing) ? null : _print,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1565C0),
+                      backgroundColor: const Color(0xFF4B55CC),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       elevation: 0,
@@ -1080,7 +1080,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                   child: ElevatedButton(
                     onPressed: (_saving || _printing) ? null : _save,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1565C0),
+                      backgroundColor: const Color(0xFF4B55CC),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       elevation: 0,

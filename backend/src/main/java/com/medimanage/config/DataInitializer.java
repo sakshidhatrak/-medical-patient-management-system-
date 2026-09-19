@@ -25,6 +25,7 @@ public class DataInitializer implements CommandLineRunner {
         seedUser("admin@medimanage.com", "Admin",  "User",  UserRole.admin, "Admin@123");
         seedUser("admin@test.com",       "Admin",  "User",  UserRole.admin, "Admin@123");
         seedUser("staff@medimanage.com", "Staff",  "User",  UserRole.staff, "Staff@123");
+        seedUser("staff2@medimanage.com", "Staff2", "User",  UserRole.staff, "Staff@123");
     }
 
     /**

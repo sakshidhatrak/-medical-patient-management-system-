@@ -35,6 +35,10 @@ public class Photo {
     @Column(name = "surgery_id")
     private Long surgeryId;
 
+    /** Original filename as sent by the client (e.g. PRN_Section_timestamp.jpg) */
+    @Column(name = "original_filename", length = 500)
+    private String originalFilename;
+
     /** Cloudinary public_id — used to delete the asset */
     @Column(name = "storage_path", nullable = false, length = 500)
     private String storagePath;

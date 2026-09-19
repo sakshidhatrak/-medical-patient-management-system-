@@ -40,19 +40,28 @@ String _initials(String name) {
   return '?';
 }
 
-class VisitViewScreen extends ConsumerWidget {
+class VisitViewScreen extends ConsumerStatefulWidget {
   final String patientId;
   final String visitId;
   const VisitViewScreen({super.key, required this.patientId, required this.visitId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<VisitViewScreen> createState() => _VisitViewScreenState();
+}
+
+class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
+
+  @override
+  Widget build(BuildContext context) {
+    final patientId  = widget.patientId;
+    final visitId    = widget.visitId;
     final visitAsync   = ref.watch(visitEditProvider('$patientId/$visitId'));
     final patientAsync = ref.watch(patientByIdProvider(patientId));
     final examState    = ref.watch(examinationProvider('$patientId/$visitId'));
     final rxState      = ref.watch(prescriptionProvider('$patientId/$visitId'));
     final photoState   = ref.watch(photoProvider(patientId));
     final canWrite     = ref.watch(canWriteProvider);
+    final isStaff      = ref.watch(isStaffProvider);
 
     final visit = visitAsync;
     if (visit == null) {
@@ -122,6 +131,12 @@ class VisitViewScreen extends ConsumerWidget {
     if (vitals['BP']     == null && visit.bp?.isNotEmpty         == true) vitals['BP']     = visit.bp!;
     if (vitals['Weight'] == null && visit.weight?.isNotEmpty      == true) vitals['Weight'] = visit.weight!;
     if (vitals['Temp']   == null && visit.temperature?.isNotEmpty == true) vitals['Temp']   = visit.temperature!;
+
+    // Patient-level vitals fallback (e.g. temperature recorded on patient profile)
+    final patient0 = patientAsync.valueOrNull;
+    if (vitals['BP']     == null && patient0?.bloodPressure?.isNotEmpty == true) vitals['BP']     = patient0!.bloodPressure!;
+    if (vitals['Weight'] == null && patient0?.weight?.isNotEmpty        == true) vitals['Weight'] = patient0!.weight!;
+    if (vitals['Temp']   == null && patient0?.temperature?.isNotEmpty   == true) vitals['Temp']   = patient0!.temperature!;
 
     // Photo grouping
     final allVP = photoState.photos.where((p) => p.visitId == visitId).toList();
@@ -312,6 +327,7 @@ class VisitViewScreen extends ConsumerWidget {
               ),
               child: _buildSections(
                 context,
+                isStaff: ref.read(isStaffProvider),
                 patient: patient,
                 visit: visit,
                 examPrescriptions: examPrescriptions,
@@ -364,6 +380,7 @@ class VisitViewScreen extends ConsumerWidget {
 // ── Sections in wizard order ──────────────────────────────────────────────────
 Widget _buildSections(
   BuildContext context, {
+  required bool isStaff,
   required PatientEntity? patient,
   required VisitEntity visit,
   required List<Map<String, dynamic>> examPrescriptions,
@@ -442,10 +459,12 @@ Widget _buildSections(
     if (ne(patient.altPhone)) infoRows.add(row('Alternate Phone', patient.altPhone!));
     if (ne(patient.address)) infoRows.add(row('Full Address', patient.address!));
 
-    // 5. Weight / Blood Pressure / Temperature
-    if (ne(patient.weight))        infoRows.add(row('Weight', patient.weight!));
-    if (ne(patient.bloodPressure)) infoRows.add(row('Blood Pressure', patient.bloodPressure!));
-    if (ne(patient.temperature))   infoRows.add(row('Temperature', patient.temperature!));
+    // 5. Weight / Blood Pressure / Temperature — only for staff
+    if (isStaff) {
+      if (ne(patient.weight))        infoRows.add(row('Weight', patient.weight!));
+      if (ne(patient.bloodPressure)) infoRows.add(row('Blood Pressure', patient.bloodPressure!));
+      if (ne(patient.temperature))   infoRows.add(row('Temperature', patient.temperature!));
+    }
 
     // 6. Known Allergies
     if (ne(patient.allergies)) infoRows.add(row('Known Allergies', patient.allergies!));
@@ -456,7 +475,8 @@ Widget _buildSections(
         context));
   }
 
-  // ── Clinical fields — in specified sequence ──────────────────────────────
+  // ── Clinical fields — hidden for staff (they only see Patient Information) ──
+  if (!isStaff) {
 
   // 2. Chief Complaint
   final complaintText = chiefComplaintText.isNotEmpty
@@ -465,20 +485,12 @@ Widget _buildSections(
   final complaintChips = chips.isNotEmpty ? chips
       : complaintText.isNotEmpty ? complaintText.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
       : <String>[];
-  if (complaintChips.isNotEmpty || chiefComplaintPhotos.isNotEmpty)
+  if (complaintText.isNotEmpty || chiefComplaintPhotos.isNotEmpty)
     sections.add(_CS('Chief Complaint', Icons.report_problem_outlined, _kP1,
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (complaintChips.isNotEmpty)
-          Wrap(spacing: 6, runSpacing: 5, children: complaintChips.map((c) =>
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-              decoration: BoxDecoration(
-                color: _kP1.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: _kP1.withValues(alpha: 0.18)),
-              ),
-              child: Text(c, style: const TextStyle(fontSize: 11, color: _kP1, fontWeight: FontWeight.w600)),
-            )).toList()),
+        if (complaintText.isNotEmpty)
+          _CollapsibleText(complaintText,
+              style: TextStyle(fontSize: 12, color: _kNavy(context), height: 1.5)),
         if (chiefComplaintPhotos.isNotEmpty) _PhotoRow('', chiefComplaintPhotos),
       ]), context));
 
@@ -611,8 +623,8 @@ Widget _buildSections(
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: adviceItems),
       context));
 
-  // 12. Doctor's Notes (private)
-  if (visit.notes?.isNotEmpty == true)
+  // 12. Doctor's Notes (private — hidden for staff)
+  if (!isStaff && visit.notes?.isNotEmpty == true)
     sections.add(_CS("Doctor's Notes", Icons.lock_outline_rounded, _kAmber,
       _CollapsibleText(visit.notes!, style: TextStyle(fontSize: 12, color: _kNavy(context), height: 1.5)),
       context));
@@ -629,6 +641,8 @@ Widget _buildSections(
   if (reportPhotos.isNotEmpty)
     sections.add(_CS('Reports', Icons.upload_file_rounded, _kAmber,
       _PhotoRow('', reportPhotos), context));
+
+  } // end !isStaff clinical sections
 
   // Mark last section so no trailing divider
   if (sections.isEmpty) return const SizedBox.shrink();

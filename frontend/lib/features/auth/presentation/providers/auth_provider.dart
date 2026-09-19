@@ -137,3 +137,9 @@ final canEditPatientProvider = Provider<bool>((ref) {
   final user = ref.watch(currentUserProvider);
   return user?.canEditPatient ?? false;
 });
+
+/// True when the logged-in user has the staff role.
+final isStaffProvider = Provider<bool>((ref) {
+  final user = ref.watch(currentUserProvider);
+  return user?.isStaff ?? false;
+});

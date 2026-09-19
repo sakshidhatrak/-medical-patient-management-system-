@@ -11,6 +11,7 @@ public record PhotoDto(
         Long surgeryId,
         String storagePath,
         String viewUrl,        // derived: /api/photos/file/{storagePath}
+        String originalFilename,
         String category,
         String caption,
         Integer fileSize,
@@ -26,6 +27,7 @@ public record PhotoDto(
                 p.getSurgeryId(),
                 p.getStoragePath(),
                 p.getCloudinaryUrl(),
+                p.getOriginalFilename(),
                 p.getCategory(),
                 p.getCaption(),
                 p.getFileSize(),

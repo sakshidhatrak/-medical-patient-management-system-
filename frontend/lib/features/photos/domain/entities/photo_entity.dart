@@ -49,6 +49,7 @@ class PhotoEntity extends Equatable {
   final String? surgeryId;
   final String storagePath;
   final String? url;
+  final String? originalFilename;
   final PhotoCategory category;
   final String? caption;
   final bool isUploaded;
@@ -63,6 +64,7 @@ class PhotoEntity extends Equatable {
     this.surgeryId,
     required this.storagePath,
     this.url,
+    this.originalFilename,
     required this.category,
     this.caption,
     this.isUploaded = false,

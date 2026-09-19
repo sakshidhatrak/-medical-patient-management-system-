@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../features/audit/audit_provider.dart';
 import '../error/exceptions.dart';
 import '../network/api_client.dart';
 import '../offline/offline_database.dart';
@@ -235,6 +237,11 @@ class SyncEngine {
     final remaining = await _queue.pending();
     if (remaining.isNotEmpty) {
       Future.delayed(const Duration(seconds: 60), syncAll);
+    }
+
+    // Refresh audit log cache so History shows entries created by this sync.
+    if (syncedCount > 0) {
+      unawaited(syncAuditLogsFromApi(_ref));
     }
     return syncedCount;
   }
@@ -1205,6 +1212,37 @@ class LocalAuditCache {
       whereArgs: [entityType, entityId],
       orderBy: 'changed_at DESC',
     );
+  }
+
+  /// Write local audit entries for an offline edit (id = null → auto-assigned).
+  /// Called before sync so History shows the change immediately even offline.
+  /// These rows are replaced wholesale when syncAuditLogsFromApi runs after sync.
+  Future<void> insertOfflineEntries({
+    required String entityType,
+    required String entityId,
+    required List<Map<String, String?>> changes, // [{field, old, new}]
+    required String changedBy,
+  }) async {
+    if (kIsWeb || changes.isEmpty) return;
+    final db = await _db.database;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final batch = db.batch();
+    for (final c in changes) {
+      batch.insert(
+        'audit_log',
+        {
+          'entity_type': entityType,
+          'entity_id':   entityId,
+          'field_name':  c['field'],
+          'old_value':   c['old'],
+          'new_value':   c['new'],
+          'changed_at':  now,
+          'changed_by':  changedBy,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<bool> hasData() async {

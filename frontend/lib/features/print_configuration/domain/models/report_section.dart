@@ -33,19 +33,19 @@ const List<ReportSection> kAllReportSections = [
     id: kSectionBasicInfo,
     title: 'Basic Information',
     icon: Icons.person_outlined,
-    color: Color(0xFF6C63FF),
+    color: Color(0xFF4B55CC),
   ),
   ReportSection(
     id: kSectionVitals,
     title: 'Patient Vitals',
     icon: Icons.monitor_heart_outlined,
-    color: Color(0xFFFF647C),
+    color: Color(0xFF4B55CC),
   ),
   ReportSection(
     id: kSectionTreatment,
     title: 'Treatment Information',
     icon: Icons.medical_services_outlined,
-    color: Color(0xFF0095FF),
+    color: Color(0xFF4B55CC),
   ),
 ];
 

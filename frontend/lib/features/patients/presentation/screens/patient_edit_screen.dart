@@ -37,6 +37,7 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
   final _emailCtrl    = TextEditingController();
   final _addressCtrl  = TextEditingController();
   final _idProofCtrl  = TextEditingController();
+  final _allergyCtrl  = TextEditingController();
 
   String? _sex;
   String? _idProofType;
@@ -51,7 +52,7 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
   void dispose() {
     for (final c in [
       _firstCtrl, _lastCtrl, _ageCtrl, _phoneCtrl,
-      _altCtrl, _emailCtrl, _addressCtrl, _idProofCtrl,
+      _altCtrl, _emailCtrl, _addressCtrl, _idProofCtrl, _allergyCtrl,
     ]) c.dispose();
     super.dispose();
   }
@@ -66,7 +67,8 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
     _altCtrl.text     = p.altPhone ?? '';
     _emailCtrl.text   = p.email ?? '';
     _addressCtrl.text = p.address ?? '';
-    _idProofCtrl.text = p.idProofNumber ?? '';
+    _idProofCtrl.text  = p.idProofNumber ?? '';
+    _allergyCtrl.text  = p.allergies ?? '';
     _sex         = p.sex != null
         ? '${p.sex![0].toUpperCase()}${p.sex!.substring(1)}'
         : null;
@@ -90,6 +92,7 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
       address:       _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
       idProofType:   _idProofType,
       idProofNumber: _idProofCtrl.text.trim().isEmpty ? null : _idProofCtrl.text.trim(),
+      allergies:     _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
     );
 
     await ref.read(patientsProvider.notifier).updatePatient(updated);
@@ -103,7 +106,7 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
           const SizedBox(width: 10),
           Text('Patient info updated', style: TextStyle(fontWeight: FontWeight.w600)),
         ]),
-        backgroundColor: _kGreen,
+        backgroundColor: _kBlue,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
@@ -195,6 +198,15 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
                         _dropdownField('ID Proof Type', _idProofOptions,
                             _idProofType, (v) => setState(() => _idProofType = v)),
                         _field('ID Proof Number', _idProofCtrl),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _sCard(
+                      title: 'Clinical Snapshot',
+                      icon: Icons.note_alt_outlined,
+                      color: const Color(0xFFD4A855),
+                      children: [
+                        _field('Known Allergies', _allergyCtrl, maxLines: 3),
                       ],
                     ),
                   ],

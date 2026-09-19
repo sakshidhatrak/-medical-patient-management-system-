@@ -62,6 +62,7 @@ public class PhotoService {
                 .surgeryId(surgeryId)
                 .storagePath(publicId)
                 .cloudinaryUrl(secureUrl)
+                .originalFilename(file.getOriginalFilename())
                 .category(cat)
                 .caption(caption)
                 .fileSize((int) file.getSize())
