@@ -890,7 +890,7 @@ class _PhotoRowState extends State<_PhotoRow> {
   bool _expanded = false;
 
   String _name(PhotoEntity p) {
-    if (p.caption?.isNotEmpty == true && p.caption!.contains('.')) return p.caption!;
+    if (p.originalFilename?.isNotEmpty == true) return p.originalFilename!;
     final parts = p.storagePath.split('/');
     return parts.isNotEmpty ? parts.last : 'Attachment';
   }
