@@ -452,62 +452,51 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
         bottom: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ── Row 1: logo + clinic name + tagline ──────────────────────
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  ClipRRect(
+              // ── Logo ─────────────────────────────────────────────────────
+              Image.asset(
+                'assets/images/app_logo.png',
+                width: 46, height: 46,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 46, height: 46,
+                  decoration: BoxDecoration(
+                    color: _kMaroon,
                     borderRadius: BorderRadius.circular(10),
-                    child: Image.asset(
-                      'assets/images/app_logo.png',
-                      width: 46, height: 46,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 46, height: 46,
-                        decoration: BoxDecoration(
-                          color: _kMaroon,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.local_hospital_rounded,
-                            color: Colors.white, size: 26),
-                      ),
-                    ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('The Brain & Spine Clinic',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                              color: _kMaroon,
-                              height: 1.2,
-                            )),
-                        Text('Excellence. Ethics. Efficiency.',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontStyle: FontStyle.italic,
-                              color: _kMaroon,
-                            )),
-                      ],
-                    ),
-                  ),
-                ],
+                  child: const Icon(Icons.local_hospital_rounded,
+                      color: Colors.white, size: 26),
+                ),
               ),
-              const SizedBox(height: 8),
-              // ── Row 2: toggle + sync + avatar + logout ───────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _ThemeTogglePill(isDark: widget.isDark),
-                  const SizedBox(width: 8),
-                  // Manual sync button with pending badge
+              const SizedBox(width: 10),
+              // ── Clinic name + tagline ─────────────────────────────────────
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('The Brain & Spine Clinic',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: _kMaroon,
+                          height: 1.2,
+                        )),
+                    Text('Excellence. Ethics. Efficiency.',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          fontStyle: FontStyle.italic,
+                          color: _kMaroon,
+                        )),
+                  ],
+                ),
+              ),
+              // ── sync + avatar + logout ────────────────────────────────────
+              // _ThemeTogglePill(isDark: widget.isDark),  // TODO: next version
+              // const SizedBox(width: 8),
+              // Manual sync button with pending badge
                   GestureDetector(
                     onTap: _syncNow,
                     child: Stack(
@@ -584,8 +573,6 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
                           color: widget.isDark ? Colors.white70 : _kNavy),
                     ),
                   ),
-                ],
-              ),
             ],
           ),
         ),

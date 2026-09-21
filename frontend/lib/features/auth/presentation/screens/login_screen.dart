@@ -24,8 +24,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passCtrl  = TextEditingController();
   bool _obscure    = true;
-  int  _roleIndex  = 0;
-
   @override
   void dispose() {
     _emailCtrl.dispose();
@@ -177,34 +175,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Role toggle
-                            Container(
-                              height: 50,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFEEEEEE),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Row(
-                                children: [
-                                  _RoleTab(
-                                    label: 'Doctor',
-                                    icon: Icons.medical_services_outlined,
-                                    active: _roleIndex == 0,
-                                    onTap: () => setState(() => _roleIndex = 0),
-                                  ),
-                                  _RoleTab(
-                                    label: 'Front Desk',
-                                    icon: Icons.support_agent_outlined,
-                                    active: _roleIndex == 1,
-                                    onTap: () => setState(() => _roleIndex = 1),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 14),
-
                             // Email
                             _FieldLabel('Email'),
                             const SizedBox(height: 5),

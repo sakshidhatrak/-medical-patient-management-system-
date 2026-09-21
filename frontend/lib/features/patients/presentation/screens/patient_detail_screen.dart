@@ -165,13 +165,10 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
           );
         }
 
-        final sortedVisits = visits.toList()
-          ..sort((a, b) => b.visitDate.compareTo(a.visitDate));
-
         var timeline = <_TimelineItem>[
-          ...sortedVisits.map((v) => _TimelineItem.fromVisit(v)),
+          ...visits.map((v) => _TimelineItem.fromVisit(v)),
           ...surgeries.map((s) => _TimelineItem.fromSurgery(s)),
-        ]..sort((a, b) => b.date.compareTo(a.date));
+        ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
 
         return Scaffold(
@@ -246,7 +243,7 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                   : ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                      itemCount: timeline.length,
+                      itemCount: timeline.length.clamp(0, 2),
                       itemBuilder: (ctx, i) {
                         return _TimelineRow(
                           item: timeline[i],
@@ -354,6 +351,7 @@ class _TimelineItem {
   final String id;
   final String type;
   final DateTime date;
+  final DateTime createdAt;
   final String title;
   final String subtitle;
   final bool isDraft;
@@ -364,6 +362,7 @@ class _TimelineItem {
     required this.id,
     required this.type,
     required this.date,
+    required this.createdAt,
     required this.title,
     required this.subtitle,
     required this.isDraft,
@@ -390,6 +389,7 @@ class _TimelineItem {
       id:         v.id,
       type:       'visit',
       date:       v.visitDate,
+      createdAt:  v.createdAt,
       title:      title,
       subtitle:   meds,
       isDraft:    v.isDraft,
@@ -402,6 +402,7 @@ class _TimelineItem {
     id:         s.id,
     type:       'surgery',
     date:       s.surgeryDate,
+    createdAt:  s.createdAt,
     title:      s.procedure ?? 'Surgery',
     subtitle:   s.preOpDiagnosis ?? '',
     isDraft:    s.status == 'draft',
@@ -795,7 +796,7 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  DateFormat('dd MMM yyyy').format(item.date),
+                  DateFormat('dd MMM yyyy  hh:mm a').format(item.date),
                   style: const TextStyle(
                       fontSize: 12, fontWeight: FontWeight.w700,
                       color: Colors.white),
