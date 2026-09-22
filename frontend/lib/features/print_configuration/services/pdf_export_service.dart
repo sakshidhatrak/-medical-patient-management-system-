@@ -17,6 +17,7 @@ class _Clinic {
   static const name         = 'The Brain & Spine Clinic';
   static const tagline      = 'Excellence, Ethics, Efficiency';
   static const doctor       = 'Dr. Harshal S. Chaudhari';
+  static const mmc          = 'MMC Reg. No. 2009031020';
   static const designation  = 'Brain and Spine surgeon/ Neurosurgeon';
   static const degree1      = 'M.B.B.S., M.S. General Surgery';
   static const degree1b     = '(K.E.M. Hospital, Mumbai)';
@@ -124,7 +125,7 @@ Future<Uint8List> _assemblePdf(
 Future<Uint8List> _buildTemplatePdf(
   Set<String> enabledIds,
   Map<String, String> data,
-  pw.MemoryImage bgImage,
+  pw.MemoryImage? bgImage,
 ) async {
   final (font, fontBold, fontItal) = await _loadFonts();
 
@@ -154,32 +155,33 @@ Future<Uint8List> _buildTemplatePdf(
   final kBodyL = 64.0  * sx;
   final kBodyT = 87.0  * sy;
   final kBodyW = 218.0 * sx;
-  final kFootH = 24.0  * sy;
+  final kFootH = 12.0  * sy;  // just bottom padding — signature is in content flow
 
   // Content font scale independent of page scale — 1.5 → 11pt body text on A4
   const kFontScale = 1.5;
   final sections = _buildSectionsTemplate(enabledIds, data, font, fontBold, fontItal, scale: kFontScale);
 
+  // Signature appended to content flow so it sits just below the last section,
+  // never clipped by a fixed-height footer area.
+  sections.add(pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.SizedBox(height: 14 * sy),
+      pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
+      pw.SizedBox(height: 2 * sy),
+      pw.Text("Doctor's Signature",
+          style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
+      pw.SizedBox(height: 1.5 * sy),
+      pw.Text(_Clinic.doctor,
+          style: pw.TextStyle(font: fontBold, fontSize: 6 * sx, color: _kNavy)),
+      pw.Text(_Clinic.mmc,
+          style: pw.TextStyle(font: font, fontSize: 5.5 * sx, color: _kNavy)),
+    ],
+  ));
+
   final doc = pw.Document(title: 'Patient Medical Report', author: _Clinic.doctor);
 
   final marginRight = kPageW - kBodyL - kBodyW;
-
-  // Signature footer — rendered once at the bottom of the last page
-  final signatureFooter = pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-    children: [
-      pw.SizedBox(height: 4 * sy),
-      pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
-          pw.SizedBox(height: 2 * sy),
-          pw.Text("Doctor's Signature",
-              style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
-        ],
-      ),
-    ],
-  );
 
   doc.addPage(
     pw.MultiPage(
@@ -191,16 +193,14 @@ Future<Uint8List> _buildTemplatePdf(
           right: marginRight,
           bottom: kFootH,
         ),
-        // Template background only — name/date shown in Patient Information table
-        buildBackground: (context) => pw.FullPage(
-          ignoreMargins: true,
-          child: pw.Image(bgImage, fit: pw.BoxFit.fill),
-        ),
+        buildBackground: bgImage != null
+            ? (context) => pw.FullPage(
+                  ignoreMargins: true,
+                  child: pw.Image(bgImage, fit: pw.BoxFit.fill),
+                )
+            : null,
       ),
-      // Signature footer only on the last page
-      footer: (context) => context.pageNumber == context.pagesCount
-          ? signatureFooter
-          : pw.SizedBox(),
+      footer: (_) => pw.SizedBox(),
       build: (context) => sections,
     ),
   );
@@ -258,6 +258,7 @@ Future<Uint8List> _buildManualPdf(
                 ],
               ),
             ),
+            _buildFooter(ctx, logo, font, fontBold),
           ],
         ),
       ),
@@ -958,11 +959,11 @@ List<pw.Widget> _buildSectionsTemplate(
     }
   }
 
-  // 9. ADVICE — a. Instructions  b. Investigation Should be done  c. Cross Consultation
+  // 9. ADVICE — a. Instructions  b. Investigation to be done  c. Cross Consultation
   {
     final items = <pw.Widget>[
       if (dv('advice').isNotEmpty)                fr('Instructions',               dv('advice')),
-      if (dv('investigationToBeDone').isNotEmpty) fr('Investigation Should be done', dv('investigationToBeDone')),
+      if (dv('investigationToBeDone').isNotEmpty) fr('Investigation to be done', dv('investigationToBeDone')),
       if (dv('crossConsultation').isNotEmpty)     fr('Cross Consultation',         dv('crossConsultation')),
     ];
     if (items.isNotEmpty) sections.add(sec('ADVICE', items));
@@ -1081,7 +1082,7 @@ pw.Widget _buildSections(
         pw.Text(d('advice'), style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
       if (d('investigationToBeDone').isNotEmpty) ...[
         if (d('advice').isNotEmpty) pw.SizedBox(height: 4),
-        _fieldRow('Investigation Should be done', d('investigationToBeDone'), font, fontBold),
+        _fieldRow('Investigation to be done', d('investigationToBeDone'), font, fontBold),
       ],
     ]));
 
@@ -1305,6 +1306,8 @@ pw.Widget _buildFooter(
                 pw.SizedBox(height: 3),
                 pw.Text(_Clinic.doctor,
                     style: pw.TextStyle(font: fontBold, fontSize: 9, color: _kNavy)),
+                pw.Text(_Clinic.mmc,
+                    style: pw.TextStyle(font: font, fontSize: 7, color: _kNavy)),
                 pw.Text(_Clinic.designation,
                     style: pw.TextStyle(font: font, fontSize: 7, color: _kSub)),
                 pw.SizedBox(height: 2),
@@ -1451,7 +1454,7 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Other Investigation', 'otherInvestigation');
   addRow('Impression',          'diagnosis');
   addRow('Advice',                       'advice');
-  addRow('Investigation Should be done', 'investigationToBeDone');
+  addRow('Investigation to be done', 'investigationToBeDone');
   addRow('Medications',                  'medications');
   addRow('Cross Consultation',           'crossConsultation');
   addRow('Notes',               'notes');
@@ -1488,13 +1491,159 @@ Future<Uint8List> _assembleLightPdf(
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('Dr. Harshal S. Chaudhari',
-              style: pw.TextStyle(font: bold, fontSize: 8)),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(_Clinic.doctor,
+                  style: pw.TextStyle(font: bold, fontSize: 8)),
+              pw.Text(_Clinic.mmc,
+                  style: pw.TextStyle(font: plain, fontSize: 7)),
+            ],
+          ),
           pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
               style: pw.TextStyle(font: plain, fontSize: 8)),
         ],
       ),
     ]),
+    build: (_) => rows,
+  ));
+
+  return doc.save();
+}
+
+// ── Blank PDF (no letterhead — for pre-printed paper) ────────────────────────
+
+Future<Uint8List> _buildBlankPdf(
+  List<String> enabledIds,
+  Map<String, String> data,
+) async {
+  final doc   = pw.Document(compress: true);
+  final bold  = pw.Font.helveticaBold();
+  final plain = pw.Font.helvetica();
+
+  bool has(String k) => enabledIds.contains(k);
+  String val(String k) => (data[k] ?? '').trim();
+
+  final fn   = data['firstName'] ?? '';
+  final ln   = data['lastName']  ?? '';
+  final name = [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
+  final date = data['date'] ?? DateFormat('dd-MM-yyyy').format(DateTime.now());
+  final age  = data['age']  ?? '';
+  final sex  = data['gender'] ?? '';
+
+  final rows = <pw.Widget>[];
+
+  void addRow(String label, String key) {
+    if (!has(key)) return;
+    final v = val(key);
+    if (v.isEmpty || v == '—') return;
+    rows.add(pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 9),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(label.toUpperCase(),
+              style: pw.TextStyle(
+                  font: bold,
+                  fontSize: 7.5,
+                  color: const PdfColor.fromInt(0xFF444444))),
+          pw.SizedBox(height: 2),
+          pw.Text(v,
+              style: pw.TextStyle(font: plain, fontSize: 11,
+                  color: const PdfColor.fromInt(0xFF111111))),
+          pw.SizedBox(height: 3),
+          pw.Container(height: 0.4, color: const PdfColor.fromInt(0xFFDDDDDD)),
+        ],
+      ),
+    ));
+  }
+
+  addRow('Phone',                    'phone');
+  addRow('Alt Phone',                'altPhone');
+  addRow('Weight',                   'weight');
+  addRow('Blood Pressure',           'bloodPressure');
+  addRow('Temperature',              'temperature');
+  addRow('Known Allergies',          'allergies');
+  addRow('Chief Complaint',          'chiefComplaint');
+  addRow('Previous History',         'previousHistory');
+  addRow('General Examination',      'examGeneral');
+  addRow('Neurological Examination', 'examNeurological');
+  addRow('Clinical Diagnosis',       'clinicalDiagnosis');
+  addRow('Imaging',                  'imaging');
+  addRow('Other Investigations',     'otherInvestigation');
+  addRow('Impression',               'diagnosis');
+  addRow('Treatment Plan',           'treatmentPlan');
+  addRow('Medicine / Treatment',     'medications');
+  addRow('Instructions',             'advice');
+  addRow('Investigation to be done', 'investigationToBeDone');
+  addRow('Cross Consultation',       'crossConsultation');
+  addRow('Notes',                    'notes');
+
+  doc.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.fromLTRB(36, 32, 36, 36),
+    header: (_) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                if (name.isNotEmpty)
+                  pw.Text(name,
+                      style: pw.TextStyle(
+                          font: bold, fontSize: 14,
+                          color: const PdfColor.fromInt(0xFF111111))),
+                if (age.isNotEmpty || sex.isNotEmpty)
+                  pw.Text(
+                    [if (age.isNotEmpty) '$age yrs', if (sex.isNotEmpty) sex]
+                        .join('  ·  '),
+                    style: pw.TextStyle(
+                        font: plain, fontSize: 10,
+                        color: const PdfColor.fromInt(0xFF555555)),
+                  ),
+              ],
+            ),
+            pw.Text('Date: $date',
+                style: pw.TextStyle(
+                    font: plain, fontSize: 10,
+                    color: const PdfColor.fromInt(0xFF555555))),
+          ],
+        ),
+        pw.SizedBox(height: 6),
+        pw.Container(height: 0.8, color: const PdfColor.fromInt(0xFF999999)),
+        pw.SizedBox(height: 10),
+      ],
+    ),
+    footer: (ctx) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(height: 0.5, color: const PdfColor.fromInt(0xFFCCCCCC)),
+        pw.SizedBox(height: 6),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(_Clinic.doctor,
+                    style: pw.TextStyle(font: bold, fontSize: 8,
+                        color: const PdfColor.fromInt(0xFF333333))),
+                pw.Text(_Clinic.mmc,
+                    style: pw.TextStyle(font: plain, fontSize: 7,
+                        color: const PdfColor.fromInt(0xFF555555))),
+              ],
+            ),
+            pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
+                style: pw.TextStyle(font: plain, fontSize: 8,
+                    color: const PdfColor.fromInt(0xFF777777))),
+          ],
+        ),
+      ],
+    ),
     build: (_) => rows,
   ));
 
@@ -1511,6 +1660,7 @@ class PdfExportService {
   static Future<Uint8List> buildPdf(
     PrintConfigState config, {
     Map<String, String>? patientData,
+    bool withLetterhead = true,
   }) async {
     final data    = patientData ?? kMockPatientData;
     final enabled = config.enabledFieldIds.toList();
@@ -1522,9 +1672,16 @@ class PdfExportService {
       logoBytes = bd.buffer.asUint8List();
     } catch (_) {}
 
-    try {
-      return await _assemblePdf(Set<String>.from(enabled), copy, logoBytes);
-    } catch (_) {}
+    if (withLetterhead) {
+      try {
+        return await _assemblePdf(Set<String>.from(enabled), copy, logoBytes);
+      } catch (_) {}
+    } else {
+      try {
+        // Same layout as letterhead but with no background image — blank paper.
+        return await _buildTemplatePdf(Set<String>.from(enabled), copy, null);
+      } catch (_) {}
+    }
 
     return _assembleLightPdf(enabled, copy);
   }
@@ -1532,6 +1689,7 @@ class PdfExportService {
   static Future<void> exportPdf(
     PrintConfigState config, {
     Map<String, String>? patientData,
+    bool withLetterhead = true,
   }) async {
     final data    = patientData ?? kMockPatientData;
     final enabled = config.enabledFieldIds.toList();
@@ -1545,7 +1703,9 @@ class PdfExportService {
 
     late final Uint8List bytes;
     try {
-      bytes = await _assemblePdf(Set<String>.from(enabled), copy, logoBytes);
+      bytes = withLetterhead
+          ? await _assemblePdf(Set<String>.from(enabled), copy, logoBytes)
+          : await _buildTemplatePdf(Set<String>.from(enabled), copy, null);
     } catch (_) {
       bytes = await _assembleLightPdf(enabled, copy).catchError((e) {
         throw Exception('Could not generate PDF: $e');
@@ -1582,11 +1742,12 @@ class PdfExportService {
   static Future<void> printReport(
     PrintConfigState config, {
     Map<String, String>? patientData,
+    bool withLetterhead = true,
   }) async {
     await Printing.layoutPdf(
       name:     'Patient Report',
       format:   _kPageFormat,
-      onLayout: (_) => buildPdf(config, patientData: patientData),
+      onLayout: (_) => buildPdf(config, patientData: patientData, withLetterhead: withLetterhead),
     );
   }
 }

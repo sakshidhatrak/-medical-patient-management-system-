@@ -89,7 +89,7 @@ final _kSectionDefs = <_S>[
   ], rxIcon: true),
   _S('ADVICE', Icons.health_and_safety_outlined, [
     ('Instructions', 'advice'),
-    ('Investigation Should be done', 'investigationToBeDone'),
+    ('Investigation to be done', 'investigationToBeDone'),
     ('Cross Consultation', 'crossConsultation'),
   ]),
 ];
@@ -933,6 +933,7 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
   final Set<int> _expanded = {};
   bool _saving = false;
   bool _printing = false;
+  bool _printingNoLh = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1036,85 +1037,123 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
                 ),
               ],
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Cancel — text only
-                TextButton(
-                  onPressed: (_saving || _printing)
-                      ? null
-                      : () => Navigator.of(context).pop(),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF4B55CC),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  child: const Text('Cancel',
-                      style: TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600)),
+                Row(
+                  children: [
+                    // Cancel — text only
+                    TextButton(
+                      onPressed: (_saving || _printing || _printingNoLh)
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF4B55CC),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 15),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('Cancel',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 6),
+                    // Print
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (_saving || _printing || _printingNoLh) ? null : _print,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4B55CC),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: _printing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.print_rounded, size: 16),
+                                  SizedBox(width: 5),
+                                  Text('PRINT',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.3)),
+                                ],
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Save
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: (_saving || _printing || _printingNoLh) ? null : _save,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4B55CC),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.save_rounded, size: 16),
+                                  SizedBox(width: 5),
+                                  Text('SAVE',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.3)),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 6),
-                // Print
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_saving || _printing) ? null : _print,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4B55CC),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      elevation: 0,
+                const SizedBox(height: 8),
+                // Print without letterhead — full width outlined
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: (_saving || _printing || _printingNoLh) ? null : _printWithoutLetterhead,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF4B55CC),
+                      side: const BorderSide(color: Color(0xFF4B55CC), width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: _printing
+                    child: _printingNoLh
                         ? const SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2, color: Color(0xFF4B55CC)))
                         : const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.print_rounded, size: 16),
+                              Icon(Icons.print_outlined, size: 16),
                               SizedBox(width: 5),
-                              Text('PRINT',
+                              Text('PRINT WITHOUT LETTERHEAD',
                                   style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.3)),
-                            ],
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Save
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: (_saving || _printing) ? null : _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4B55CC),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
-                        : const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.save_rounded, size: 16),
-                              SizedBox(width: 5),
-                              Text('SAVE',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
                                       letterSpacing: 0.3)),
                             ],
                           ),
@@ -1162,6 +1201,25 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
       }
     } finally {
       if (mounted) setState(() => _printing = false);
+    }
+  }
+
+  Future<void> _printWithoutLetterhead() async {
+    setState(() => _printingNoLh = true);
+    try {
+      await PdfExportService.printReport(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+        withLetterhead: false,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Print failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _printingNoLh = false);
     }
   }
 }

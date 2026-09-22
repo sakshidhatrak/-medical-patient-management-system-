@@ -200,9 +200,23 @@ class PatientsNotifier extends Notifier<PatientsState> {
           // just purged above. The onOpen repair ran before this purge, so it
           // needs a second pass now that the UUID patients are gone.
           await ref.read(offlineDatabaseProvider).repairOrphanedVisits();
-          merged = [...entities, ...keepPending];
+          // Preserve any local patients not covered by the API or keepPending.
+          // This prevents a partial API response from wiping locally-cached data.
+          final coveredIds = <String>{
+            ...entities.map((e) => e.id),
+            ...keepPending.map((e) => e.id),
+          };
+          final preservedLocals = state.patients
+              .where((p) => !coveredIds.contains(p.id))
+              .toList();
+          merged = [...entities, ...keepPending, ...preservedLocals];
         } else {
-          merged = [...entities];
+          // No pending locals — still preserve synced locals not in API response.
+          final apiIds2 = entities.map((e) => e.id).toSet();
+          final preservedLocals = state.patients
+              .where((p) => !apiIds2.contains(p.id))
+              .toList();
+          merged = [...entities, ...preservedLocals];
         }
       } else {
         merged = [...state.patients, ...entities];

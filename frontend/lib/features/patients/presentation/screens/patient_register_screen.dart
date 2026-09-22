@@ -223,10 +223,9 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 examination:        _buildExaminationJson(),
                 clinicalImpression: _diagnosisCtrl.text.trim().isEmpty ? null : _diagnosisCtrl.text.trim(),
                 plan:               _treatmentCtrl.text.trim().isEmpty ? null : _treatmentCtrl.text.trim(),
-                // Default note ensures the visit is created even if clinical fields are blank.
                 notes:              _treatNotesCtrl.text.trim().isNotEmpty
                                       ? _treatNotesCtrl.text.trim()
-                                      : 'Patient registration',
+                                      : null,
               )
               .timeout(const Duration(seconds: 12), onTimeout: () => null);
           firstVisitId = visit?.id;
@@ -1545,7 +1544,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ),
           const SizedBox(height: 12),
           _fieldWithUpload(
-            label: 'Investigation Should be done',
+            label: 'Investigation to be done',
             controller: _investigationToBeDoneCtrl,
             files: _investigationToBeDoneFiles,
             onFilesChange: (f) => _investigationToBeDoneFiles..clear()..addAll(f),

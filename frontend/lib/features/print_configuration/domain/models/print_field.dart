@@ -207,7 +207,7 @@ const List<PrintField> kAllPrintFields = [
   ),
   PrintField(
     id: 'investigationToBeDone',
-    label: 'Investigation Should be done',
+    label: 'Investigation to be done',
     sectionId: kSectionTreatment,
     icon: Icons.assignment_late_outlined,
   ),

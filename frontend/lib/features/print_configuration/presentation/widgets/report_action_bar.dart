@@ -87,6 +87,14 @@ class ReportActionBar extends ConsumerWidget {
               color: AppColors.primary,
               onTap: () => _print(context, ref),
             ),
+            const SizedBox(width: 4),
+            _BarButton(
+              icon: Icons.print_outlined,
+              label: 'Print w/o Letterhead',
+              color: AppColors.primary,
+              outlined: true,
+              onTap: () => _printWithoutLetterhead(context, ref),
+            ),
           ],
         ],
       ),
@@ -122,6 +130,29 @@ class ReportActionBar extends ConsumerWidget {
       await PdfExportService.printReport(
         ref.read(printConfigProvider),
         patientData: ref.read(activePatientDataProvider),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Print failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      notifier.setExporting(false);
+    }
+  }
+
+  Future<void> _printWithoutLetterhead(BuildContext context, WidgetRef ref) async {
+    final notifier = ref.read(printConfigProvider.notifier);
+    notifier.setExporting(true);
+    try {
+      await PdfExportService.printReport(
+        ref.read(printConfigProvider),
+        patientData: ref.read(activePatientDataProvider),
+        withLetterhead: false,
       );
     } catch (e) {
       if (context.mounted) {

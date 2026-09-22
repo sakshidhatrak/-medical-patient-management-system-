@@ -253,6 +253,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     _pat1BpCtrl.text        = patient.bloodPressure ?? '';
     _pat1TempCtrl.text      = patient.temperature ?? '';
     _pat1AllergyCtrl.text   = patient.allergies ?? '';
+    // Seed visit-level vitals from patient record only when no exam JSON has already
+    // set them (se() runs before this — for new visits _weightCtrl is still empty).
+    if (_weightCtrl.text.isEmpty) _weightCtrl.text = patient.weight ?? '';
+    if (_bpCtrl.text.isEmpty)     _bpCtrl.text     = patient.bloodPressure ?? '';
+    if (_tempCtrl.text.isEmpty)   _tempCtrl.text    = patient.temperature ?? '';
   }
 
   Future<void> _savePatientEdits(PatientEntity original) async {
@@ -261,18 +266,18 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     final updated = original.copyWith(
       firstName:     fn.isNotEmpty ? fn : null,
       lastName:      _pat1LastNameCtrl.text.trim(),
-      age:           int.tryParse(_pat1AgeCtrl.text.trim()) ?? original.age,
-      sex:           _pat1Gender ?? original.sex,
-      phone:         _pat1PhoneCtrl.text.trim().isNotEmpty ? _pat1PhoneCtrl.text.trim() : original.phone,
-      altPhone:      _pat1AltPhoneCtrl.text.trim().isNotEmpty ? _pat1AltPhoneCtrl.text.trim() : original.altPhone,
-      email:         _pat1EmailCtrl.text.trim().isNotEmpty ? _pat1EmailCtrl.text.trim() : original.email,
-      address:       _pat1AddressCtrl.text.trim().isNotEmpty ? _pat1AddressCtrl.text.trim() : original.address,
-      idProofType:   _pat1IdTypeCtrl.text.trim().isNotEmpty ? _pat1IdTypeCtrl.text.trim() : original.idProofType,
-      idProofNumber: _pat1IdNumberCtrl.text.trim().isNotEmpty ? _pat1IdNumberCtrl.text.trim() : original.idProofNumber,
-      weight:        _pat1WeightCtrl.text.trim().isNotEmpty ? _pat1WeightCtrl.text.trim() : original.weight,
-      bloodPressure: _pat1BpCtrl.text.trim().isNotEmpty ? _pat1BpCtrl.text.trim() : original.bloodPressure,
-      temperature:   _pat1TempCtrl.text.trim().isNotEmpty ? _pat1TempCtrl.text.trim() : original.temperature,
-      allergies:     _pat1AllergyCtrl.text.trim().isNotEmpty ? _pat1AllergyCtrl.text.trim() : original.allergies,
+      age:           _pat1AgeCtrl.text.trim().isEmpty ? null : (int.tryParse(_pat1AgeCtrl.text.trim()) ?? original.age),
+      sex:           _pat1Gender,
+      phone:         _pat1PhoneCtrl.text.trim().isEmpty ? null : _pat1PhoneCtrl.text.trim(),
+      altPhone:      _pat1AltPhoneCtrl.text.trim().isEmpty ? null : _pat1AltPhoneCtrl.text.trim(),
+      email:         _pat1EmailCtrl.text.trim().isEmpty ? null : _pat1EmailCtrl.text.trim(),
+      address:       _pat1AddressCtrl.text.trim().isEmpty ? null : _pat1AddressCtrl.text.trim(),
+      idProofType:   _pat1IdTypeCtrl.text.trim().isEmpty ? null : _pat1IdTypeCtrl.text.trim(),
+      idProofNumber: _pat1IdNumberCtrl.text.trim().isEmpty ? null : _pat1IdNumberCtrl.text.trim(),
+      weight:        _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
+      bloodPressure: _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
+      temperature:   _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
+      allergies:     _pat1AllergyCtrl.text.trim().isEmpty ? null : _pat1AllergyCtrl.text.trim(),
     );
     await ref.read(patientsProvider.notifier).updatePatient(updated);
     _patient = updated;
@@ -338,7 +343,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       (_impressionFiles,        PhotoCategory.treatment,   'Impression'),
       (_planFiles,              PhotoCategory.treatment,   'Treatment Plan'),
       (_treatmentMedFiles,             PhotoCategory.treatment,   'Medicines'),
-      (_investigationToBeDoneFiles,    PhotoCategory.visit,       'Investigation Should be done'),
+      (_investigationToBeDoneFiles,    PhotoCategory.visit,       'Investigation to be done'),
       (_crossConsultFiles,             PhotoCategory.visit,       'Cross Consultation'),
     ];
 
@@ -637,9 +642,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'age':            _patient!.age != null ? '${_patient!.age} yrs' : '—',
       'address':        _patient!.address ?? '—',
       'email':          pn('email'),
-      'weight':         _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : (_pat1WeightCtrl.text.trim().isNotEmpty ? _pat1WeightCtrl.text.trim() : pn('weight')),
-      'bloodPressure':  _bpCtrl.text.trim().isNotEmpty ? _bpCtrl.text.trim() : (_pat1BpCtrl.text.trim().isNotEmpty ? _pat1BpCtrl.text.trim() : pn('bloodPressure')),
-      'temperature':    _tempCtrl.text.trim().isNotEmpty ? _tempCtrl.text.trim() : (_pat1TempCtrl.text.trim().isNotEmpty ? _pat1TempCtrl.text.trim() : pn('temperature')),
+      'weight':         _weightCtrl.text.trim(),
+      'bloodPressure':  _bpCtrl.text.trim(),
+      'temperature':    _tempCtrl.text.trim(),
       'allergies':      _pat1AllergyCtrl.text.trim().isNotEmpty ? _pat1AllergyCtrl.text.trim() : (_patient?.allergies?.isNotEmpty == true ? _patient!.allergies! : pn('allergies')),
       'medicalHistory': pn('clinicalNotes'),
       'previousHistory':_prevHistoryCtrl.text.trim(),
@@ -1437,11 +1442,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               icon: Icons.monitor_heart_outlined,
               color: _kBlue,
               child: Row(children: [
-                Expanded(child: _editField('Weight', _pat1WeightCtrl, hint: 'kg')),
+                Expanded(child: _editField('Weight', _weightCtrl, hint: 'kg')),
                 const SizedBox(width: 12),
-                Expanded(child: _editField('Blood Pressure', _pat1BpCtrl, hint: 'mmHg')),
+                Expanded(child: _editField('Blood Pressure', _bpCtrl, hint: 'mmHg')),
                 const SizedBox(width: 12),
-                Expanded(child: _editField('Temperature', _pat1TempCtrl, hint: '°F')),
+                Expanded(child: _editField('Temperature', _tempCtrl, hint: '°F')),
               ]),
             ),
 
@@ -1673,11 +1678,11 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                 ),
                 const SizedBox(height: 12),
                 _fieldWithUpload(
-                  label: 'Investigation Should be done',
+                  label: 'Investigation to be done',
                   controller: _investigationToBeDoneCtrl,
                   files: _investigationToBeDoneFiles,
                   onFilesChange: (f) => _investigationToBeDoneFiles..clear()..addAll(f),
-                  existingPhotos: ep('Investigation Should be done'),
+                  existingPhotos: ep('Investigation to be done'),
                   prefixIcon: Icons.assignment_late_outlined,
                   hint: 'Tests / investigations to be done…',
                 ),
@@ -2428,10 +2433,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
     const vDiv = SizedBox.shrink();
 
-    // ── Visit vitals: prefer this-visit values, fall back to patient registration
-    final wt   = _weightCtrl.text.trim().isNotEmpty ? _weightCtrl.text.trim() : n('weight');
-    final bp   = _bpCtrl.text.trim().isNotEmpty    ? _bpCtrl.text.trim()     : n('bloodPressure');
-    final temp = _tempCtrl.text.trim().isNotEmpty   ? _tempCtrl.text.trim()   : n('temperature');
+    // ── Visit vitals: only use what the user actually typed this visit
+    final wt   = _weightCtrl.text.trim();
+    final bp   = _bpCtrl.text.trim();
+    final temp = _tempCtrl.text.trim();
 
     // Loading overlay for edit mode while visit data is fetching
     if (_visitLoading) {
@@ -2659,7 +2664,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               ] else
                 eRow('Treatment', '', _treatmentMedFiles),
               pRow('Advice', fv(_adviceCtrl.text.trim())),
-              eRow('Investigation Should be done', fv(_investigationToBeDoneCtrl.text.trim()), _investigationToBeDoneFiles),
+              eRow('Investigation to be done', fv(_investigationToBeDoneCtrl.text.trim()), _investigationToBeDoneFiles),
               eRow('Cross Consultation', fv(_crossConsultCtrl.text.trim()), _crossConsultFiles),
             ]),
           ),

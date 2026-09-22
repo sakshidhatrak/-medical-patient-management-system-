@@ -602,12 +602,12 @@ Widget _buildSections(
         if (medicinesPhotos.isNotEmpty) _PhotoRow('', medicinesPhotos),
       ]), context));
 
-  // 9. Advice — a. Instructions  b. Investigation Should be done  c. Cross Consultation
+  // 9. Advice — a. Instructions  b. Investigation to be done  c. Cross Consultation
   final adviceItems = <Widget>[];
   if (adviceText.isNotEmpty)
     adviceItems.add(_VF('a. Instructions', adviceText, context));
   if (investigationToBeDone.isNotEmpty)
-    adviceItems.add(_VF('b. Investigation Should be done', investigationToBeDone, context));
+    adviceItems.add(_VF('b. Investigation to be done', investigationToBeDone, context));
   if (crossConsultText.isNotEmpty || crossConsultPhotos.isNotEmpty) {
     adviceItems.add(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('c. Cross Consultation:',
@@ -624,9 +624,10 @@ Widget _buildSections(
       context));
 
   // 12. Doctor's Notes (private — hidden for staff)
-  if (!isStaff && visit.notes?.isNotEmpty == true)
+  final _notes = (visit.notes ?? '').trim();
+  if (!isStaff && _notes.isNotEmpty && _notes != 'Patient registration')
     sections.add(_CS("Doctor's Notes", Icons.lock_outline_rounded, _kAmber,
-      _CollapsibleText(visit.notes!, style: TextStyle(fontSize: 12, color: _kNavy(context), height: 1.5)),
+      _CollapsibleText(_notes, style: TextStyle(fontSize: 12, color: _kNavy(context), height: 1.5)),
       context));
 
   // 13. Orphan visit/treatment photos
