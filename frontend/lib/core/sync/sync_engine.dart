@@ -198,6 +198,19 @@ class SyncEngine {
 
   bool _running = false;
   bool _retryScheduled = false;  // prevents stacking multiple background timers
+  Timer? _keepAliveTimer;
+
+  // Fires every 10 min to keep the Render.com server warm and flush any pending
+  // offline queue items. Call once after construction; stopKeepAlive() on dispose.
+  void startKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(minutes: 10), (_) => syncAll());
+  }
+
+  void stopKeepAlive() {
+    _keepAliveTimer?.cancel();
+    _keepAliveTimer = null;
+  }
 
   Future<int> syncAll() async {
     if (_running) return 0;
@@ -1126,16 +1139,21 @@ final offlineQueueProvider = Provider<OfflineQueue>((ref) => OfflineQueue(
       webStore: ref.watch(webOfflineStoreProvider),
     ));
 
-final syncEngineProvider = Provider<SyncEngine>((ref) => SyncEngine(
-      ref.watch(offlineQueueProvider),
-      ref.watch(apiClientProvider),
-      ref.watch(localVisitCacheProvider),
-      ref.watch(localSurgeryCacheProvider),
-      ref.watch(localPhotoStoreProvider),
-      ref.watch(localPrescriptionCacheProvider),
-      ref.watch(patientIdMapProvider),
-      ref,
-    ));
+final syncEngineProvider = Provider<SyncEngine>((ref) {
+  final engine = SyncEngine(
+    ref.watch(offlineQueueProvider),
+    ref.watch(apiClientProvider),
+    ref.watch(localVisitCacheProvider),
+    ref.watch(localSurgeryCacheProvider),
+    ref.watch(localPhotoStoreProvider),
+    ref.watch(localPrescriptionCacheProvider),
+    ref.watch(patientIdMapProvider),
+    ref,
+  );
+  engine.startKeepAlive();
+  ref.onDispose(engine.stopKeepAlive);
+  return engine;
+});
 
 final localPatientCacheProvider = Provider<LocalPatientCache>((ref) =>
     LocalPatientCache(

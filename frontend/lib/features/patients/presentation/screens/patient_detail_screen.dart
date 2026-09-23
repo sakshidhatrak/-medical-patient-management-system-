@@ -1379,6 +1379,11 @@ class _MedicinesTable extends StatelessWidget {
 final _uuidPat = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
     caseSensitive: false);
+final _cloudinaryPat = RegExp(r'^[a-zA-Z0-9]{12,}$');
+
+bool _isRandom(String s) =>
+    _uuidPat.hasMatch(s) ||
+    (!s.contains('.') && _cloudinaryPat.hasMatch(s));
 
 String _captionFallback(PhotoEntity p, {String defaultExt = 'jpg'}) {
   final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
@@ -1390,9 +1395,9 @@ String _captionFallback(PhotoEntity p, {String defaultExt = 'jpg'}) {
 
 String _attachFilename(PhotoEntity p) {
   final orig = p.originalFilename;
-  if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+  if (orig != null && orig.isNotEmpty && !_isRandom(orig)) return orig;
   final pathLast = p.storagePath.split('/').last;
-  if (!_uuidPat.hasMatch(pathLast)) return pathLast;
+  if (!_isRandom(pathLast)) return pathLast;
   final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
   return _captionFallback(p, defaultExt: ext);
 }

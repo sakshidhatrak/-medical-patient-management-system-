@@ -1787,13 +1787,19 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   static final _uuidPat = RegExp(
       r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
       caseSensitive: false);
+  // Cloudinary public_id: alphanumeric only, no extension, 12+ chars
+  static final _cloudinaryPat = RegExp(r'^[a-zA-Z0-9]{12,}$');
+
+  bool _isRandom(String s) =>
+      _uuidPat.hasMatch(s) ||
+      (!s.contains('.') && _cloudinaryPat.hasMatch(s));
 
   String _resolvePhotoName(PhotoEntity p) {
     final orig = p.originalFilename;
-    if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+    if (orig != null && orig.isNotEmpty && !_isRandom(orig)) return orig;
     final pathLast = p.storagePath.split('/').last;
-    if (!_uuidPat.hasMatch(pathLast)) return pathLast; // already clean
-    // Fall back to caption-based name for legacy UUID photos
+    if (!_isRandom(pathLast)) return pathLast;
+    // Fall back to caption-based name for legacy UUID/Cloudinary photos
     final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
     final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
         .replaceAll(RegExp(r'[^a-zA-Z0-9 ]'), '')
