@@ -29,6 +29,9 @@ class PatientModel {
   final String? medicalHistory;
   final String? previousHistory;
 
+  // ── OPD Type ─────────────────────────────────────────────────────
+  final String? opdType; // 'self' | 'visit'
+
   // ── Admin ────────────────────────────────────────────────────────
   final String? notes;
   final bool isActive;
@@ -58,6 +61,7 @@ class PatientModel {
     this.allergies,
     this.medicalHistory,
     this.previousHistory,
+    this.opdType,
     this.notes,
     this.isActive = true,
     required this.createdAt,
@@ -87,6 +91,7 @@ class PatientModel {
         allergies: j['allergies'] as String?,
         medicalHistory: (j['medicalHistory'] ?? j['medical_history']) as String?,
         previousHistory: (j['previousHistory'] ?? j['previous_history']) as String?,
+        opdType: (j['opdType'] ?? j['opd_type']) as String?,
         notes: j['notes'] as String?,
         isActive: (j['isActive'] ?? j['is_active']) as bool? ?? true,
         createdAt: ((j['createdAt'] ?? j['created_at']) as String?) ?? DateTime.now().toIso8601String(),
@@ -126,6 +131,7 @@ class PatientModel {
         'allergies': allergies,
         'medicalHistory': medicalHistory,
         'previousHistory': previousHistory,
+        'opdType': opdType,
         'notes': notes,
       };
 
@@ -150,6 +156,7 @@ class PatientModel {
         allergies: allergies,
         medicalHistory: medicalHistory,
         previousHistory: previousHistory,
+        opdType: opdType,
         notes: notes,
         isActive: isActive,
         createdAt: DateTime.parse(createdAt),
@@ -179,6 +186,7 @@ class PatientModel {
         allergies: e.allergies,
         medicalHistory: e.medicalHistory,
         previousHistory: e.previousHistory,
+        opdType: e.opdType,
         notes: e.notes,
         isActive: e.isActive,
         createdAt: e.createdAt.toIso8601String(),

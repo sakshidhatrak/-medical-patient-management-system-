@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface SurgeryRepository extends JpaRepository<Surgery, Long> {
     List<Surgery> findAllByPatientIdAndIsActiveTrue(Long patientId, Sort sort);
     Optional<Surgery> findByIdAndPatientIdAndIsActiveTrue(Long id, Long patientId);
+    Optional<Surgery> findByClientId(String clientId);
 }

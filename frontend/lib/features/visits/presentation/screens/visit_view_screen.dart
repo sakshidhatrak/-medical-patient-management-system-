@@ -84,6 +84,7 @@ class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
     String examNeuroText          = '';
     String imagingText            = '';
     String otherInvestText        = '';
+    String otNotesText            = '';
     String adviceText             = '';
     String investigationToBeDone  = '';
     String crossConsultText       = '';
@@ -110,6 +111,7 @@ class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
         examNeuroText      = s('examNeurological').isNotEmpty ? s('examNeurological') : s('systemic');
         imagingText        = s('imaging').isNotEmpty       ? s('imaging')       : s('radiology');
         otherInvestText    = s('otherInvestigation');
+        otNotesText           = s('otNotes');
         adviceText            = s('advice');
         investigationToBeDone = s('investigationToBeDone');
         crossConsultText      = s('crossConsultation');
@@ -138,8 +140,26 @@ class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
     if (vitals['Weight'] == null && patient0?.weight?.isNotEmpty        == true) vitals['Weight'] = patient0!.weight!;
     if (vitals['Temp']   == null && patient0?.temperature?.isNotEmpty   == true) vitals['Temp']   = patient0!.temperature!;
 
-    // Photo grouping
-    final allVP = photoState.photos.where((p) => p.visitId == visitId).toList();
+    // Photo grouping — include orphan photos (visitId=null) for backward compat,
+    // but deduplicate by storagePath (prefer visitId-linked over orphan to avoid duplicates).
+    final _seenPaths = <String>{};
+    final allVP = <PhotoEntity>[];
+    final _candidates = photoState.photos
+        .where((p) =>
+            p.category != PhotoCategory.patientReport &&
+            (p.visitId == visitId ||
+             ((p.visitId == null || p.visitId!.isEmpty) &&
+              (p.surgeryId == null || p.surgeryId!.isEmpty))))
+        .toList();
+    // Pass 1: visitId-linked photos take priority
+    for (final p in _candidates.where((p) => p.visitId == visitId)) {
+      if (_seenPaths.add(p.storagePath)) allVP.add(p);
+    }
+    // Pass 2: orphan photos only if storagePath not already added
+    for (final p in _candidates.where(
+        (p) => p.visitId == null || p.visitId!.isEmpty)) {
+      if (_seenPaths.add(p.storagePath)) allVP.add(p);
+    }
     List<PhotoEntity> cap(String c) => allVP.where((p) => p.caption == c).toList();
     List<PhotoEntity> cat(PhotoCategory c) =>
         allVP.where((p) => p.category == c && (p.caption == null || p.caption!.isEmpty)).toList();
@@ -178,7 +198,7 @@ class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
         visit.plan?.isNotEmpty == true ||
         examPrescriptions.isNotEmpty || medicationsText.isNotEmpty ||
         (rxState != null && (rxState.text?.isNotEmpty == true || rxState.drugs.isNotEmpty)) ||
-        adviceText.isNotEmpty || investigationToBeDone.isNotEmpty || crossConsultText.isNotEmpty ||
+        otNotesText.isNotEmpty || adviceText.isNotEmpty || investigationToBeDone.isNotEmpty || crossConsultText.isNotEmpty ||
         visit.notes?.isNotEmpty == true ||
         allVP.isNotEmpty || reportPhotos.isNotEmpty;
 
@@ -341,6 +361,7 @@ class _VisitViewScreenState extends ConsumerState<VisitViewScreen> {
                 examState: examState,
                 imagingText: imagingText,
                 otherInvestText: otherInvestText,
+                otNotesText: otNotesText,
                 adviceText: adviceText,
                 investigationToBeDone: investigationToBeDone,
                 crossConsultText: crossConsultText,
@@ -394,6 +415,7 @@ Widget _buildSections(
   required dynamic examState,
   required String imagingText,
   required String otherInvestText,
+  required String otNotesText,
   required String adviceText,
   required String investigationToBeDone,
   required String crossConsultText,
@@ -601,6 +623,12 @@ Widget _buildSections(
         ],
         if (medicinesPhotos.isNotEmpty) _PhotoRow('', medicinesPhotos),
       ]), context));
+
+  // 8b. OT Notes
+  if (otNotesText.isNotEmpty)
+    sections.add(_CS('OT Notes', Icons.local_hospital_outlined, _kP1,
+      _CollapsibleText(otNotesText, style: TextStyle(fontSize: 12, color: _kNavy(context), height: 1.5)),
+      context));
 
   // 9. Advice — a. Instructions  b. Investigation to be done  c. Cross Consultation
   final adviceItems = <Widget>[];
@@ -890,10 +918,22 @@ class _PhotoRow extends StatefulWidget {
 class _PhotoRowState extends State<_PhotoRow> {
   bool _expanded = false;
 
+  static final _uuidPat = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
+      caseSensitive: false);
+
   String _name(PhotoEntity p) {
-    if (p.originalFilename?.isNotEmpty == true) return p.originalFilename!;
-    final parts = p.storagePath.split('/');
-    return parts.isNotEmpty ? parts.last : 'Attachment';
+    final orig = p.originalFilename;
+    if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+    final pathLast = p.storagePath.split('/').last;
+    if (!_uuidPat.hasMatch(pathLast)) return pathLast;
+    // Caption-based fallback for legacy UUID photos
+    final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
+    final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9 ]'), '')
+        .trim()
+        .replaceAll(' ', '_');
+    return '$cap.$ext';
   }
 
   IconData _icon(PhotoEntity p) {

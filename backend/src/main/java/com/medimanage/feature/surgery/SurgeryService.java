@@ -32,12 +32,19 @@ public class SurgeryService {
 
     @Transactional
     public SurgeryDto create(Long patientId, SurgeryRequest req, Long actorId) {
+        // Idempotent: if client already sent this UUID, return the existing record.
+        if (req.clientId() != null) {
+            var existing = repo.findByClientId(req.clientId());
+            if (existing.isPresent()) return SurgeryDto.from(existing.get());
+        }
+
         var patient = patientRepo.findByIdAndIsActiveTrue(patientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient", patientId));
         var actor = userRepo.findById(actorId).orElse(null);
 
         Surgery s = Surgery.builder()
                 .patient(patient)
+                .clientId(req.clientId())
                 .surgeryDate(req.surgeryDate() != null ? req.surgeryDate() : Instant.now())
                 .yourRole(req.yourRole())
                 .preOpDiagnosis(req.preOpDiagnosis())

@@ -67,6 +67,7 @@ public class PatientService {
                 .allergies(req.allergies())
                 .medicalHistory(req.medicalHistory())
                 .previousHistory(req.previousHistory())
+                .opdType(req.opdType())
                 .notes(req.notes())
                 .isActive(true)
                 .createdBy(actor)
@@ -109,6 +110,7 @@ public class PatientService {
         p.setAllergies(req.allergies() != null ? req.allergies() : p.getAllergies());
         p.setMedicalHistory(req.medicalHistory() != null ? req.medicalHistory() : p.getMedicalHistory());
         p.setPreviousHistory(req.previousHistory() != null ? req.previousHistory() : p.getPreviousHistory());
+        p.setOpdType(req.opdType() != null ? req.opdType() : p.getOpdType());
         p.setNotes(req.notes() != null ? req.notes() : p.getNotes());
         p.setUpdatedBy(actor);
         PatientDto result = PatientDto.from(repo.save(p));
@@ -129,6 +131,7 @@ public class PatientService {
         if (updates.containsKey("temperature"))      { changes.add(AuditService.diff("temperature",      p.getTemperature(),     (String) updates.get("temperature")));      p.setTemperature((String) updates.get("temperature")); }
         if (updates.containsKey("medicalHistory"))   { changes.add(AuditService.diff("medicalHistory",   p.getMedicalHistory(),  (String) updates.get("medicalHistory")));   p.setMedicalHistory((String) updates.get("medicalHistory")); }
         if (updates.containsKey("previousHistory"))  { changes.add(AuditService.diff("previousHistory",  p.getPreviousHistory(), (String) updates.get("previousHistory")));  p.setPreviousHistory((String) updates.get("previousHistory")); }
+        if (updates.containsKey("opdType"))          { p.setOpdType((String) updates.get("opdType")); }
         if (Boolean.FALSE.equals(updates.get("isActive"))) { p.setActive(false); p.setDeletedAt(Instant.now()); }
 
         User actor = userRepo.findById(actorId).orElse(null);

@@ -254,8 +254,9 @@ class _PatientDashboardScreenState extends ConsumerState<PatientDashboardScreen>
                           isStaff: isStaff,
                           photos: allPhotos
                               .where((p) =>
-                                  p.visitId == timeline[i].id ||
-                                  p.surgeryId == timeline[i].id)
+                                  (p.visitId == timeline[i].id ||
+                                   p.surgeryId == timeline[i].id) &&
+                                  p.category != PhotoCategory.patientReport)
                               .toList(),
                           onDocTap: () {
                             if (timeline[i].type == 'visit') {
@@ -677,7 +678,6 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
   }
 
   _TimelineItem get item => widget.item;
-  List<PhotoEntity> get photos => widget.photos;
 
   void _showAuditSheet(BuildContext context, String visitId, String patientId) {
     showModalBottomSheet(
@@ -826,53 +826,54 @@ class _TimelineRowState extends ConsumerState<_TimelineRow> {
             Divider(height: 1, color: context.borderColor),
 
             // ── Action buttons ──────────────────────────────────────────
-            Padding(
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(children: [
-                _CardBtn(
-                  icon: Icons.remove_red_eye_outlined,
-                  label: 'View',
-                  color: accentColor,
-                  onTap: widget.onDocTap,
-                ),
-                if (widget.onPrint != null)
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   _CardBtn(
-                    icon: widget.isStaff
-                        ? Icons.description_outlined
-                        : Icons.print_outlined,
-                    label: widget.isStaff ? 'Report' : 'Print',
+                    icon: Icons.remove_red_eye_outlined,
+                    label: 'View',
                     color: accentColor,
-                    onTap: widget.onPrint!,
+                    onTap: widget.onDocTap,
                   ),
-                if (widget.canWrite) ...[
-                  _CardBtn(
-                    icon: Icons.edit_outlined,
-                    label: 'Edit',
-                    color: accentColor,
-                    onTap: widget.onEditTap ?? widget.onDocTap,
-                  ),
-                  if (widget.onDelete != null)
+                  if (widget.onPrint != null)
                     _CardBtn(
-                      icon: Icons.delete_outline_rounded,
-                      label: 'Delete',
-                      color: const Color(0xFFEF4444),
-                      onTap: widget.onDelete!,
+                      icon: widget.isStaff
+                          ? Icons.description_outlined
+                          : Icons.print_outlined,
+                      label: widget.isStaff ? 'Report' : 'Print',
+                      color: accentColor,
+                      onTap: widget.onPrint!,
+                    ),
+                  if (widget.canWrite) ...[
+                    _CardBtn(
+                      icon: Icons.edit_outlined,
+                      label: 'Edit',
+                      color: accentColor,
+                      onTap: widget.onEditTap ?? widget.onDocTap,
+                    ),
+                    if (widget.onDelete != null)
+                      _CardBtn(
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Delete',
+                        color: const Color(0xFFEF4444),
+                        onTap: widget.onDelete!,
+                      ),
+                  ],
+                  // History button — only for server-synced visits, hidden for staff
+                  if (!widget.isStaff &&
+                      item.visit != null &&
+                      item.visit!.id.isNotEmpty &&
+                      RegExp(r'^\d+$').hasMatch(item.visit!.id))
+                    _CardBtn(
+                      icon: Icons.history,
+                      label: 'History',
+                      color: const Color(0xFF6B7280),
+                      onTap: () => _showAuditSheet(context, item.visit!.id, widget.patient.id),
                     ),
                 ],
-                // History button — only for server-synced visits, hidden for staff
-                if (!widget.isStaff &&
-                    item.visit != null &&
-                    item.visit!.id.isNotEmpty &&
-                    RegExp(r'^\d+$').hasMatch(item.visit!.id))
-                  _CardBtn(
-                    icon: Icons.history_rounded,
-                    label: 'History',
-                    color: const Color(0xFF6B7280),
-                    onTap: () => _showAuditSheet(context, item.visit!.id, widget.patient.id),
-                  ),
-              ]),
               ),
             ),
           ],
@@ -1375,10 +1376,25 @@ class _MedicinesTable extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared attachment helpers
 // ─────────────────────────────────────────────────────────────────────────────
+final _uuidPat = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
+    caseSensitive: false);
+
+String _captionFallback(PhotoEntity p, {String defaultExt = 'jpg'}) {
+  final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
+      .replaceAll(RegExp(r'[^a-zA-Z0-9 ]'), '')
+      .trim()
+      .replaceAll(' ', '_');
+  return '$cap.$defaultExt';
+}
+
 String _attachFilename(PhotoEntity p) {
-  if (p.originalFilename?.isNotEmpty == true) return p.originalFilename!;
-  final parts = p.storagePath.split('/');
-  return parts.isNotEmpty ? parts.last : 'Attachment';
+  final orig = p.originalFilename;
+  if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+  final pathLast = p.storagePath.split('/').last;
+  if (!_uuidPat.hasMatch(pathLast)) return pathLast;
+  final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
+  return _captionFallback(p, defaultExt: ext);
 }
 
 String _attachTypeLabel(PhotoEntity p) {
@@ -2021,15 +2037,13 @@ class _PatientReportsSection extends StatelessWidget {
               color: _kAccent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.folder_outlined,
-                size: 15, color: _kAccent),
+            child: const Icon(Icons.folder_outlined, size: 15, color: _kAccent),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Patient Reports',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w700, color: context.textPrimary),
-          ),
+          Text('Patient Reports',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700,
+                  color: context.textPrimary)),
           const Spacer(),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -2037,21 +2051,15 @@ class _PatientReportsSection extends StatelessWidget {
               color: _kAccent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
-              '${reports.length} file${reports.length == 1 ? '' : 's'}',
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: _kAccent,
-                  fontWeight: FontWeight.w600),
-            ),
+            child: Text('${reports.length} file${reports.length == 1 ? '' : 's'}',
+                style: const TextStyle(
+                    fontSize: 11, color: _kAccent, fontWeight: FontWeight.w600)),
           ),
         ]),
-
         if (pdfs.isNotEmpty) ...[
           const SizedBox(height: 10),
           ...pdfs.map((p) => _PdfReportTile(photo: p)),
         ],
-
         if (images.isNotEmpty) ...[
           const SizedBox(height: 10),
           PhotoGalleryWidget(photos: images),
@@ -2065,11 +2073,7 @@ class _PdfReportTile extends StatelessWidget {
   final PhotoEntity photo;
   const _PdfReportTile({required this.photo});
 
-  String get _filename {
-    if (photo.originalFilename?.isNotEmpty == true) return photo.originalFilename!;
-    final parts = photo.storagePath.split('/');
-    return parts.isNotEmpty ? parts.last : 'Report';
-  }
+  String get _filename => _attachFilename(photo);
 
   Future<void> _open() async {
     final url = photo.url;

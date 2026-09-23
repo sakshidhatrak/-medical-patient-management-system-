@@ -76,6 +76,7 @@ class SurgeryModel {
 
   Map<String, dynamic> toApiJson() => {
         'id': id,
+        'clientId': id,
         'surgeryDate': surgeryDate,
         'yourRole': yourRole,
         'preOpDiagnosis': preOpDiagnosis,

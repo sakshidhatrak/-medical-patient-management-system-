@@ -3,6 +3,7 @@ package com.medimanage.feature.surgery.dto;
 import java.time.Instant;
 
 public record SurgeryRequest(
+        String clientId,
         Instant surgeryDate,
         String yourRole,
         String preOpDiagnosis,

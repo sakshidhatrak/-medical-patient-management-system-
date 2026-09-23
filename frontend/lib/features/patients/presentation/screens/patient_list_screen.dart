@@ -350,6 +350,7 @@ class _ClinicHeader extends ConsumerStatefulWidget {
 
 class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
   bool _isSyncing = false;
+  String _syncLabel = 'Sync Now';
   int _pendingCount = 0;
 
   @override
@@ -365,10 +366,28 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
 
   Future<void> _syncNow() async {
     if (_isSyncing) return;
-    setState(() => _isSyncing = true);
+    setState(() { _isSyncing = true; _syncLabel = 'Syncing...'; });
+    int totalSynced = 0;
     try {
-      final synced = await ref.read(syncEngineProvider).syncAll();
-      await _refreshPending(); // updates _pendingCount with live value
+      // Retry up to 3 times with 30-second countdown between attempts.
+      // This covers Render.com cold-start (~50 s) — the first request wakes
+      // the server; the second attempt (after 30 s) usually succeeds.
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        final synced = await ref.read(syncEngineProvider).syncAll();
+        totalSynced += synced;
+        await _refreshPending();
+        if (!mounted) return;
+        if (_pendingCount == 0) break;
+        if (attempt < 3) {
+          for (int s = 30; s > 0; s--) {
+            if (!mounted) return;
+            setState(() => _syncLabel = 'Waking server... ${s}s');
+            await Future.delayed(const Duration(seconds: 1));
+          }
+          if (mounted) setState(() => _syncLabel = 'Retrying ($attempt/3)...');
+        }
+      }
+      await _refreshPending();
       if (!mounted) return;
       if (_pendingCount == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -376,8 +395,8 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
             content: Row(children: [
               const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 8),
-              Text(synced > 0
-                  ? '$synced record${synced == 1 ? '' : 's'} synced successfully.'
+              Text(totalSynced > 0
+                  ? '$totalSynced record${totalSynced == 1 ? '' : 's'} synced successfully.'
                   : 'All data is already synced.'),
             ]),
             backgroundColor: const Color(0xFF2E7D32),
@@ -391,8 +410,8 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
               const Icon(Icons.sync_problem_rounded, color: Colors.white, size: 18),
               const SizedBox(width: 8),
               Expanded(child: Text(
-                synced > 0
-                    ? '$synced synced, $_pendingCount still pending. Check network.'
+                totalSynced > 0
+                    ? '$totalSynced synced, $_pendingCount still pending. Check network.'
                     : '$_pendingCount record${_pendingCount == 1 ? '' : 's'} could not be synced. Check network.',
               )),
             ]),
@@ -412,7 +431,7 @@ class _ClinicHeaderState extends ConsumerState<_ClinicHeader> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isSyncing = false);
+      if (mounted) setState(() { _isSyncing = false; _syncLabel = 'Sync Now'; });
     }
   }
 
@@ -1006,6 +1025,7 @@ class _PendingSyncDialog extends ConsumerStatefulWidget {
 
 class _PendingSyncDialogState extends ConsumerState<_PendingSyncDialog> {
   bool _isSyncing = false;
+  String _syncLabel = 'Sync Now';
   String? _syncError;
   late List<SyncItem> _items;
 
@@ -1022,24 +1042,41 @@ class _PendingSyncDialogState extends ConsumerState<_PendingSyncDialog> {
   }
 
   Future<void> _syncNow() async {
-    setState(() { _isSyncing = true; _syncError = null; });
+    if (_isSyncing) return;
+    setState(() { _isSyncing = true; _syncError = null; _syncLabel = 'Syncing...'; });
+    int totalSynced = 0;
     try {
-      final synced = await ref.read(syncEngineProvider).syncAll();
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        final synced = await ref.read(syncEngineProvider).syncAll();
+        totalSynced += synced;
+        final remaining = await ref.read(offlineQueueProvider).pending();
+        if (!mounted) return;
+        if (remaining.isEmpty) {
+          Navigator.pop(context, 'synced');
+          return;
+        }
+        _items = remaining;
+        if (attempt < 3) {
+          for (int s = 30; s > 0; s--) {
+            if (!mounted) return;
+            setState(() => _syncLabel = 'Waking server... ${s}s');
+            await Future.delayed(const Duration(seconds: 1));
+          }
+          if (mounted) setState(() => _syncLabel = 'Retrying ($attempt/3)...');
+        }
+      }
       final remaining = await ref.read(offlineQueueProvider).pending();
       if (!mounted) return;
-      if (remaining.isEmpty) {
-        Navigator.pop(context, 'synced');
-      } else {
-        setState(() {
-          _isSyncing = false;
-          _items = remaining;
-          _syncError = synced > 0
-              ? '$synced synced, ${remaining.length} could not be synced. Check network & retry.'
-              : '${remaining.length} record${remaining.length == 1 ? '' : 's'} could not be synced. Check network & retry.';
-        });
-      }
+      setState(() {
+        _isSyncing = false;
+        _syncLabel = 'Sync Now';
+        _items = remaining;
+        _syncError = totalSynced > 0
+            ? '$totalSynced synced, ${remaining.length} could not be synced. Check network & retry.'
+            : '${remaining.length} record${remaining.length == 1 ? '' : 's'} could not be synced. Check network & retry.';
+      });
     } catch (e) {
-      if (mounted) setState(() { _isSyncing = false; _syncError = e.toString(); });
+      if (mounted) setState(() { _isSyncing = false; _syncLabel = 'Sync Now'; _syncError = e.toString(); });
     }
   }
 
@@ -1218,7 +1255,7 @@ class _PendingSyncDialogState extends ConsumerState<_PendingSyncDialog> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.cloud_sync_rounded, size: 18),
-                label: Text(_isSyncing ? 'Syncing...' : 'Sync Now',
+                label: Text(_syncLabel,
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w700)),
                 style: FilledButton.styleFrom(

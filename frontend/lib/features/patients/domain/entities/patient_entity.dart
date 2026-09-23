@@ -29,6 +29,9 @@ class PatientEntity extends Equatable {
   final String? medicalHistory;
   final String? previousHistory;
 
+  // ── OPD Type ─────────────────────────────────────────────────────
+  final String? opdType; // 'self' | 'visit'
+
   // ── Admin ────────────────────────────────────────────────────────
   final String? notes;
   final bool isActive;
@@ -58,6 +61,7 @@ class PatientEntity extends Equatable {
     this.allergies,
     this.medicalHistory,
     this.previousHistory,
+    this.opdType,
     this.notes,
     this.isActive = true,
     required this.createdAt,
@@ -117,6 +121,7 @@ class PatientEntity extends Equatable {
     String? allergies,
     String? medicalHistory,
     String? previousHistory,
+    String? opdType,
     String? notes,
     String? syncStatus,
   }) =>
@@ -140,6 +145,7 @@ class PatientEntity extends Equatable {
         allergies: allergies ?? this.allergies,
         medicalHistory: medicalHistory ?? this.medicalHistory,
         previousHistory: previousHistory ?? this.previousHistory,
+        opdType: opdType ?? this.opdType,
         notes: notes ?? this.notes,
         isActive: isActive,
         createdAt: createdAt,

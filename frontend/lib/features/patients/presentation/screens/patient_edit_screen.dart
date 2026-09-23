@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../domain/entities/patient_entity.dart';
+import '../../../photos/domain/entities/photo_entity.dart';
+import '../../../photos/presentation/providers/photo_provider.dart';
 import '../providers/patient_provider.dart';
 
 const _kBlue  = Color(0xFF4B55CC);
@@ -209,6 +212,8 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
                         _field('Known Allergies', _allergyCtrl, maxLines: 3),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    _PatientPhotosCard(patientId: widget.patientId),
                   ],
                 ),
               ),
@@ -451,4 +456,180 @@ class _PatientEditScreenState extends ConsumerState<PatientEditScreen> {
           ),
         ]),
       );
+}
+
+// ── Patient Photos Card ───────────────────────────────────────────────────────
+class _PatientPhotosCard extends ConsumerWidget {
+  final String patientId;
+  const _PatientPhotosCard({required this.patientId});
+
+  static final _uuidPat = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
+      caseSensitive: false);
+
+  String _filename(PhotoEntity p) {
+    final orig = p.originalFilename;
+    if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+    final pathLast = p.storagePath.split('/').last;
+    if (!_uuidPat.hasMatch(pathLast)) return pathLast;
+    final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
+    final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9 ]'), '').trim().replaceAll(' ', '_');
+    return '$cap.$ext';
+  }
+
+  IconData _icon(PhotoEntity p) {
+    final n = _filename(p).toLowerCase();
+    if (n.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+    if (n.endsWith('.xls') || n.endsWith('.xlsx')) return Icons.table_chart_rounded;
+    if (n.endsWith('.doc') || n.endsWith('.docx')) return Icons.description_rounded;
+    return Icons.image_rounded;
+  }
+
+  Color _iconColor(PhotoEntity p) {
+    final n = _filename(p).toLowerCase();
+    if (n.endsWith('.pdf')) return const Color(0xFFEF4444);
+    if (n.endsWith('.xls') || n.endsWith('.xlsx')) return const Color(0xFF16A34A);
+    if (n.endsWith('.doc') || n.endsWith('.docx')) return const Color(0xFF2563EB);
+    return const Color(0xFF4B55CC);
+  }
+
+  Future<void> _open(PhotoEntity p) async {
+    if (p.url != null && p.url!.isNotEmpty) {
+      try {
+        await launchUrl(Uri.parse(p.url!), mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark  = Theme.of(context).brightness == Brightness.dark;
+    final bg      = isDark ? const Color(0xFF252545) : Colors.white;
+    final navy    = isDark ? const Color(0xFFEEECFF) : const Color(0xFF302D28);
+    final muted   = isDark ? const Color(0xFF9896B8) : const Color(0xFF979088);
+    final border  = isDark ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7);
+
+    final photoState = ref.watch(photoProvider(patientId));
+    final photos = photoState.photos;
+
+    if (photoState.isLoading) {
+      return Container(
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: border),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Row(children: [
+          SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: _kBlue)),
+          const SizedBox(width: 12),
+          Text('Loading photos…', style: TextStyle(fontSize: 13, color: muted)),
+        ]),
+      );
+    }
+
+    if (photos.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 11, 12, 8),
+          child: Row(children: [
+            Container(
+              width: 30, height: 30,
+              decoration: BoxDecoration(
+                color: _kBlue.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.photo_library_outlined,
+                  color: _kBlue, size: 15),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text('Patient Photos',
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700,
+                      color: navy, letterSpacing: -0.1)),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _kBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('${photos.length} file${photos.length == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                      fontSize: 11, color: _kBlue, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        ),
+
+        Divider(height: 1, color: border),
+
+        // Photo rows
+        ...photos.asMap().entries.map((entry) {
+          final p    = entry.value;
+          final name = _filename(p);
+          final ic   = _iconColor(p);
+          final isLast = entry.key == photos.length - 1;
+
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: bg,
+              border: isLast
+                  ? null
+                  : Border(bottom: BorderSide(color: border)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 30, height: 30,
+                decoration: BoxDecoration(
+                  color: ic,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(_icon(p), size: 16, color: Colors.white),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name,
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w600,
+                            color: navy),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    if (p.caption != null && p.caption!.isNotEmpty)
+                      Text(p.caption!,
+                          style: TextStyle(fontSize: 10, color: muted)),
+                  ],
+                ),
+              ),
+              if (p.url != null || p.localPath != null)
+                InkWell(
+                  onTap: () => _open(p),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Icon(Icons.remove_red_eye_outlined,
+                        size: 18, color: _kBlue),
+                  ),
+                ),
+            ]),
+          );
+        }),
+      ]),
+    );
+  }
 }

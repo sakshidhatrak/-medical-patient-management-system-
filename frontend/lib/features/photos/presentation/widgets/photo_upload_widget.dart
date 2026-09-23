@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../patients/presentation/providers/patient_provider.dart';
 import '../../domain/entities/photo_entity.dart';
 import '../providers/photo_provider.dart';
 import 'photo_gallery_widget.dart';
@@ -121,11 +122,22 @@ class PhotoUploadWidget extends ConsumerWidget {
             .whereType<XFile>()
             .toList();
 
+    final prn = ref.read(patientByIdProvider(patientId)).value?.prn ?? patientId;
     for (final xf in xfiles) {
       final bytes = await xf.readAsBytes();
+      final ext = xf.name.contains('.') ? xf.name.split('.').last.toLowerCase() : 'jpg';
+      final now = DateTime.now();
+      final ts = '${now.day.toString().padLeft(2, '0')}'
+          '${now.month.toString().padLeft(2, '0')}'
+          '${now.year}'
+          '${now.hour.toString().padLeft(2, '0')}'
+          '${now.minute.toString().padLeft(2, '0')}'
+          '${now.second.toString().padLeft(2, '0')}';
+      final sec = category.label.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+      final customFilename = '${prn}_${sec}_$ts.$ext';
       await ref.read(photoProvider(patientId).notifier).upload(
             bytes:    bytes,
-            filename: xf.name,
+            filename: customFilename,
             category: category,
             visitId:   visitId,
             surgeryId: surgeryId,

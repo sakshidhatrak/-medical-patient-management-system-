@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -51,6 +52,11 @@ class PhotoState {
 // ── Notifier (keyed by patientId) ─────────────────────────────────
 
 class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
+  // IDs/storagePaths deleted this session — filter these out on any _load() so
+  // a background refresh can't resurrect photos the user just deleted.
+  final _deletedIds = <String>{};
+  final _deletedPaths = <String>{};
+
   LocalPhotoStore get _store => ref.read(localPhotoStoreProvider);
 
   /// Builds a datasource with the current JWT token from storage.
@@ -76,18 +82,21 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
 
   Future<void> _load(String patientId) async {
     // 1. Load from local SQLite first (mobile only).
-    // While loading, build a visitId/surgeryId map keyed by photo id so we
-    // can restore these associations when the server response omits them.
-    final localVisitIdMap   = <String, String?>{};
-    final localSurgeryIdMap = <String, String?>{};
+    // Build storagePath→visitId/surgeryId maps so we can restore these
+    // associations when the server response has visit_id = NULL (race condition
+    // where photo was uploaded before the visit synced to the server).
+    final localVisitIdByPath   = <String, String?>{};
+    final localSurgeryIdByPath = <String, String?>{};
     if (!kIsWeb) {
       try {
         final rows = await _store.getForPatient(patientId);
         if (rows.isNotEmpty) {
           for (final r in rows) {
-            final pid = r['id'] as String;
-            localVisitIdMap[pid]   = r['visit_id']   as String?;
-            localSurgeryIdMap[pid] = r['surgery_id'] as String?;
+            final path = r['storage_path'] as String?;
+            if (path != null) {
+              localVisitIdByPath[path]   = r['visit_id']   as String?;
+              localSurgeryIdByPath[path] = r['surgery_id'] as String?;
+            }
           }
           state = state.copyWith(
             photos: rows.map(_rowToEntity).toList(),
@@ -114,15 +123,30 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
               await _store.markUploaded(p.id, p.url ?? '', p.storagePath);
             }
           }
-          // Write server photos to SQLite, preserving local visitId/surgeryId
-          // when the backend omits them (it may not echo back these foreign keys).
+          // Write server photos to SQLite, restoring visitId/surgeryId from the
+          // local storagePath map when the backend has visit_id = NULL (race
+          // condition: photo uploaded before visit sync completed).
+          // Also patch the backend immediately so future loads don't need this.
+          final _num = RegExp(r'^\d+$');
           for (final p in photos) {
             final row = _entityToRow(p);
-            if (p.visitId == null && localVisitIdMap.containsKey(p.id)) {
-              row['visit_id'] = localVisitIdMap[p.id];
+            String? effectiveVisitId   = p.visitId;
+            String? effectiveSurgeryId = p.surgeryId;
+            if (effectiveVisitId == null) {
+              final localVid = localVisitIdByPath[p.storagePath];
+              if (localVid != null && _num.hasMatch(localVid)) {
+                effectiveVisitId = localVid;
+                row['visit_id']  = localVid;
+                unawaited(ds.patchPhotoLink(p.id, visitId: localVid));
+              }
             }
-            if (p.surgeryId == null && localSurgeryIdMap.containsKey(p.id)) {
-              row['surgery_id'] = localSurgeryIdMap[p.id];
+            if (effectiveSurgeryId == null) {
+              final localSid = localSurgeryIdByPath[p.storagePath];
+              if (localSid != null && _num.hasMatch(localSid)) {
+                effectiveSurgeryId = localSid;
+                row['surgery_id']  = localSid;
+                unawaited(ds.patchPhotoLink(p.id, surgeryId: localSid));
+              }
             }
             await _store.insert(row);
           }
@@ -154,12 +178,11 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
               .map(_rowToEntity)
               .toList();
 
-          // Build merged server photo list: if server didn't return visitId /
-          // surgeryId but local SQLite has one, restore it so patient-detail
-          // visit filters can match the photo to the right visit card.
+          // Build merged server photo list, restoring visitId/surgeryId from
+          // the storagePath map where the server has them as NULL.
           final mergedServerPhotos = photos.map((p) {
-            final effectiveVisitId   = p.visitId   ?? localVisitIdMap[p.id];
-            final effectiveSurgeryId = p.surgeryId ?? localSurgeryIdMap[p.id];
+            final effectiveVisitId   = p.visitId   ?? localVisitIdByPath[p.storagePath];
+            final effectiveSurgeryId = p.surgeryId ?? localSurgeryIdByPath[p.storagePath];
             if (effectiveVisitId == p.visitId && effectiveSurgeryId == p.surgeryId) {
               return p;
             }
@@ -180,12 +203,23 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
             );
           }).toList();
 
+          bool _notDeleted(PhotoEntity p) =>
+              !_deletedIds.contains(p.id) && !_deletedPaths.contains(p.storagePath);
+
           state = state.copyWith(
-            photos: [...linkedLocal, ...pendingStillLocal, ...mergedServerPhotos],
+            photos: [...linkedLocal, ...pendingStillLocal, ...mergedServerPhotos]
+                .where(_notDeleted)
+                .toList(),
             isLoading: false,
           );
         } else {
-          state = state.copyWith(photos: photos, isLoading: false);
+          state = state.copyWith(
+            photos: photos
+                .where((p) => !_deletedIds.contains(p.id) &&
+                    !_deletedPaths.contains(p.storagePath))
+                .toList(),
+            isLoading: false,
+          );
         }
       } catch (e) {
         state = state.copyWith(isLoading: false, error: e.toString());
@@ -327,6 +361,8 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
   Future<void> syncPending() => _syncPendingUploads(arg);
 
   Future<void> delete(PhotoEntity photo) async {
+    _deletedIds.add(photo.id);
+    _deletedPaths.add(photo.storagePath);
     state = state.copyWith(
         photos: state.photos.where((p) => p.id != photo.id).toList());
 
@@ -355,7 +391,16 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
     if (pending.isEmpty) return;
     final ds = await _buildDs();
 
+    final _numericOnly = RegExp(r'^\d+$');
     for (final row in pending) {
+      // Skip photos whose visit/surgery ID is still a client UUID — they will
+      // be re-tried automatically once the visit/surgery syncs and remaps the
+      // ID to the server's numeric value (which triggers another syncPending).
+      final rowVisitId   = row['visit_id']   as String?;
+      final rowSurgeryId = row['surgery_id'] as String?;
+      if (rowVisitId   != null && !_numericOnly.hasMatch(rowVisitId))   continue;
+      if (rowSurgeryId != null && !_numericOnly.hasMatch(rowSurgeryId)) continue;
+
       final localPath = row['local_path'] as String?;
       if (localPath == null) continue;
       final file = File(localPath);

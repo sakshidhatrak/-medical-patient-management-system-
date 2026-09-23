@@ -13,6 +13,7 @@ public record PatientDto(
         String idProofType, String idProofNumber,
         String weight, String bloodPressure, String temperature,
         String allergies, String medicalHistory, String previousHistory,
+        String opdType,
         String notes,
         boolean isActive,
         Instant createdAt, Instant updatedAt
@@ -29,6 +30,7 @@ public record PatientDto(
                 p.getIdProofType(), p.getIdProofNumber(),
                 p.getWeight(), p.getBloodPressure(), p.getTemperature(),
                 p.getAllergies(), p.getMedicalHistory(), p.getPreviousHistory(),
+                p.getOpdType(),
                 p.getNotes(),
                 p.isActive(),
                 p.getCreatedAt() != null ? p.getCreatedAt() : Instant.now(),

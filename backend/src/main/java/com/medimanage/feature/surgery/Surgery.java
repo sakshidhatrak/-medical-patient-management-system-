@@ -20,6 +20,10 @@ public class Surgery {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Client-supplied UUID for idempotent create (mobile offline sync).
+    @Column(name = "client_id", unique = true)
+    private String clientId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;

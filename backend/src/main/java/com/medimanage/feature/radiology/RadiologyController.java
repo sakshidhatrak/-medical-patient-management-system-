@@ -14,6 +14,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -27,7 +28,7 @@ public class RadiologyController {
     @GetMapping("/patients/{patientId}/radiology")
     public ResponseEntity<ApiResponse<List<RadiologyDto>>> list(@PathVariable Long patientId) {
         return ResponseEntity.ok(ApiResponse.ok(
-                repo.findAllByPatientId(patientId, Sort.by("createdAt").descending())
+                repo.findAllByPatientIdAndIsActiveTrue(patientId, Sort.by("createdAt").descending())
                         .stream().map(RadiologyDto::from).toList()));
     }
 
@@ -46,6 +47,7 @@ public class RadiologyController {
                 .surgeryId(req.surgeryId())
                 .text(req.text())
                 .investigations(req.investigations() != null ? req.investigations() : "[]")
+                .isActive(true)
                 .createdBy(actor).updatedBy(actor)
                 .build();
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -54,8 +56,14 @@ public class RadiologyController {
 
     @DeleteMapping("/radiology/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
-    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
-        repo.deleteById(id);
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id, Authentication auth) {
+        Radiology r = repo.findByIdAndIsActiveTrue(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Radiology", id));
+        r.setActive(false);
+        r.setDeletedAt(Instant.now());
+        var actor = userRepo.findById((Long) auth.getPrincipal()).orElse(null);
+        r.setUpdatedBy(actor);
+        repo.save(r);
         return ResponseEntity.ok(ApiResponse.ok("Deleted", null));
     }
 }

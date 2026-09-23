@@ -75,6 +75,15 @@ public class PhotoService {
     }
 
     @Transactional
+    public PhotoDto patchLink(Long id, Long visitId, Long surgeryId) {
+        Photo photo = repo.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Photo", id));
+        if (visitId  != null) photo.setVisitId(visitId);
+        if (surgeryId != null) photo.setSurgeryId(surgeryId);
+        return PhotoDto.from(repo.save(photo));
+    }
+
+    @Transactional
     public void delete(Long id) {
         repo.findById(id).ifPresent(photo -> {
             try {

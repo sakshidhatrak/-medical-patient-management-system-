@@ -58,6 +58,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   final _idProofCtrl  = TextEditingController();
   String? _sex;
   String? _idProofType;
+  String _opdType = 'self'; // 'self' | 'visit'
 
   // ── Address ───────────────────────────────────────────────────────────────
   final _addressCtrl = TextEditingController();
@@ -96,6 +97,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
   final _treatmentMedFiles = <({String name, Uint8List bytes})>[];
   final _prescriptionRows  = <_PrescriptionRow>[];   // Structured prescriptions
   final _treatNotesCtrl      = TextEditingController();
+  final _otNotesCtrl                = TextEditingController();
   final _adviceCtrl                 = TextEditingController();
   final _investigationToBeDoneCtrl  = TextEditingController();
   final _investigationToBeDoneFiles = <({String name, Uint8List bytes})>[];
@@ -131,7 +133,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
       _diagnosisCtrl, _treatmentCtrl,
-      _treatNotesCtrl, _adviceCtrl, _investigationToBeDoneCtrl, _crossConsultCtrl,
+      _treatNotesCtrl, _otNotesCtrl, _adviceCtrl, _investigationToBeDoneCtrl, _crossConsultCtrl,
       _allergyCtrl, _historyCtrl,
     ]) {
       c.dispose();
@@ -152,12 +154,13 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       [
         _prevHistoryCtrl, _complaintCtrl, _examGeneralCtrl, _examNeurologicalCtrl,
         _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
-        _diagnosisCtrl, _treatmentCtrl, _treatNotesCtrl, _adviceCtrl,
+        _diagnosisCtrl, _treatmentCtrl, _treatNotesCtrl, _otNotesCtrl, _adviceCtrl,
       ].any((c) => c.text.trim().isNotEmpty);
 
   String? _buildExaminationJson() {
     final m = <String, String>{};
     void add(String k, String v) { if (v.isNotEmpty) m[k] = v; }
+    add('opdType',            _opdType);
     add('previousHistory',    _prevHistoryCtrl.text.trim());
     add('examGeneral',        _examGeneralCtrl.text.trim());
     add('examNeurological',   _examNeurologicalCtrl.text.trim());
@@ -169,6 +172,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       add('medications', _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'));
     }
+    add('otNotes',               _otNotesCtrl.text.trim());
     add('advice',                _adviceCtrl.text.trim());
     add('investigationToBeDone', _investigationToBeDoneCtrl.text.trim());
     add('crossConsultation',     _crossConsultCtrl.text.trim());
@@ -204,6 +208,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         allergies:       _allergyCtrl.text.trim().isEmpty ? null : _allergyCtrl.text.trim(),
         medicalHistory:  _historyCtrl.text.trim().isEmpty ? null : _historyCtrl.text.trim(),
         previousHistory: _prevHistoryCtrl.text.trim().isEmpty ? null : _prevHistoryCtrl.text.trim(),
+        opdType:         _opdType,
       ).timeout(const Duration(seconds: 12), onTimeout: () => null);
 
       if (!mounted) return;
@@ -264,9 +269,19 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         if (allFieldFiles.isNotEmpty) {
           final photoNotifier = ref.read(photoProvider(patient.id).notifier);
           for (final f in allFieldFiles) {
+            final ext = f.name.contains('.') ? f.name.split('.').last.toLowerCase() : 'jpg';
+            final now = DateTime.now();
+            final ts = '${now.day.toString().padLeft(2, '0')}'
+                '${now.month.toString().padLeft(2, '0')}'
+                '${now.year}'
+                '${now.hour.toString().padLeft(2, '0')}'
+                '${now.minute.toString().padLeft(2, '0')}'
+                '${now.second.toString().padLeft(2, '0')}';
+            final sec = f.caption.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+            final customFilename = '${patient.prn}_${sec}_$ts.$ext';
             await photoNotifier.upload(
               bytes:    f.bytes,
-              filename: f.name,
+              filename: customFilename,
               category: f.cat,
               visitId:  firstVisitId,
               caption:  f.caption,
@@ -499,15 +514,15 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
     final now = DateTime.now();
     final ts = '${now.day.toString().padLeft(2, '0')}'
         '${now.month.toString().padLeft(2, '0')}'
-        '${(now.year % 100).toString().padLeft(2, '0')}'
+        '${now.year}'
         '${now.hour.toString().padLeft(2, '0')}'
         '${now.minute.toString().padLeft(2, '0')}'
         '${now.second.toString().padLeft(2, '0')}';
     final ext = originalName.contains('.')
         ? originalName.split('.').last.toLowerCase()
         : 'jpg';
-    final prn = _phoneCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final prnPart = prn.isEmpty ? 'NEW' : prn;
+    final phone = _phoneCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final prnPart = phone.isEmpty ? 'NEW' : phone;
     final sec = section.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     final suffix = index > 0 ? '_$index' : '';
     return '${prnPart}_${sec}_$ts$suffix.$ext';
@@ -1014,6 +1029,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
       'treatmentPlan':      _treatmentCtrl.text.trim(),
       'medications':        _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'),
+      'otNotes':               _otNotesCtrl.text.trim(),
       'advice':                _adviceCtrl.text.trim(),
       'investigationToBeDone': _investigationToBeDoneCtrl.text.trim(),
       'crossConsultation':     _crossConsultCtrl.text.trim(),
@@ -1038,6 +1054,37 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
           ),
           const SizedBox(height: 4),
         ],
+
+        // ── OPD Type ──────────────────────────────────────────────────────
+        _WizardCard(
+          title: 'OPD Type *',
+          icon: Icons.badge_outlined,
+          color: _kBlue,
+          child: Row(children: [
+            Expanded(
+              child: _OpdTypeButton(
+                label: 'Self OPD',
+                icon: Icons.person_outline_rounded,
+                selected: _opdType == 'self',
+                onTap: () => setState(() => _opdType = 'self'),
+                color: _kBlue,
+                context: context,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _OpdTypeButton(
+                label: 'Visit OPD',
+                icon: Icons.person_add_outlined,
+                selected: _opdType == 'visit',
+                onTap: () => setState(() => _opdType = 'visit'),
+                color: _kBlue,
+                context: context,
+              ),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 4),
 
         // ── Identity ───────────────────────────────────────────────────────
         _WizardCard(
@@ -1529,6 +1576,18 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
         icon: Icons.medication_outlined,
         color: _kBlue,
         child: _buildMedicationTable(),
+      ),
+      _WizardCard(
+        title: 'OT Notes',
+        icon: Icons.local_hospital_outlined,
+        color: _kBlue,
+        child: _RegField(
+          label: 'OT Notes',
+          controller: _otNotesCtrl,
+          maxLines: 4,
+          prefixIcon: Icons.local_hospital_outlined,
+          hint: 'Operation theatre notes…',
+        ),
       ),
       _WizardCard(
         title: 'Advice',
@@ -2361,6 +2420,65 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 ),
                 const SizedBox(height: 8),
               ]),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ── OPD Type toggle button ────────────────────────────────────────────────────
+class _OpdTypeButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color color;
+  final BuildContext context;
+
+  const _OpdTypeButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    required this.color,
+    required this.context,
+  });
+
+  @override
+  Widget build(BuildContext c) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected
+              ? color.withValues(alpha: 0.12)
+              : (isDark ? const Color(0xFF1E1C35) : const Color(0xFFECEAE4)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? color : (isDark ? const Color(0xFF3A3865) : const Color(0xFFE0DDD7)),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon,
+              size: 18,
+              color: selected
+                  ? color
+                  : (isDark ? const Color(0xFF9896B8) : const Color(0xFF979088))),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected
+                  ? color
+                  : (isDark ? const Color(0xFF9896B8) : const Color(0xFF979088)),
             ),
           ),
         ]),

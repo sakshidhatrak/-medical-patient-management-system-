@@ -1,4 +1,4 @@
-package com.medimanage.feature.radiology;
+package com.medimanage.feature.appointment;
 
 import com.medimanage.feature.patient.Patient;
 import com.medimanage.feature.user.User;
@@ -11,34 +11,36 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.Instant;
 
 @Entity
-@Table(name = "radiology", indexes = {
-    @Index(name = "idx_radiology_patient", columnList = "patient_id"),
-    @Index(name = "idx_radiology_visit",   columnList = "visit_id"),
-    @Index(name = "idx_radiology_surgery", columnList = "surgery_id")
+@Table(name = "appointments", indexes = {
+    @Index(name = "idx_appt_patient",      columnList = "patient_id"),
+    @Index(name = "idx_appt_scheduled_at", columnList = "scheduled_at"),
+    @Index(name = "idx_appt_status",       columnList = "status")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Radiology {
+public class Appointment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "visit_id")
-    private Long visitId;
-
-    @Column(name = "surgery_id")
-    private Long surgeryId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(columnDefinition = "TEXT")
-    private String text;
+    @Column(name = "scheduled_at", nullable = false)
+    private Instant scheduledAt;
+
+    // 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show'
+    @Column(nullable = false, length = 20)
+    private String status = "scheduled";
+
+    // 'opd' | 'follow_up' | 'surgery' | 'review'
+    @Column(name = "appointment_type", length = 30)
+    private String appointmentType = "opd";
 
     @Column(columnDefinition = "TEXT")
-    private String investigations = "[]";
+    private String notes;
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;

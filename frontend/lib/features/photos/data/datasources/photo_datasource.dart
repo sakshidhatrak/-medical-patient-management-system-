@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -25,6 +26,7 @@ abstract interface class PhotoDataSource {
     String? surgeryId,
   });
 
+  Future<void> patchPhotoLink(String photoId, {String? visitId, String? surgeryId});
   Future<void> deletePhoto(String photoId, String storagePath);
 }
 
@@ -119,6 +121,17 @@ class PhotoSpringDataSource implements PhotoDataSource {
         code: 'FETCH_ERROR',
       );
     }
+  }
+
+  @override
+  Future<void> patchPhotoLink(String photoId, {String? visitId, String? surgeryId}) async {
+    try {
+      final body = <String, dynamic>{};
+      if (visitId   != null) body['visitId']   = int.tryParse(visitId)   ?? visitId;
+      if (surgeryId != null) body['surgeryId'] = int.tryParse(surgeryId) ?? surgeryId;
+      if (body.isEmpty) return;
+      await _dio.patch<void>('/photos/$photoId/link', data: jsonEncode(body));
+    } catch (_) {}
   }
 
   @override

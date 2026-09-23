@@ -5,7 +5,7 @@ import com.medimanage.feature.surgery.Surgery;
 import java.time.Instant;
 
 public record SurgeryDto(
-        Long id, Long patientId, Instant surgeryDate,
+        Long id, Long patientId, String clientId, Instant surgeryDate,
         String yourRole, String preOpDiagnosis, String procedure,
         String primarySurgeon, String assistantSurgeons,
         String anesthesiaType, String anesthesiologist,
@@ -16,7 +16,7 @@ public record SurgeryDto(
 ) {
     public static SurgeryDto from(Surgery s) {
         return new SurgeryDto(
-                s.getId(), s.getPatient().getId(), s.getSurgeryDate(),
+                s.getId(), s.getPatient().getId(), s.getClientId(), s.getSurgeryDate(),
                 s.getYourRole(), s.getPreOpDiagnosis(), s.getProcedure(),
                 s.getPrimarySurgeon(), s.getAssistantSurgeons(),
                 s.getAnesthesiaType(), s.getAnesthesiologist(),

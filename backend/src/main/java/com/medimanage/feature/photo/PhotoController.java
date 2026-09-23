@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
@@ -39,7 +40,7 @@ public class PhotoController {
 
     @PostMapping(value = "/patients/{patientId}/photos/upload",
                  consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<PhotoDto>> upload(
             @PathVariable Long patientId,
             @RequestParam("file") MultipartFile file,
@@ -54,10 +55,21 @@ public class PhotoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(dto));
     }
 
+    // ── Link (patch visitId / surgeryId after offline sync) ──────────
+
+    @PatchMapping("/photos/{id}/link")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
+    public ResponseEntity<ApiResponse<PhotoDto>> link(
+            @PathVariable Long id,
+            @RequestBody Map<String, Long> req) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                service.patchLink(id, req.get("visitId"), req.get("surgeryId"))));
+    }
+
     // ── Delete ────────────────────────────────────────────────────────
 
     @DeleteMapping("/photos/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','DOCTOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.ok("Photo deleted", null));

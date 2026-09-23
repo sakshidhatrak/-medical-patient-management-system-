@@ -108,6 +108,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   final _treatmentMedFiles  = <({String name, Uint8List bytes})>[];
   final _prescriptionRows   = <_PrescriptionRow>[]; // Structured prescriptions
   final _treatNotesCtrl       = TextEditingController();
+  final _otNotesCtrl                 = TextEditingController();
   final _adviceCtrl                  = TextEditingController();
   final _crossConsultCtrl            = TextEditingController();
   final _crossConsultFiles           = <({String name, Uint8List bytes})>[];
@@ -164,7 +165,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
       _diagnosisCtrl, _treatmentCtrl,
-      _treatNotesCtrl, _adviceCtrl, _crossConsultCtrl,
+      _treatNotesCtrl, _otNotesCtrl, _adviceCtrl, _crossConsultCtrl,
       _investigationToBeDoneCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
       _pat1FirstNameCtrl, _pat1LastNameCtrl, _pat1AgeCtrl,
@@ -225,6 +226,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             _prescriptionRows.add(_PrescriptionRow(medicine: line.trim()));
           }
         }
+        se(_otNotesCtrl,                'otNotes');
         se(_adviceCtrl,                 'advice');
         se(_investigationToBeDoneCtrl,  'investigationToBeDone');
         se(_crossConsultCtrl,           'crossConsultation');
@@ -299,6 +301,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       add('medications', _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.duration.isNotEmpty ? " × ${r.duration}" : ""}${r.specialInstruction.isNotEmpty ? " | ${r.specialInstruction}" : ""}').join('\n'));
     }
+    add('otNotes',               _otNotesCtrl.text.trim());
     add('advice',                _adviceCtrl.text.trim());
     add('investigationToBeDone', _investigationToBeDoneCtrl.text.trim());
     add('crossConsultation',     _crossConsultCtrl.text.trim());
@@ -315,7 +318,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       _examGeneralCtrl, _examNeurologicalCtrl,
       _clinicalDiagnosisCtrl, _imagingCtrl, _otherInvestCtrl,
       _diagnosisCtrl, _treatmentCtrl,
-      _treatNotesCtrl, _adviceCtrl,
+      _treatNotesCtrl, _otNotesCtrl, _adviceCtrl,
       _weightCtrl, _bpCtrl, _tempCtrl,
     ];
     return ctrls.any((c) => c.text.trim().isNotEmpty) ||
@@ -658,6 +661,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       'treatmentPlan':  _treatmentCtrl.text.trim(),
       'medications':    _prescriptionRows.map((r) =>
           '${r.medicine}${r.dose.isNotEmpty ? " [${r.dose}]" : ""}${r.route.isNotEmpty ? " (${r.route})" : ""}${r.frequency.isNotEmpty ? " - ${r.frequency}" : ""}${r.specialInstruction.isNotEmpty ? " — ${r.specialInstruction}" : ""}').join('\n'),
+      'otNotes':             _otNotesCtrl.text.trim(),
       'advice':              _adviceCtrl.text.trim(),
       'investigationToBeDone': _investigationToBeDoneCtrl.text.trim(),
       'crossConsultation':   _crossConsultCtrl.text.trim(),
@@ -689,14 +693,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     final now = DateTime.now();
     final ts = '${now.day.toString().padLeft(2, '0')}'
         '${now.month.toString().padLeft(2, '0')}'
-        '${(now.year % 100).toString().padLeft(2, '0')}'
+        '${now.year}'
         '${now.hour.toString().padLeft(2, '0')}'
         '${now.minute.toString().padLeft(2, '0')}'
         '${now.second.toString().padLeft(2, '0')}';
     final ext = originalName.contains('.')
         ? originalName.split('.').last.toLowerCase()
         : 'jpg';
-    final prn = widget.patientId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    final prn = (_patient?.prn ?? widget.patientId).replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     final sec = section.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     final suffix = index > 0 ? '_$index' : '';
     return '${prn}_${sec}_$ts$suffix.$ext';
@@ -1259,9 +1263,22 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
   Widget _buildStep1(AsyncValue<PatientEntity?> patientAsync) {
     // Photo setup (needed for step-2 sections, must be unconditional ref.watch)
     final allPtPhotos = ref.watch(photoProvider(widget.patientId)).photos;
-    final visitPhotos = widget.visitId != null
-        ? allPtPhotos.where((p) => p.visitId == widget.visitId).toList()
-        : <PhotoEntity>[];
+    // Build visitPhotos with same logic as visit_view_screen:
+    // linked photos first, then orphans (visitId=null), deduplicated by storagePath.
+    final _seenPaths = <String>{};
+    final visitPhotos = <PhotoEntity>[];
+    if (widget.visitId != null) {
+      for (final p in allPtPhotos.where((p) => p.visitId == widget.visitId)) {
+        if (_seenPaths.add(p.storagePath)) visitPhotos.add(p);
+      }
+    }
+    // Include orphan photos by caption so old uploads show in the right section.
+    for (final p in allPtPhotos.where((p) =>
+        (p.visitId == null || p.visitId!.isEmpty) &&
+        (p.surgeryId == null || p.surgeryId!.isEmpty) &&
+        p.category != PhotoCategory.patientReport)) {
+      if (_seenPaths.add(p.storagePath)) visitPhotos.add(p);
+    }
     List<PhotoEntity> ep(String caption) =>
         visitPhotos.where((p) => p.caption == caption).toList();
     const knownCaptions = {
@@ -1467,23 +1484,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
             const SizedBox(height: 6),
 
-            // Orphan photos (uploaded before caption feature)
-            if (orphanPhotos.isNotEmpty) ...[
-              _WizardCard(
-                title: 'Previously Uploaded',
-                icon: Icons.cloud_done_rounded,
-                color: _kBlue,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('${orphanPhotos.length} file${orphanPhotos.length == 1 ? '' : 's'} attached',
-                      style: TextStyle(fontSize: 12, color: _kSlate(context))),
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 6, runSpacing: 6,
-                      children: orphanPhotos.map(_existingPhotoChip).toList()),
-                ]),
-              ),
-              const SizedBox(height: 12),
-            ],
-
             // 2. Chief Complaint
             _WizardCard(
               title: 'Chief Complaint',
@@ -1663,6 +1663,20 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               child: _buildMedicationTable(),
             ),
 
+            // 8b. OT Notes
+            _WizardCard(
+              title: 'OT Notes',
+              icon: Icons.local_hospital_outlined,
+              color: _kBlue,
+              child: _vField(
+                label: 'OT Notes',
+                controller: _otNotesCtrl,
+                maxLines: 4,
+                prefixIcon: Icons.local_hospital_outlined,
+                hint: 'Operation theatre notes…',
+              ),
+            ),
+
             // 9. Advice
             _WizardCard(
               title: 'Advice',
@@ -1740,9 +1754,30 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     ],
   );
 
+  // ── Unified photo filename resolver ──────────────────────────────────────────
+  // Returns custom filename (PRN_section_ts.ext) if stored, otherwise a
+  // readable caption-based fallback for legacy UUID-named photos.
+  static final _uuidPat = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-',
+      caseSensitive: false);
+
+  String _resolvePhotoName(PhotoEntity p) {
+    final orig = p.originalFilename;
+    if (orig != null && orig.isNotEmpty && !_uuidPat.hasMatch(orig)) return orig;
+    final pathLast = p.storagePath.split('/').last;
+    if (!_uuidPat.hasMatch(pathLast)) return pathLast; // already clean
+    // Fall back to caption-based name for legacy UUID photos
+    final ext = pathLast.contains('.') ? pathLast.split('.').last : 'jpg';
+    final cap = (p.caption?.isNotEmpty == true ? p.caption! : 'Photo')
+        .replaceAll(RegExp(r'[^a-zA-Z0-9 ]'), '')
+        .trim()
+        .replaceAll(' ', '_');
+    return '$cap.$ext';
+  }
+
   // ── Existing photo chip (shown inline under each section in edit mode) ──────
   Widget _existingPhotoChip(PhotoEntity p) {
-    final filename = p.originalFilename ?? p.storagePath.split('/').last;
+    final filename = _resolvePhotoName(p);
     return GestureDetector(
       onTap: () {
         if (p.url != null && p.url!.isNotEmpty) {
@@ -1785,9 +1820,20 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     // meant Follow-up visits (different tab or section state) sometimes missed
     // the provider update.
     final _allPatientPhotos = ref.watch(photoProvider(widget.patientId)).photos;
-    final _visitPhotos = widget.visitId != null
-        ? _allPatientPhotos.where((p) => p.visitId == widget.visitId).toList()
-        : <PhotoEntity>[];
+    // Same deduplication logic as _buildStep1 and visit_view_screen.
+    final _seenPaths2 = <String>{};
+    final _visitPhotos = <PhotoEntity>[];
+    if (widget.visitId != null) {
+      for (final p in _allPatientPhotos.where((p) => p.visitId == widget.visitId)) {
+        if (_seenPaths2.add(p.storagePath)) _visitPhotos.add(p);
+      }
+    }
+    for (final p in _allPatientPhotos.where((p) =>
+        (p.visitId == null || p.visitId!.isEmpty) &&
+        (p.surgeryId == null || p.surgeryId!.isEmpty) &&
+        p.category != PhotoCategory.patientReport)) {
+      if (_seenPaths2.add(p.storagePath)) _visitPhotos.add(p);
+    }
 
     // Filter existing photos by section caption.
     List<PhotoEntity> ep(String caption) =>
@@ -1808,23 +1854,6 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     return ListView(
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
     children: [
-
-      // ── Orphan photos (uploaded before caption feature or unknown section) ──
-      if (_orphanPhotos.isNotEmpty) ...[
-        _WizardCard(
-          title: 'Previously Uploaded',
-          icon: Icons.cloud_done_rounded,
-          color: _kBlue,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${_orphanPhotos.length} file${_orphanPhotos.length == 1 ? '' : 's'} attached to this visit',
-                style: TextStyle(fontSize: 12, color: _kSlate(context))),
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6,
-                children: _orphanPhotos.map(_existingPhotoChip).toList()),
-          ]),
-        ),
-        const SizedBox(height: 12),
-      ],
 
       // ── History & Complaint ──────────────────────────────────────────
       _WizardCard(
@@ -2104,6 +2133,14 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           ),
           const SizedBox(height: 12),
           _buildMedicationTable(),
+          const SizedBox(height: 12),
+          _vField(
+            label: 'OT Notes',
+            controller: _otNotesCtrl,
+            maxLines: 4,
+            prefixIcon: Icons.local_hospital_outlined,
+            hint: 'Operation theatre notes…',
+          ),
           const SizedBox(height: 12),
           _vField(
             label: 'Advice',
@@ -2669,6 +2706,18 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
             ]),
           ),
         ),
+
+        // ── OT Notes ──────────────────────────────────────────────────────
+        if (_otNotesCtrl.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: sCard('OT Notes', Icons.medical_services_outlined,
+                const Color(0xFF6B21A8),
+              Text(_otNotesCtrl.text.trim(),
+                  style: TextStyle(fontSize: 13, color: _kNavy(context),
+                      fontWeight: FontWeight.w500)),
+            ),
+          ),
 
         // ── Doctor's Notes (private) ──────────────────────────────────────
         if (_treatNotesCtrl.text.trim().isNotEmpty)

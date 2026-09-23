@@ -236,10 +236,20 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
     if (ok && _pendingFiles.isNotEmpty) {
       setState(() { _saving = false; _uploadingFiles = true; });
       final notifier = ref.read(photoProvider(widget.patientId).notifier);
+      final prn = ref.read(patientByIdProvider(widget.patientId)).value?.prn ?? widget.patientId;
       for (final f in _pendingFiles) {
+        final ext = f.name.contains('.') ? f.name.split('.').last.toLowerCase() : 'jpg';
+        final now = DateTime.now();
+        final ts = '${now.day.toString().padLeft(2, '0')}'
+            '${now.month.toString().padLeft(2, '0')}'
+            '${now.year}'
+            '${now.hour.toString().padLeft(2, '0')}'
+            '${now.minute.toString().padLeft(2, '0')}'
+            '${now.second.toString().padLeft(2, '0')}';
+        final customFilename = '${prn}_PatientReport_$ts.$ext';
         await notifier.upload(
           bytes:    f.bytes,
-          filename: f.name,
+          filename: customFilename,
           category: PhotoCategory.patientReport,
           visitId:  widget.visitId,
           caption:  f.name,

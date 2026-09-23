@@ -197,6 +197,7 @@ class SyncEngine {
       this._localPhoto, this._localPrescription, this._idMap, this._ref);
 
   bool _running = false;
+  bool _retryScheduled = false;  // prevents stacking multiple background timers
 
   Future<int> syncAll() async {
     if (_running) return 0;
@@ -231,12 +232,16 @@ class SyncEngine {
     // (upgrade compat: old installs may have items stuck at attempts ≥ 5).
     await _queue.resetAllFailed();
 
-    // If items remain (e.g. transient failure or Render cold-start timeout),
-    // schedule one automatic retry after 60 s so the user doesn't have to
-    // toggle airplane mode or restart the app.
+    // If items remain, keep retrying every 5 minutes in the background until
+    // the queue empties or the app is closed. A single timer is maintained
+    // (_retryScheduled) so multiple syncAll() calls don't stack timers.
     final remaining = await _queue.pending();
-    if (remaining.isNotEmpty) {
-      Future.delayed(const Duration(seconds: 60), syncAll);
+    if (remaining.isNotEmpty && !_retryScheduled) {
+      _retryScheduled = true;
+      Future.delayed(const Duration(minutes: 5), () {
+        _retryScheduled = false;
+        syncAll();
+      });
     }
 
     // Refresh audit log cache so History shows entries created by this sync.

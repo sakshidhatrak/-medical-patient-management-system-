@@ -71,6 +71,10 @@ public class Patient {
     @Column(name = "previous_history")
     private String previousHistory;
 
+    // ── OPD Type ────────────────────────────────────────────────────
+    @Column(name = "opd_type", length = 20)
+    private String opdType;
+
     // ── Admin ────────────────────────────────────────────────────────
     @Column(columnDefinition = "TEXT")
     private String notes;

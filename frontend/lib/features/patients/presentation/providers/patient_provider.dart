@@ -149,6 +149,29 @@ class PatientsNotifier extends Notifier<PatientsState> {
       final List<PatientEntity> merged;
       if (refresh) {
         final apiIds = entities.map((e) => e.id).toSet();
+
+        // When the API returned fewer results than a full page, we have the
+        // complete active-patient list. Purge any SQLite-cached 'synced' patient
+        // absent from that list — it was soft-deleted on the server (e.g. via
+        // direct DB edit) and would otherwise remain visible indefinitely.
+        final Set<String> serverPurgedIds = {};
+        if (models.length < _pageSize) {
+          final queuedPatientIds = (await _queue.pending())
+              .where((item) => item.entityType == 'patients')
+              .map((item) => item.entityId)
+              .toSet();
+          for (final p in state.patients) {
+            if (!apiIds.contains(p.id) &&
+                !deletedIds.contains(p.id) &&
+                !queuedPatientIds.contains(p.id) &&
+                !_inflightIds.contains(p.id) &&
+                p.syncStatus != 'pending') {
+              await _local.purge(p.id);
+              serverPurgedIds.add(p.id);
+            }
+          }
+        }
+
         final pendingLocal = state.patients
             .where((p) => !apiIds.contains(p.id) && p.syncStatus == 'pending')
             .toList();
@@ -201,20 +224,20 @@ class PatientsNotifier extends Notifier<PatientsState> {
           // needs a second pass now that the UUID patients are gone.
           await ref.read(offlineDatabaseProvider).repairOrphanedVisits();
           // Preserve any local patients not covered by the API or keepPending.
-          // This prevents a partial API response from wiping locally-cached data.
+          // Exclude patients already purged as server-deleted above.
           final coveredIds = <String>{
             ...entities.map((e) => e.id),
             ...keepPending.map((e) => e.id),
           };
           final preservedLocals = state.patients
-              .where((p) => !coveredIds.contains(p.id))
+              .where((p) => !coveredIds.contains(p.id) && !serverPurgedIds.contains(p.id))
               .toList();
           merged = [...entities, ...keepPending, ...preservedLocals];
         } else {
-          // No pending locals — still preserve synced locals not in API response.
-          final apiIds2 = entities.map((e) => e.id).toSet();
+          // No pending locals — preserve synced locals not in API response,
+          // except those already purged as server-deleted above.
           final preservedLocals = state.patients
-              .where((p) => !apiIds2.contains(p.id))
+              .where((p) => !apiIds.contains(p.id) && !serverPurgedIds.contains(p.id))
               .toList();
           merged = [...entities, ...preservedLocals];
         }
@@ -276,6 +299,7 @@ class PatientsNotifier extends Notifier<PatientsState> {
     String? allergies,
     String? medicalHistory,
     String? previousHistory,
+    String? opdType,
     String? notes,
   }) async {
     try {
@@ -300,6 +324,7 @@ class PatientsNotifier extends Notifier<PatientsState> {
         allergies: allergies,
         medicalHistory: medicalHistory,
         previousHistory: previousHistory,
+        opdType: opdType,
         notes: notes,
         createdAt: now.toIso8601String(),
         updatedAt: now.toIso8601String(),

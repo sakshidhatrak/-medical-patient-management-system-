@@ -22,5 +22,6 @@ public record PatientRequest(
         String allergies,
         String medicalHistory,
         String previousHistory,
+        String opdType,
         String notes
 ) {}

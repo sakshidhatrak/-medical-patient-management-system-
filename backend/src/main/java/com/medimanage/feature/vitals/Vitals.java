@@ -1,4 +1,4 @@
-package com.medimanage.feature.radiology;
+package com.medimanage.feature.vitals;
 
 import com.medimanage.feature.patient.Patient;
 import com.medimanage.feature.user.User;
@@ -11,40 +11,38 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.time.Instant;
 
 @Entity
-@Table(name = "radiology", indexes = {
-    @Index(name = "idx_radiology_patient", columnList = "patient_id"),
-    @Index(name = "idx_radiology_visit",   columnList = "visit_id"),
-    @Index(name = "idx_radiology_surgery", columnList = "surgery_id")
+@Table(name = "vitals", indexes = {
+    @Index(name = "idx_vitals_patient", columnList = "patient_id"),
+    @Index(name = "idx_vitals_visit",   columnList = "visit_id")
 })
 @EntityListeners(AuditingEntityListener.class)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class Radiology {
+public class Vitals {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "visit_id")
-    private Long visitId;
-
-    @Column(name = "surgery_id")
-    private Long surgeryId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(columnDefinition = "TEXT")
-    private String text;
+    @Column(name = "visit_id")
+    private Long visitId;
 
-    @Column(columnDefinition = "TEXT")
-    private String investigations = "[]";
+    @Column(name = "recorded_at", nullable = false)
+    private Instant recordedAt;
+
+    private String bp;
+    private String pulse;
+    private String temperature;
+    private String spo2;
+    private String weight;
+    private String height;
+    private String rbs;
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
-
-    @Column(name = "deleted_at")
-    private Instant deletedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
