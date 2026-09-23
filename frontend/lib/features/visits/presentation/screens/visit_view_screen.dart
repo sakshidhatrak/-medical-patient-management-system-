@@ -462,6 +462,10 @@ Widget _buildSections(
       ]),
     );
 
+    // 0. Visit Type / OPD Type
+    infoRows.add(row('Visit Type', visit.visitType.label));
+    if (ne(patient.opdType)) infoRows.add(row('OPD Type', patient.opdType!));
+
     // 1. Full Name
     infoRows.add(row('Name', patient.fullName));
 

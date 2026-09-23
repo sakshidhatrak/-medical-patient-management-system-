@@ -198,7 +198,10 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
     if (current == null) { setState(() => _saving = false); return; }
 
     String? nonEmpty(String s) => s.trim().isNotEmpty ? s.trim() : null;
-    final updated = current.copyWith(
+    // Construct directly so cleared fields become null (copyWith uses ?? which ignores null)
+    final updated = VisitEntity(
+      id:                 current.id,
+      patientId:          current.patientId,
       visitDate:          _visitDate,
       visitType:          _visitType,
       complaints:         nonEmpty(_complaintCtrl.text),
@@ -210,6 +213,12 @@ class _VisitFormState extends ConsumerState<VisitFormScreen> {
       weight:             nonEmpty(_weightCtrl.text),
       examination:        _buildExamination(),
       status:             complete ? 'completed' : 'draft',
+      isActive:           current.isActive,
+      createdAt:          current.createdAt,
+      updatedAt:          current.updatedAt,
+      createdBy:          current.createdBy,
+      updatedBy:          current.updatedBy,
+      syncStatus:         current.syncStatus,
     );
 
     ref.read(visitEditProvider('${widget.patientId}/${widget.visitId}').notifier).update(updated);

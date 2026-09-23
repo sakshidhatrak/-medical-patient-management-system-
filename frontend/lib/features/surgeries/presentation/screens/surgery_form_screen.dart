@@ -180,21 +180,31 @@ class _SFState extends ConsumerState<SurgeryFormScreen> {
       'notes':       _postNotesCtrl.text,
       'condition':   _condition,
     });
-    return s.copyWith(
+    String? _v(String t) => t.trim().isEmpty ? null : t.trim();
+    // Construct directly so cleared fields become null (copyWith uses ?? which ignores null)
+    return SurgeryEntity(
+      id:               s.id,
+      patientId:        s.patientId,
       surgeryDate:      fullDate,
       yourRole:         _yourRole,
       primarySurgeon:   _surgeon,
       procedure:        _procedure,
-      assistantSurgeons: _assistantCtrl.text.isEmpty ? null : _assistantCtrl.text,
+      assistantSurgeons: _v(_assistantCtrl.text),
       anesthesiaType:   _anesthesia,
-      anesthesiologist: _anesthCtrl.text.isEmpty ? null : _anesthCtrl.text,
-      preOpDiagnosis:   _preopDiagCtrl.text.isEmpty ? null : _preopDiagCtrl.text,
-      otNotes:          _preopNotesCtrl.text.isEmpty ? null : _preopNotesCtrl.text,
-      intraopFindings:  _opFindingsCtrl.text.isEmpty ? null : _opFindingsCtrl.text,
+      anesthesiologist: _v(_anesthCtrl.text),
+      preOpDiagnosis:   _v(_preopDiagCtrl.text),
+      otNotes:          _v(_preopNotesCtrl.text),
+      intraopFindings:  _v(_opFindingsCtrl.text),
       implants:         intraopExtras,
-      complications:    _complicationsCtrl.text.isEmpty ? null : _complicationsCtrl.text,
+      complications:    _v(_complicationsCtrl.text),
       postOpPlan:       postopData,
       status:           status,
+      isActive:         s.isActive,
+      createdAt:        s.createdAt,
+      updatedAt:        s.updatedAt,
+      createdBy:        s.createdBy,
+      updatedBy:        s.updatedBy,
+      syncStatus:       s.syncStatus,
     );
   }
 

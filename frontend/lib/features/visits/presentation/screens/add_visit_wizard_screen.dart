@@ -264,22 +264,37 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
 
   Future<void> _savePatientEdits(PatientEntity original) async {
     if (!_patientFieldsPopulated || _patient == null) return;
+    String? _v(String s) => s.trim().isEmpty ? null : s.trim();
     final fn = _pat1FirstNameCtrl.text.trim();
-    final updated = original.copyWith(
-      firstName:     fn.isNotEmpty ? fn : null,
+    // Construct directly so cleared fields become null (copyWith uses ?? which ignores null)
+    final updated = PatientEntity(
+      id:            original.id,
+      prn:           original.prn,
+      firstName:     fn.isNotEmpty ? fn : original.firstName,
       lastName:      _pat1LastNameCtrl.text.trim(),
-      age:           _pat1AgeCtrl.text.trim().isEmpty ? null : (int.tryParse(_pat1AgeCtrl.text.trim()) ?? original.age),
-      sex:           _pat1Gender,
-      phone:         _pat1PhoneCtrl.text.trim().isEmpty ? null : _pat1PhoneCtrl.text.trim(),
-      altPhone:      _pat1AltPhoneCtrl.text.trim().isEmpty ? null : _pat1AltPhoneCtrl.text.trim(),
-      email:         _pat1EmailCtrl.text.trim().isEmpty ? null : _pat1EmailCtrl.text.trim(),
-      address:       _pat1AddressCtrl.text.trim().isEmpty ? null : _pat1AddressCtrl.text.trim(),
-      idProofType:   _pat1IdTypeCtrl.text.trim().isEmpty ? null : _pat1IdTypeCtrl.text.trim(),
-      idProofNumber: _pat1IdNumberCtrl.text.trim().isEmpty ? null : _pat1IdNumberCtrl.text.trim(),
-      weight:        _weightCtrl.text.trim().isEmpty ? null : _weightCtrl.text.trim(),
-      bloodPressure: _bpCtrl.text.trim().isEmpty ? null : _bpCtrl.text.trim(),
-      temperature:   _tempCtrl.text.trim().isEmpty ? null : _tempCtrl.text.trim(),
-      allergies:     _pat1AllergyCtrl.text.trim().isEmpty ? null : _pat1AllergyCtrl.text.trim(),
+      age:           _v(_pat1AgeCtrl.text) == null ? null : int.tryParse(_pat1AgeCtrl.text.trim()),
+      dateOfBirth:   original.dateOfBirth,
+      sex:           _pat1Gender?.toLowerCase(),
+      phone:         _v(_pat1PhoneCtrl.text),
+      altPhone:      _v(_pat1AltPhoneCtrl.text),
+      email:         _v(_pat1EmailCtrl.text),
+      address:       _v(_pat1AddressCtrl.text),
+      idProofType:   _v(_pat1IdTypeCtrl.text),
+      idProofNumber: _v(_pat1IdNumberCtrl.text),
+      weight:        _v(_weightCtrl.text),
+      bloodPressure: _v(_bpCtrl.text),
+      temperature:   _v(_tempCtrl.text),
+      allergies:     _v(_pat1AllergyCtrl.text),
+      medicalHistory:  original.medicalHistory,
+      previousHistory: original.previousHistory,
+      opdType:       original.opdType,
+      notes:         original.notes,
+      isActive:      original.isActive,
+      createdAt:     original.createdAt,
+      updatedAt:     original.updatedAt,
+      createdBy:     original.createdBy,
+      updatedBy:     original.updatedBy,
+      syncStatus:    original.syncStatus,
     );
     await ref.read(patientsProvider.notifier).updatePatient(updated);
     _patient = updated;
@@ -512,7 +527,10 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
         final current      = ref.read(visitEditProvider('${widget.patientId}/${widget.visitId!}'));
         if (current == null) return;
 
-        editNotifier.update(current.copyWith(
+        // Construct directly so cleared fields become null (copyWith uses ?? which ignores null)
+        editNotifier.update(VisitEntity(
+          id:                 current.id,
+          patientId:          current.patientId,
           visitDate:          _visitDate,
           visitType:          _visitType,
           complaints:         nullIfEmpty(_complaintCtrl.text),
@@ -520,7 +538,16 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
           clinicalImpression: nullIfEmpty(_diagnosisCtrl.text),
           plan:               nullIfEmpty(_treatmentCtrl.text),
           notes:              nullIfEmpty(_treatNotesCtrl.text),
+          bp:                 nullIfEmpty(_bpCtrl.text),
+          temperature:        nullIfEmpty(_tempCtrl.text),
+          weight:             nullIfEmpty(_weightCtrl.text),
           status:             'completed',
+          isActive:           current.isActive,
+          createdAt:          current.createdAt,
+          updatedAt:          current.updatedAt,
+          createdBy:          current.createdBy,
+          updatedBy:          current.updatedBy,
+          syncStatus:         current.syncStatus,
         ));
         final ok = await editNotifier.save()
             .timeout(const Duration(seconds: 12), onTimeout: () => false);
