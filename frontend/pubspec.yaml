@@ -60,6 +60,11 @@ dependencies:
   # Share / WhatsApp
   share_plus: ^10.1.4
 
+  # Google Drive integration
+  google_sign_in: ^6.2.1
+  googleapis: ^12.0.0
+  http: ^1.2.1
+
   # Utilities
   equatable: ^2.0.5
   dartz: ^0.10.1

@@ -98,6 +98,21 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen>
     }
   }
 
+  void _showDateFilterSheet() {
+    final s = ref.read(patientsProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _DateFilterSheet(
+        initialFrom: s.dateFrom,
+        initialTo: s.dateTo,
+        onApply: (from, to) =>
+            ref.read(patientsProvider.notifier).setDateFilter(dateFrom: from, dateTo: to),
+      ),
+    );
+  }
+
   Future<void> _addVisit(String patientId) async {
     final visit = await ref
         .read(visitsProvider(patientId).notifier)
@@ -198,56 +213,25 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen>
                   ],
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                _SearchDateBar(
                   controller: _searchCtrl,
-                  style: TextStyle(fontSize: 14, color: textMain),
-                  decoration: InputDecoration(
-                    hintText: 'Search by name, ID or phone',
-                    hintStyle:
-                        const TextStyle(color: _kSub, fontSize: 13),
-                    prefixIcon:
-                        const Icon(Icons.search, color: _kSub, size: 20),
-                    suffixIcon: _searchCtrl.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear,
-                                size: 18, color: _kSub),
-                            onPressed: () {
-                              _searchCtrl.clear();
-                              ref
-                                  .read(patientsProvider.notifier)
-                                  .search('');
-                            },
-                          )
-                        : Icon(Icons.tune_rounded,
-                            size: 20,
-                            color: isDark ? _kSub : _kNavy),
-                    filled: true,
-                    fillColor:
-                        isDark ? _kDarkField : const Color(0xFFF5F7FF),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                          color: Colors.grey.withValues(alpha: 0.2)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.1)
-                            : Colors.grey.withValues(alpha: 0.15),
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide:
-                          const BorderSide(color: _kBlue, width: 1.5),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                  ),
-                  onChanged: (v) =>
-                      ref.read(patientsProvider.notifier).search(v),
+                  isDark: isDark,
+                  textMain: textMain,
+                  hasDateFilter: state.hasDateFilter,
+                  onSearch: (v) => ref.read(patientsProvider.notifier).search(v),
+                  onFilterTap: _showDateFilterSheet,
                 ),
+                if (state.hasDateFilter) ...[
+                  const SizedBox(height: 6),
+                  _ActiveDateBanner(
+                    dateFrom: state.dateFrom,
+                    dateTo: state.dateTo,
+                    isDark: isDark,
+                    onClear: () => ref
+                        .read(patientsProvider.notifier)
+                        .setDateFilter(dateFrom: null, dateTo: null),
+                  ),
+                ],
                 const SizedBox(height: 14),
               ],
             ),
@@ -267,8 +251,8 @@ class _PatientListScreenState extends ConsumerState<PatientListScreen>
                                 height:
                                     MediaQuery.of(context).size.height * 0.55,
                                 child: _EmptyState(
-                                  hasSearch:
-                                      state.search?.isNotEmpty == true,
+                                  hasSearch: state.search?.isNotEmpty == true ||
+                                      state.hasDateFilter,
                                   isDark: isDark,
                                   textMain: textMain,
                                 ),
@@ -934,6 +918,487 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+// ── Search + date filter bar ──────────────────────────────────────────────────
+
+class _SearchDateBar extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isDark;
+  final Color textMain;
+  final bool hasDateFilter;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onFilterTap;
+
+  const _SearchDateBar({
+    required this.controller,
+    required this.isDark,
+    required this.textMain,
+    required this.hasDateFilter,
+    required this.onSearch,
+    required this.onFilterTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            style: TextStyle(fontSize: 14, color: textMain),
+            decoration: InputDecoration(
+              hintText: 'Search by name, ID or phone',
+              hintStyle: const TextStyle(color: _kSub, fontSize: 13),
+              prefixIcon: const Icon(Icons.search, color: _kSub, size: 20),
+              suffixIcon: controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: _kSub),
+                      onPressed: () {
+                        controller.clear();
+                        onSearch('');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: isDark ? _kDarkField : const Color(0xFFF5F7FF),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.grey.withValues(alpha: 0.15),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: _kBlue, width: 1.5),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            ),
+            onChanged: onSearch,
+          ),
+        ),
+        const SizedBox(width: 8),
+        GestureDetector(
+          onTap: onFilterTap,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: hasDateFilter
+                      ? _kBlue
+                      : (isDark ? _kDarkField : const Color(0xFFF5F7FF)),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: hasDateFilter
+                        ? _kBlue
+                        : (isDark
+                            ? Colors.white.withValues(alpha: 0.1)
+                            : Colors.grey.withValues(alpha: 0.15)),
+                  ),
+                ),
+                child: Icon(
+                  Icons.calendar_month_rounded,
+                  size: 20,
+                  color: hasDateFilter
+                      ? Colors.white
+                      : (isDark ? Colors.white70 : _kNavy),
+                ),
+              ),
+              if (hasDateFilter)
+                Positioned(
+                  top: -3,
+                  right: -3,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF4CAF50),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Active date banner ────────────────────────────────────────────────────────
+
+class _ActiveDateBanner extends StatelessWidget {
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
+  final bool isDark;
+  final VoidCallback onClear;
+
+  const _ActiveDateBanner({
+    required this.dateFrom,
+    required this.dateTo,
+    required this.isDark,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    String label;
+    final fmt = DateFormat('dd MMM yyyy');
+    if (dateFrom != null && dateTo != null) {
+      if (dateFrom == dateTo) {
+        label = fmt.format(dateFrom!);
+      } else {
+        label = '${fmt.format(dateFrom!)}  →  ${fmt.format(dateTo!)}';
+      }
+    } else if (dateFrom != null) {
+      label = 'From ${fmt.format(dateFrom!)}';
+    } else {
+      label = 'Until ${fmt.format(dateTo!)}';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: _kBlue.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _kBlue.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_month_rounded, size: 14, color: _kBlue),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: _kBlue),
+            ),
+          ),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(Icons.close_rounded, size: 16, color: _kBlue),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Date filter bottom sheet ──────────────────────────────────────────────────
+
+class _DateFilterSheet extends StatefulWidget {
+  final DateTime? initialFrom;
+  final DateTime? initialTo;
+  final void Function(DateTime? from, DateTime? to) onApply;
+
+  const _DateFilterSheet({
+    required this.initialFrom,
+    required this.initialTo,
+    required this.onApply,
+  });
+
+  @override
+  State<_DateFilterSheet> createState() => _DateFilterSheetState();
+}
+
+class _DateFilterSheetState extends State<_DateFilterSheet> {
+  DateTime? _from;
+  DateTime? _to;
+  String? _selectedChip;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = widget.initialFrom;
+    _to = widget.initialTo;
+  }
+
+  void _applyChip(String label) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    setState(() {
+      _selectedChip = label;
+      switch (label) {
+        case 'Today':
+          _from = today;
+          _to = today;
+        case 'Yesterday':
+          final y = today.subtract(const Duration(days: 1));
+          _from = y;
+          _to = y;
+        case 'Last 7 days':
+          _from = today.subtract(const Duration(days: 6));
+          _to = today;
+        case 'Last 30 days':
+          _from = today.subtract(const Duration(days: 29));
+          _to = today;
+      }
+    });
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final initial = (isFrom ? _from : _to) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx)
+            .copyWith(colorScheme: Theme.of(ctx).colorScheme.copyWith(primary: _kBlue)),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      _selectedChip = null;
+      if (isFrom) {
+        _from = picked;
+        if (_to != null && _to!.isBefore(_from!)) _to = _from;
+      } else {
+        _to = picked;
+        if (_from != null && _from!.isAfter(_to!)) _from = _to;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF1A1A3A) : Colors.white;
+    final textMain = isDark ? Colors.white : _kNavy;
+    final textSub = isDark ? const Color(0xFFB8B5DC) : _kSub;
+
+    const chips = ['Today', 'Yesterday', 'Last 7 days', 'Last 30 days'];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 12, 20, MediaQuery.of(context).viewInsets.bottom + 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.white24
+                    : Colors.grey.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Text('Filter by Date',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: textMain)),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: chips.map((chip) {
+              final active = _selectedChip == chip;
+              return GestureDetector(
+                onTap: () => _applyChip(chip),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? _kBlue
+                        : (isDark
+                            ? const Color(0xFF252550)
+                            : const Color(0xFFF0F4FF)),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: active
+                          ? _kBlue
+                          : (isDark
+                              ? Colors.white12
+                              : Colors.grey.withValues(alpha: 0.2)),
+                    ),
+                  ),
+                  child: Text(chip,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: active ? Colors.white : textSub)),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          Divider(
+              color: isDark
+                  ? Colors.white12
+                  : Colors.grey.withValues(alpha: 0.15)),
+          const SizedBox(height: 14),
+          Text('Custom Range',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: textSub)),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: _DateBox(
+                label: 'From',
+                date: _from,
+                isDark: isDark,
+                textMain: textMain,
+                textSub: textSub,
+                onTap: () => _pickDate(isFrom: true),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _DateBox(
+                label: 'To',
+                date: _to,
+                isDark: isDark,
+                textMain: textMain,
+                textSub: textSub,
+                onTap: () => _pickDate(isFrom: false),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  widget.onApply(null, null);
+                  Navigator.pop(context);
+                },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                      color: isDark
+                          ? Colors.white24
+                          : Colors.grey.withValues(alpha: 0.3)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: Text('Clear',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: textSub)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton(
+                onPressed: () {
+                  widget.onApply(_from, _to);
+                  Navigator.pop(context);
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: _kBlue,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: const Text('Apply',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, color: Colors.white)),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class _DateBox extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final bool isDark;
+  final Color textMain;
+  final Color textSub;
+  final VoidCallback onTap;
+
+  const _DateBox({
+    required this.label,
+    required this.date,
+    required this.isDark,
+    required this.textMain,
+    required this.textSub,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDate = date != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDark
+              ? const Color(0xFF252550)
+              : const Color(0xFFF0F4FF),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasDate
+                ? _kBlue
+                : (isDark
+                    ? Colors.white12
+                    : Colors.grey.withValues(alpha: 0.2)),
+            width: hasDate ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today_rounded,
+                size: 14,
+                color: hasDate ? _kBlue : textSub),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: textSub)),
+                  Text(
+                    hasDate
+                        ? DateFormat('dd MMM yyyy').format(date!)
+                        : 'Any',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: hasDate ? textMain : textSub),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

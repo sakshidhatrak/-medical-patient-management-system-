@@ -28,6 +28,8 @@ class PatientsState {
   final int page;
   final String? search;
   final String? error;
+  final DateTime? dateFrom;
+  final DateTime? dateTo;
 
   const PatientsState({
     this.patients = const [],
@@ -36,7 +38,11 @@ class PatientsState {
     this.page = 1,
     this.search,
     this.error,
+    this.dateFrom,
+    this.dateTo,
   });
+
+  bool get hasDateFilter => dateFrom != null || dateTo != null;
 
   PatientsState copyWith({
     List<PatientEntity>? patients,
@@ -46,6 +52,9 @@ class PatientsState {
     String? search,
     String? error,
     bool clearError = false,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    bool clearDateFilter = false,
   }) =>
       PatientsState(
         patients: patients ?? this.patients,
@@ -54,6 +63,8 @@ class PatientsState {
         page: page ?? this.page,
         search: search ?? this.search,
         error: clearError ? null : error ?? this.error,
+        dateFrom: clearDateFilter ? null : dateFrom ?? this.dateFrom,
+        dateTo: clearDateFilter ? null : dateTo ?? this.dateTo,
       );
 }
 
@@ -89,8 +100,15 @@ class PatientsNotifier extends Notifier<PatientsState> {
 
   Future<void> _loadLocal() async {
     try {
-      final rows = await _local.getAll(search: state.search);
-      if (rows.isNotEmpty) {
+      final rows = await _local.getAll(
+          search: state.search,
+          dateFrom: state.dateFrom,
+          dateTo: state.dateTo);
+      // Always update state when a filter is active (so an empty result
+      // clears the list). Skip only on startup with no filter and no data.
+      final hasFilter =
+          state.search?.isNotEmpty == true || state.hasDateFilter;
+      if (rows.isNotEmpty || hasFilter) {
         final entities = rows.map((r) {
           final syncStatus = r['sync_status'] as String? ?? 'synced';
           final jsonStr = r['data_json'] as String?;
@@ -245,7 +263,7 @@ class PatientsNotifier extends Notifier<PatientsState> {
         merged = [...state.patients, ...entities];
       }
       state = state.copyWith(
-        patients: merged,
+        patients: _applyDateFilter(merged),
         isLoading: false,
         hasMore: models.length == _pageSize,
         page: page + 1,
@@ -261,6 +279,20 @@ class PatientsNotifier extends Notifier<PatientsState> {
     } catch (_) {
       state = state.copyWith(isLoading: false);
     }
+  }
+
+  List<PatientEntity> _applyDateFilter(List<PatientEntity> patients) {
+    final from = state.dateFrom;
+    final to = state.dateTo;
+    if (from == null && to == null) return patients;
+    final fromDay = from != null ? DateTime(from.year, from.month, from.day) : null;
+    final toDay = to != null ? DateTime(to.year, to.month, to.day) : null;
+    return patients.where((p) {
+      final d = DateTime(p.createdAt.year, p.createdAt.month, p.createdAt.day);
+      if (fromDay != null && d.isBefore(fromDay)) return false;
+      if (toDay != null && d.isAfter(toDay)) return false;
+      return true;
+    }).toList();
   }
 
   Future<void> refresh() async {
@@ -279,6 +311,17 @@ class PatientsNotifier extends Notifier<PatientsState> {
       await _loadLocal();
       await _syncFromApi(refresh: true);
     });
+  }
+
+  void setDateFilter({DateTime? dateFrom, DateTime? dateTo}) {
+    state = state.copyWith(
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      clearDateFilter: dateFrom == null && dateTo == null,
+      page: 1,
+      isLoading: true,
+    );
+    Future.microtask(_loadLocal);
   }
 
   Future<PatientEntity?> createPatient({
@@ -540,7 +583,7 @@ final patientByIdProvider =
             .read(patientDataSourceProvider)
             .getPatientById(id)
             .then((fresh) async {
-              if (fresh.updatedAt == cached.updatedAt) return;
+              if (fresh.updatedAt == cached.updatedAt && fresh.prn == cached.prn) return;
               await ref.read(localPatientCacheProvider).upsert(fresh.toFullJson());
               ref.invalidateSelf();
             })

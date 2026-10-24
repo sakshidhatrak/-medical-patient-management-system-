@@ -37,7 +37,7 @@ class OfflineDatabase {
     final dbPath = await getDatabasesPath();
     return openDatabase(
       join(dbPath, 'neuro_offline.db'),
-      version: 7,
+      version: 8,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -273,6 +273,18 @@ class OfflineDatabase {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id)');
     }
+    if (oldVersion < 8) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS drive_upload_queue (
+          id          TEXT PRIMARY KEY,
+          file_name   TEXT NOT NULL,
+          pdf_bytes   BLOB NOT NULL,
+          queued_at   TEXT NOT NULL,
+          attempts    INTEGER NOT NULL DEFAULT 0,
+          last_error  TEXT
+        )
+      ''');
+    }
   }
 
   void _createSchema(Batch batch) {
@@ -408,6 +420,18 @@ class OfflineDatabase {
     ''');
     batch.execute(
         'CREATE INDEX IF NOT EXISTS idx_off_sync_entity ON sync_queue(entity_type,entity_id)');
+
+    // ── Drive upload queue ──────────────────────────────────────
+    batch.execute('''
+      CREATE TABLE IF NOT EXISTS drive_upload_queue (
+        id          TEXT PRIMARY KEY,
+        file_name   TEXT NOT NULL,
+        pdf_bytes   BLOB NOT NULL,
+        queued_at   TEXT NOT NULL,
+        attempts    INTEGER NOT NULL DEFAULT 0,
+        last_error  TEXT
+      )
+    ''');
   }
 
   void _createPhotosTable(Batch batch) {

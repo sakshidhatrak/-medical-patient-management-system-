@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -10,6 +12,35 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../presentation/providers/print_config_provider.dart';
+
+// ── Grayscale image conversion ────────────────────────────────────────────────
+
+Future<Uint8List?> _toGrayscalePng(Uint8List bytes) async {
+  try {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final w = frame.image.width;
+    final h = frame.image.height;
+    final bd = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    if (bd == null) return null;
+    final px = bd.buffer.asUint8List();
+    for (int i = 0; i < px.length; i += 4) {
+      final grey = (0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2])
+          .round()
+          .clamp(0, 255);
+      px[i] = grey;
+      px[i + 1] = grey;
+      px[i + 2] = grey;
+    }
+    final comp = Completer<ui.Image>();
+    ui.decodeImageFromPixels(px, w, h, ui.PixelFormat.rgba8888, comp.complete);
+    final greyImg = await comp.future;
+    final png = await greyImg.toByteData(format: ui.ImageByteFormat.png);
+    return png?.buffer.asUint8List();
+  } catch (_) {
+    return null;
+  }
+}
 
 // ── Clinic constants ──────────────────────────────────────────────────────────
 
@@ -88,14 +119,35 @@ const _kPageBorder   = PdfColor.fromInt(0xFFD4AAAA); // light red page border
 pw.Font? _cachedFontRegular;
 pw.Font? _cachedFontMedium;
 pw.Font? _cachedFontItalic;
+pw.Font? _cachedDevaRegular;
+pw.Font? _cachedDevaBold;
 pw.MemoryImage? _cachedBgImage;
 
 Future<(pw.Font, pw.Font, pw.Font)> _loadFonts() async {
   _cachedFontRegular ??= await PdfGoogleFonts.interRegular();
   _cachedFontMedium  ??= await PdfGoogleFonts.interMedium();
   _cachedFontItalic  ??= await PdfGoogleFonts.interItalic();
+  _cachedDevaRegular ??= await PdfGoogleFonts.notoSansDevanagariRegular();
+  _cachedDevaBold    ??= await PdfGoogleFonts.notoSansDevanagariBold();
   return (_cachedFontRegular!, _cachedFontMedium!, _cachedFontItalic!);
 }
+
+// Loads Devanagari fonts for PDF paths that don't call _loadFonts()
+Future<void> _ensureDevaFonts() async {
+  _cachedDevaRegular ??= await PdfGoogleFonts.notoSansDevanagariRegular();
+  _cachedDevaBold    ??= await PdfGoogleFonts.notoSansDevanagariBold();
+}
+
+// Returns true if the string contains any Devanagari character (Hindi / Marathi)
+bool _hasDevanagari(String s) =>
+    s.runes.any((r) => r >= 0x0900 && r <= 0x097F);
+
+// Returns Devanagari font if text needs it, otherwise falls back to latin font
+pw.Font _pickFont(String text, pw.Font latin) =>
+    _hasDevanagari(text) ? (_cachedDevaRegular ?? latin) : latin;
+
+pw.Font _pickFontBold(String text, pw.Font latinBold) =>
+    _hasDevanagari(text) ? (_cachedDevaBold ?? latinBold) : latinBold;
 
 // ── Main PDF assembly ─────────────────────────────────────────────────────────
 //
@@ -155,7 +207,7 @@ Future<Uint8List> _buildTemplatePdf(
   final kBodyL = 64.0  * sx;
   final kBodyT = 87.0  * sy;
   final kBodyW = 218.0 * sx;
-  final kFootH = 12.0  * sy;  // just bottom padding — signature is in content flow
+  final kFootH = 30.0  * sy;  // must clear the pre-printed footer bar in the background template
 
   // Content font scale independent of page scale — 1.5 → 11pt body text on A4
   const kFontScale = 1.5;
@@ -163,19 +215,26 @@ Future<Uint8List> _buildTemplatePdf(
 
   // Signature appended to content flow so it sits just below the last section,
   // never clipped by a fixed-height footer area.
-  sections.add(pw.Column(
-    crossAxisAlignment: pw.CrossAxisAlignment.start,
+  sections.add(pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.end,
     children: [
-      pw.SizedBox(height: 14 * sy),
-      pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
-      pw.SizedBox(height: 2 * sy),
-      pw.Text("Doctor's Signature",
-          style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
-      pw.SizedBox(height: 1.5 * sy),
-      pw.Text(_Clinic.doctor,
-          style: pw.TextStyle(font: fontBold, fontSize: 6 * sx, color: _kNavy)),
-      pw.Text(_Clinic.mmc,
-          style: pw.TextStyle(font: font, fontSize: 5.5 * sx, color: _kNavy)),
+      pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(height: 40 * sy),
+          pw.Container(width: 60 * sx, height: 0.5, color: _kNavy),
+          pw.SizedBox(height: 2 * sy),
+          pw.Text("Doctor's Signature",
+              style: pw.TextStyle(font: fontBold, fontSize: 5.5 * sx, color: _kLabel)),
+          pw.SizedBox(height: 1.5 * sy),
+          pw.Text(_Clinic.doctor,
+              style: pw.TextStyle(font: fontBold, fontSize: 6 * sx, color: _kNavy)),
+          pw.Text(_Clinic.mmc,
+              style: pw.TextStyle(font: font, fontSize: 5.5 * sx, color: _kNavy)),
+          pw.Text('For appointment: ${_Clinic.phone}',
+              style: pw.TextStyle(font: font, fontSize: 5.5 * sx, color: _kNavy)),
+        ],
+      ),
     ],
   ));
 
@@ -215,8 +274,13 @@ Future<Uint8List> _buildManualPdf(
   Map<String, String> data,
   Uint8List? logoBytes,
 ) async {
-  final logo     = logoBytes != null ? pw.MemoryImage(logoBytes) : null;
-  final doc      = pw.Document(title: 'Patient Medical Report', author: _Clinic.doctor);
+  pw.MemoryImage? logo;
+  if (logoBytes != null) {
+    final grey = await _toGrayscalePng(logoBytes);
+    logo = pw.MemoryImage(grey ?? logoBytes);
+  }
+  await _ensureDevaFonts();
+  final doc = pw.Document(title: 'Patient Medical Report', author: _Clinic.doctor);
   final font     = pw.Font.helvetica();
   final fontBold = pw.Font.helveticaBold();
   final fontItal = pw.Font.helveticaOblique();
@@ -576,31 +640,42 @@ pw.Widget _buildPatientRow(
   final ln   = data['lastName'] ?? '';
   final name = [fn, ln].where((s) => s.isNotEmpty && s != '—').join(' ');
   final date = data['date'] ?? DateFormat('dd-MM-yyyy').format(DateTime.now());
+  final prn  = (data['prn'] ?? '').trim();
 
-  const underline = pw.BoxDecoration(
-    border: pw.Border(bottom: pw.BorderSide(color: _kGrey, width: 0.7)),
-  );
   final lbl = pw.TextStyle(font: fontBold, fontSize: 10, color: _kLabel);
   final val = pw.TextStyle(font: font,     fontSize: 10, color: _kText);
 
   return pw.Padding(
     padding: const pw.EdgeInsets.fromLTRB(10, 6, 10, 6),
-    child: pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.end,
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text('Patient Name :', style: lbl),
-        pw.SizedBox(width: 6),
-        pw.Expanded(
-          flex: 5,
-          child: pw.Text(name, style: val),
+        pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text('Patient Name :', style: lbl),
+            pw.SizedBox(width: 6),
+            pw.Expanded(
+              flex: 5,
+              child: pw.Text(name, style: val),
+            ),
+            pw.SizedBox(width: 24),
+            pw.Text('Date :', style: lbl),
+            pw.SizedBox(width: 6),
+            pw.Expanded(
+              flex: 2,
+              child: pw.Text(date, style: val),
+            ),
+          ],
         ),
-        pw.SizedBox(width: 24),
-        pw.Text('Date :', style: lbl),
-        pw.SizedBox(width: 6),
-        pw.Expanded(
-          flex: 2,
-          child: pw.Text(date, style: val),
-        ),
+        if (prn.isNotEmpty) ...[
+          pw.SizedBox(height: 2),
+          pw.Row(children: [
+            pw.Text('Patient ID :', style: lbl),
+            pw.SizedBox(width: 6),
+            pw.Text(prn, style: val),
+          ]),
+        ],
       ],
     ),
   );
@@ -637,28 +712,31 @@ List<pw.Widget> _buildSectionsTemplate(
   // ── single field row ──────────────────────────────────────────────────────
   // RichText with justify: label+value inline, all lines (incl. continuation)
   // stretch to fill the full available width — no blank right-side gaps.
-  pw.Widget fr(String label, String value) => pw.Padding(
-    padding: pw.EdgeInsets.only(bottom: rowGap),
-    child: label.isEmpty
-        ? pw.Text(value,
-            textAlign: pw.TextAlign.justify,
-            style: pw.TextStyle(font: font, fontSize: fs, color: kC))
-        : pw.RichText(
-            textAlign: pw.TextAlign.justify,
-            text: pw.TextSpan(
-              children: [
-                pw.TextSpan(
-                  text: '$label : ',
-                  style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor),
-                ),
-                pw.TextSpan(
-                  text: value,
-                  style: pw.TextStyle(font: font, fontSize: fs, color: kC),
-                ),
-              ],
+  pw.Widget fr(String label, String value) {
+    final vFont = _pickFont(value, font);
+    return pw.Padding(
+      padding: pw.EdgeInsets.only(bottom: rowGap),
+      child: label.isEmpty
+          ? pw.Text(value,
+              textAlign: pw.TextAlign.justify,
+              style: pw.TextStyle(font: vFont, fontSize: fs, color: kC))
+          : pw.RichText(
+              textAlign: pw.TextAlign.justify,
+              text: pw.TextSpan(
+                children: [
+                  pw.TextSpan(
+                    text: '$label : ',
+                    style: pw.TextStyle(font: fontBold, fontSize: fs, color: kLabelColor),
+                  ),
+                  pw.TextSpan(
+                    text: value,
+                    style: pw.TextStyle(font: vFont, fontSize: fs, color: kC),
+                  ),
+                ],
+              ),
             ),
-          ),
-  );
+    );
+  }
 
   // ── section block — bold header + content below ──────────────────────────
   pw.Widget sec(String title, List<pw.Widget> items) => pw.Inseparable(
@@ -717,6 +795,7 @@ List<pw.Widget> _buildSectionsTemplate(
     final ln      = raw('lastName');
     final name    = [fn, ln].where((s) => s.isNotEmpty).join(' ');
     final dateVal = raw('date');
+    final prn     = raw('prn');
     final phone   = raw('phone');
     final email   = raw('email');
     final age     = raw('age');
@@ -724,6 +803,7 @@ List<pw.Widget> _buildSectionsTemplate(
     final address = raw('address');
 
     final rows = <(String, String)>[];
+    if (prn.isNotEmpty)     rows.add(('Patient ID',   prn));
     if (name.isNotEmpty)    rows.add(('Patient Name', name));
     if (dateVal.isNotEmpty) rows.add(('Date',         dateVal));
     if (phone.isNotEmpty)   rows.add(('Phone',        phone));
@@ -901,63 +981,64 @@ List<pw.Widget> _buildSectionsTemplate(
     final meds = _parseMedsForPdf(dv('medications'));
     if (meds.isNotEmpty) {
       sections.add(sec('MEDICINE / TREATMENT', [
-        pw.Table(
-          tableWidth: pw.TableWidth.max,
-          border: pw.TableBorder.all(color: _kBorder, width: 0.4),
-          columnWidths: const {
-            0: pw.FlexColumnWidth(3),  // Medicine
-            1: pw.FlexColumnWidth(2),  // Dose
-            2: pw.FlexColumnWidth(2),  // Route
-            3: pw.FlexColumnWidth(3),  // Frequency
-            4: pw.FlexColumnWidth(3),  // Duration
-          },
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(color: PdfColors.white),
-              children: ['Medicine', 'Dose', 'Route', 'Frequency', 'Duration']
-                  .map(hCell)
-                  .toList(),
-            ),
-            ...meds.asMap().entries.map((e) {
-              final m  = e.value;
-              final bg = e.key.isOdd
-                  ? const PdfColor.fromInt(0xFFF8FAFC)
-                  : null;
-              return pw.TableRow(
-                decoration: bg != null ? pw.BoxDecoration(color: bg) : null,
-                children: [
-                  pw.Padding(
-                    padding: cellPad,
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(
-                          m.medicine.trim().isEmpty ? '-' : m.medicine.trim(),
-                          style: pw.TextStyle(
-                              font: font, fontSize: fs, color: kC),
+        pw.Padding(
+          padding: pw.EdgeInsets.only(top: 2 * scale),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              ...meds.asMap().entries.map((e) {
+                final m   = e.value;
+                final idx = e.key + 1;
+                final parts = [
+                  if (m.dose.isNotEmpty)      m.dose,
+                  if (m.route.isNotEmpty)     m.route,
+                  if (m.frequency.isNotEmpty) m.frequency,
+                  if (m.duration.isNotEmpty)  m.duration,
+                ].join('  ·  ');
+                return pw.Padding(
+                  padding: pw.EdgeInsets.only(bottom: 3 * scale),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.RichText(text: pw.TextSpan(children: [
+                        pw.TextSpan(
+                          text: '$idx.  ',
+                          style: pw.TextStyle(font: fontBold, fontSize: fs, color: kC),
                         ),
-                        if (m.specialInstruction.isNotEmpty)
-                          pw.Text('* ${m.specialInstruction}',
+                        pw.TextSpan(
+                          text: m.medicine.trim(),
+                          style: pw.TextStyle(font: font, fontSize: fs + 1.5, color: kC),
+                        ),
+                        if (parts.isNotEmpty)
+                          pw.TextSpan(
+                            text: '  $parts',
+                            style: pw.TextStyle(font: font, fontSize: fs, color: kC),
+                          ),
+                      ])),
+                      if (m.specialInstruction.isNotEmpty)
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.only(left: 14),
+                          child: pw.Text(m.specialInstruction,
                               style: pw.TextStyle(
-                                  font: font,
-                                  fontSize: fs - 1,
-                                  color: const PdfColor.fromInt(0xFFB07D2A),
+                                  font: _pickFont(m.specialInstruction, font),
+                                  fontSize: fs,
+                                  color: kC,
                                   fontStyle: pw.FontStyle.italic)),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
-                  dCell(m.dose),
-                  dCell(m.route),
-                  dCell(m.frequency),
-                  dCell(m.duration),
-                ],
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         ),
       ]));
     }
   }
+
+  // 8b. OT NOTES
+  if (dv('otNotes').isNotEmpty)
+    sections.add(secInline('OT NOTES', dv('otNotes')));
 
   // 9. ADVICE — a. Instructions  b. Investigation to be done  c. Cross Consultation
   {
@@ -992,7 +1073,9 @@ pw.Widget _buildSections(
 
   // PATIENT CONTACT & ID
   {
+    final prn = (data['prn'] ?? '').trim();
     final items = <pw.Widget>[
+      if (prn.isNotEmpty)          _fieldRow('Patient ID', prn,          font, fontBold),
       if (d('phone').isNotEmpty)   _fieldRow('Phone',   d('phone'),   font, fontBold),
       if (d('address').isNotEmpty) _fieldRow('Address', d('address'), font, fontBold),
       if (d('email').isNotEmpty)   _fieldRow('Email',   d('email'), font, fontBold),
@@ -1072,7 +1155,13 @@ pw.Widget _buildSections(
   // TREATMENT (MEDICINES) — only shown when there is data
   if (d('medications').isNotEmpty)
     sections.add(_section('TREATMENT (MEDICINES)', fontBold, [
-      _buildMedicinesTable(d('medications'), font, fontBold),
+      _buildMedicinesList(d('medications'), font, fontBold),
+    ]));
+
+  // OT NOTES
+  if (d('otNotes').isNotEmpty)
+    sections.add(_section('OT NOTES', fontBold, [
+      _fieldRow('OT Notes', d('otNotes'), font, fontBold),
     ]));
 
   // ADVICE — after treatment
@@ -1162,71 +1251,55 @@ List<_MedRow> _parseMedsForPdf(String raw) {
   }).toList();
 }
 
-pw.Widget _buildMedicinesTable(String raw, pw.Font font, pw.Font fontBold) {
+pw.Widget _buildMedicinesList(String raw, pw.Font font, pw.Font fontBold) {
   final meds = _parseMedsForPdf(raw);
   if (meds.isEmpty) return pw.SizedBox();
 
-  const headers = ['Medicine', 'Dose', 'Route', 'Frequency', 'Duration'];
-
-  pw.Widget headerCell(String t) => pw.Padding(
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Text(t,
-            style: pw.TextStyle(font: fontBold, fontSize: 8.5, color: _kNavy)),
-      );
-
-  pw.Widget dataCell(String t) => pw.Padding(
-        padding: const pw.EdgeInsets.all(4),
-        child: pw.Text(t.trim().isEmpty ? '-' : t.trim(),
-            style: pw.TextStyle(font: font, fontSize: 8.5, color: _kText)),
-      );
-
-  return pw.Table(
-    border: pw.TableBorder.all(color: _kBorder, width: 0.5),
-    columnWidths: const {
-      0: pw.FlexColumnWidth(4),
-      1: pw.FlexColumnWidth(2),
-      2: pw.FlexColumnWidth(2),
-      3: pw.FlexColumnWidth(2),
-      4: pw.FlexColumnWidth(2),
-    },
-    children: [
-      // Header row
-      pw.TableRow(
-        decoration: const pw.BoxDecoration(color: PdfColor.fromInt(0xFFEEEEF8)),
-        children: headers.map(headerCell).toList(),
-      ),
-      // Data rows
-      ...meds.asMap().entries.map((e) {
-        final m = e.value;
-        final bg = e.key.isOdd ? const PdfColor.fromInt(0xFFFAFAFF) : null;
-        return pw.TableRow(
-          decoration: bg != null ? pw.BoxDecoration(color: bg) : null,
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+    children: meds.asMap().entries.map((e) {
+      final m   = e.value;
+      final idx = e.key + 1;
+      final parts = [
+        if (m.dose.isNotEmpty)      m.dose,
+        if (m.route.isNotEmpty)     m.route,
+        if (m.frequency.isNotEmpty) m.frequency,
+        if (m.duration.isNotEmpty)  m.duration,
+      ].join('  ·  ');
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // Medicine cell shows special instruction as italic note below name
-            pw.Padding(
-              padding: const pw.EdgeInsets.all(4),
-              child: pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text(m.medicine.trim().isEmpty ? '-' : m.medicine.trim(),
-                      style: pw.TextStyle(font: font, fontSize: 8.5, color: _kText)),
-                  if (m.specialInstruction.isNotEmpty)
-                    pw.Text('* ${m.specialInstruction}',
-                        style: pw.TextStyle(
-                            font: font, fontSize: 7.5,
-                            color: const PdfColor.fromInt(0xFFB07D2A),
-                            fontStyle: pw.FontStyle.italic)),
-                ],
+            pw.RichText(text: pw.TextSpan(children: [
+              pw.TextSpan(
+                text: '$idx.  ',
+                style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: _kNavy),
               ),
-            ),
-            dataCell(m.dose),
-            dataCell(m.route),
-            dataCell(m.frequency),
-            dataCell(m.duration),
+              pw.TextSpan(
+                text: m.medicine.trim(),
+                style: pw.TextStyle(font: font, fontSize: 11, color: _kNavy),
+              ),
+              if (parts.isNotEmpty)
+                pw.TextSpan(
+                  text: '  $parts',
+                  style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText),
+                ),
+            ])),
+            if (m.specialInstruction.isNotEmpty)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 14),
+                child: pw.Text(m.specialInstruction,
+                    style: pw.TextStyle(
+                        font: _pickFont(m.specialInstruction, font),
+                        fontSize: 9,
+                        color: _kText,
+                        fontStyle: pw.FontStyle.italic)),
+              ),
           ],
-        );
-      }),
-    ],
+        ),
+      );
+    }).toList(),
   );
 }
 
@@ -1238,6 +1311,7 @@ pw.Widget _fieldRow(
   pw.Font font,
   pw.Font fontBold,
 ) {
+  final vFont = _pickFont(value, font);
   return pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 4),
     child: pw.Row(
@@ -1255,7 +1329,7 @@ pw.Widget _fieldRow(
         ],
         pw.Expanded(
           child: pw.Text(value,
-              style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+              style: pw.TextStyle(font: vFont, fontSize: 9.5, color: _kText)),
         ),
       ],
     ),
@@ -1265,7 +1339,7 @@ pw.Widget _fieldRow(
 // Value text + underline (reused for fields and vitals)
 pw.Widget _valueUnderline(String value, pw.Font font) {
   return pw.Text(value,
-      style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText));
+      style: pw.TextStyle(font: _pickFont(value, font), fontSize: 9.5, color: _kText));
 }
 
 // Vital label (e.g. "Weight  :")
@@ -1301,12 +1375,14 @@ pw.Widget _buildFooter(
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.SizedBox(height: 18),
+                pw.SizedBox(height: 45),
                 pw.Container(height: 0.7, width: 110, color: _kNavy),
                 pw.SizedBox(height: 3),
                 pw.Text(_Clinic.doctor,
                     style: pw.TextStyle(font: fontBold, fontSize: 9, color: _kNavy)),
                 pw.Text(_Clinic.mmc,
+                    style: pw.TextStyle(font: font, fontSize: 7, color: _kNavy)),
+                pw.Text('For appointment: ${_Clinic.phone}',
                     style: pw.TextStyle(font: font, fontSize: 7, color: _kNavy)),
                 pw.Text(_Clinic.designation,
                     style: pw.TextStyle(font: font, fontSize: 7, color: _kSub)),
@@ -1318,7 +1394,7 @@ pw.Widget _buildFooter(
               ],
             ),
           ),
-          // Stamp circle
+          // Stamp circle — empty, reserved for manual stamp
           pw.Expanded(
             flex: 2,
             child: pw.Center(
@@ -1328,15 +1404,6 @@ pw.Widget _buildFooter(
                 decoration: pw.BoxDecoration(
                   shape: pw.BoxShape.circle,
                   border: pw.Border.all(color: _kNavy, width: 1.5),
-                ),
-                child: pw.Center(
-                  child: logo != null
-                      ? pw.ClipOval(
-                          child: pw.Image(logo,
-                              width: 52, height: 52, fit: pw.BoxFit.cover))
-                      : pw.Text('BSC',
-                          style: pw.TextStyle(
-                              font: fontBold, fontSize: 9, color: _kNavy)),
                 ),
               ),
             ),
@@ -1406,6 +1473,7 @@ Future<Uint8List> _assemblePdfIsolate(
 
 Future<Uint8List> _assembleLightPdf(
     List<String> enabledIds, Map<String, String> data) async {
+  await _ensureDevaFonts();
   final doc   = pw.Document(compress: true);
   final bold  = pw.Font.helveticaBold();
   final plain = pw.Font.helvetica();
@@ -1434,7 +1502,7 @@ Future<Uint8List> _assembleLightPdf(
                     fontSize: 8,
                     color: const PdfColor.fromInt(0xFF555555))),
             pw.SizedBox(height: 2),
-            pw.Text(v, style: pw.TextStyle(font: plain, fontSize: 11)),
+            pw.Text(v, style: pw.TextStyle(font: _pickFont(v, plain), fontSize: 11)),
           ]),
     ));
   }
@@ -1456,6 +1524,7 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Advice',                       'advice');
   addRow('Investigation to be done', 'investigationToBeDone');
   addRow('Medications',                  'medications');
+  addRow('OT Notes',                     'otNotes');
   addRow('Cross Consultation',           'crossConsultation');
   addRow('Notes',               'notes');
 
@@ -1483,6 +1552,10 @@ Future<Uint8List> _assembleLightPdf(
                 style: pw.TextStyle(font: plain, fontSize: 10)),
           ],
         ),
+        if ((data['prn'] ?? '').trim().isNotEmpty)
+          pw.Text('Patient ID: ${data['prn']!.trim()}',
+              style: pw.TextStyle(font: plain, fontSize: 9,
+                  color: const PdfColor.fromInt(0xFF555555))),
         pw.SizedBox(height: 8),
       ],
     ),
@@ -1517,6 +1590,7 @@ Future<Uint8List> _buildBlankPdf(
   List<String> enabledIds,
   Map<String, String> data,
 ) async {
+  await _ensureDevaFonts();
   final doc   = pw.Document(compress: true);
   final bold  = pw.Font.helveticaBold();
   final plain = pw.Font.helvetica();
@@ -1549,7 +1623,7 @@ Future<Uint8List> _buildBlankPdf(
                   color: const PdfColor.fromInt(0xFF444444))),
           pw.SizedBox(height: 2),
           pw.Text(v,
-              style: pw.TextStyle(font: plain, fontSize: 11,
+              style: pw.TextStyle(font: _pickFont(v, plain), fontSize: 11,
                   color: const PdfColor.fromInt(0xFF111111))),
           pw.SizedBox(height: 3),
           pw.Container(height: 0.4, color: const PdfColor.fromInt(0xFFDDDDDD)),
@@ -1574,6 +1648,7 @@ Future<Uint8List> _buildBlankPdf(
   addRow('Impression',               'diagnosis');
   addRow('Treatment Plan',           'treatmentPlan');
   addRow('Medicine / Treatment',     'medications');
+  addRow('OT Notes',                 'otNotes');
   addRow('Instructions',             'advice');
   addRow('Investigation to be done', 'investigationToBeDone');
   addRow('Cross Consultation',       'crossConsultation');
@@ -1605,6 +1680,11 @@ Future<Uint8List> _buildBlankPdf(
                         font: plain, fontSize: 10,
                         color: const PdfColor.fromInt(0xFF555555)),
                   ),
+                if ((data['prn'] ?? '').trim().isNotEmpty)
+                  pw.Text('Patient ID: ${data['prn']!.trim()}',
+                      style: pw.TextStyle(
+                          font: plain, fontSize: 9,
+                          color: const PdfColor.fromInt(0xFF555555))),
               ],
             ),
             pw.Text('Date: $date',

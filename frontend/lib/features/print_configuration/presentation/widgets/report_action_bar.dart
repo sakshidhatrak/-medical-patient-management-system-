@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/connectivity_provider.dart';
+import '../../../../core/services/google_drive_service.dart';
+import '../../../../core/sync/sync_engine.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_dimensions.dart';
 import '../../../../core/theme/theme_extensions.dart';
@@ -8,11 +11,19 @@ import '../../services/pdf_export_service.dart';
 import '../providers/print_config_provider.dart';
 import 'template_save_dialog.dart';
 
-class ReportActionBar extends ConsumerWidget {
+class ReportActionBar extends ConsumerStatefulWidget {
   const ReportActionBar({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReportActionBar> createState() => _ReportActionBarState();
+}
+
+class _ReportActionBarState extends ConsumerState<ReportActionBar> {
+
+  bool _isDriveSaving = false;
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(printConfigProvider);
 
     return Container(
@@ -95,6 +106,24 @@ class ReportActionBar extends ConsumerWidget {
               outlined: true,
               onTap: () => _printWithoutLetterhead(context, ref),
             ),
+            const SizedBox(width: 4),
+            if (_isDriveSaving)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF1B72E8),
+                ),
+              )
+            else
+              _BarButton(
+                icon: Icons.add_to_drive_rounded,
+                label: 'Save to Drive',
+                color: const Color(0xFF1B72E8),
+                outlined: true,
+                onTap: () => _saveToGoogleDrive(context, ref),
+              ),
           ],
         ],
       ),
@@ -165,6 +194,67 @@ class ReportActionBar extends ConsumerWidget {
       }
     } finally {
       notifier.setExporting(false);
+    }
+  }
+
+  Future<void> _saveToGoogleDrive(BuildContext context, WidgetRef ref) async {
+    setState(() => _isDriveSaving = true);
+    try {
+      final config      = ref.read(printConfigProvider);
+      final patientData = ref.read(activePatientDataProvider);
+      final bytes       = await PdfExportService.buildPdf(config, patientData: patientData);
+
+      // Build filename matching the Export PDF convention.
+      final data      = patientData ?? {};
+      final firstName = (data['firstName'] ?? '').trim();
+      final lastName  = (data['lastName']  ?? '').trim();
+      final fullName  = [firstName, lastName].where((s) => s.isNotEmpty).join('');
+      final now       = DateTime.now();
+      String p2(int v) => v.toString().padLeft(2, '0');
+      final dateStr   = '${p2(now.day)}${p2(now.month)}${now.year}';
+      final fileName  = fullName.isNotEmpty
+          ? '${fullName}_$dateStr.pdf'
+          : 'patient_report_$dateStr.pdf';
+
+      // Offline: save bytes to local queue; upload when connection restores.
+      if (ref.read(isOnlineProvider) != true) {
+        await ref.read(driveUploadQueueProvider).enqueue(fileName, bytes);
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Offline — report queued for Drive upload when connection restores'),
+            backgroundColor: Color(0xFF1B72E8),
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
+      final fileId = await GoogleDriveService.uploadPdf(bytes, fileName);
+      if (!context.mounted) return;
+
+      if (fileId == null) {
+        // User cancelled Google sign-in — silently ignore.
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Report saved to Google Drive'),
+          backgroundColor: Color(0xFF1B72E8),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Drive upload failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isDriveSaving = false);
     }
   }
 }

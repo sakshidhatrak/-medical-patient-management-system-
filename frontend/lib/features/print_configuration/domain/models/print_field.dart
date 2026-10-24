@@ -194,6 +194,12 @@ const List<PrintField> kAllPrintFields = [
     icon: Icons.medication_outlined,
   ),
   PrintField(
+    id: 'otNotes',
+    label: 'OT Notes',
+    sectionId: kSectionTreatment,
+    icon: Icons.content_paste_outlined,
+  ),
+  PrintField(
     id: 'notes',
     label: 'Notes',
     sectionId: kSectionTreatment,

@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 
+import '../../../../core/services/google_drive_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/theme_extensions.dart';
 import '../../services/pdf_export_service.dart';
@@ -730,18 +735,26 @@ class _FooterCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              // Logo
+              // Logo — black & white
               SizedBox(
                 width: 90,
                 child: Center(
                   child: SizedBox(
                     width: 80,
                     height: 90,
-                    child: Image.asset(
-                      'assets/images/app_logo.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(
-                          Icons.local_hospital, size: 50, color: _kNavy),
+                    child: ColorFiltered(
+                      colorFilter: const ColorFilter.matrix([
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0.2126, 0.7152, 0.0722, 0, 0,
+                        0,      0,      0,      1, 0,
+                      ]),
+                      child: Image.asset(
+                        'assets/images/app_logo.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Icon(
+                            Icons.local_hospital, size: 50, color: _kNavy),
+                      ),
                     ),
                   ),
                 ),
@@ -1189,9 +1202,19 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
   Future<void> _print() async {
     setState(() => _printing = true);
     try {
-      await PdfExportService.printReport(
-        ref.read(printConfigProvider),
-        patientData: ref.read(activePatientDataProvider),
+      final config      = ref.read(printConfigProvider);
+      final patientData = ref.read(activePatientDataProvider);
+
+      // Build PDF once — reuse bytes for both print and Drive upload.
+      final bytes = await PdfExportService.buildPdf(config, patientData: patientData);
+
+      // Upload to Drive silently in background — no sign-in UI shown.
+      _uploadSilently(bytes, patientData ?? {});
+
+      // Open Android print dialog.
+      await Printing.layoutPdf(
+        name:     'Patient Report',
+        onLayout: (_) async => bytes,
       );
     } catch (e) {
       if (mounted) {
@@ -1203,6 +1226,33 @@ class _FieldConfigPageState extends ConsumerState<FieldConfigPage> {
       if (mounted) setState(() => _printing = false);
     }
   }
+
+  // Silently uploads to Drive using already-authorised account.
+  // Never shows any sign-in UI — if not signed in, does nothing.
+  void _uploadSilently(Uint8List bytes, Map<String, String> patientData) {
+    final firstName = (patientData['firstName'] ?? '').trim();
+    final lastName  = (patientData['lastName']  ?? '').trim();
+    final fullName  = [firstName, lastName].where((s) => s.isNotEmpty).join('');
+    final dateStr   = DateFormat('ddMMyyyy').format(DateTime.now());
+    final fileName  = fullName.isNotEmpty
+        ? '${fullName}_$dateStr.pdf'
+        : 'patient_report_$dateStr.pdf';
+
+    GoogleDriveService.uploadSilently(bytes, fileName).then((fileId) {
+      if (fileId != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Report saved to Google Drive ✓'),
+            backgroundColor: Color(0xFF1B72E8),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }).catchError((_) {
+      // Silent fail — print must not be blocked by Drive issues.
+    });
+  }
+
 
   Future<void> _printWithoutLetterhead() async {
     setState(() => _printingNoLh = true);
@@ -1845,7 +1895,7 @@ class _MedsMiniTable extends StatelessWidget {
     Widget cell(String t, {bool isHeader = false}) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Text(
-            t.isEmpty ? '—' : t,
+            t,
             style: TextStyle(
               fontSize: 10,
               fontWeight: isHeader ? FontWeight.w700 : FontWeight.w500,
@@ -1880,16 +1930,17 @@ class _MedsMiniTable extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      r[0].isEmpty ? '—' : r[0],
+                      r[0],
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
                     ),
                     if (specialInstruction.isNotEmpty)
                       Text(
-                        '* $specialInstruction',
-                        style: const TextStyle(
-                          fontSize: 9,
+                        specialInstruction,
+                        style: TextStyle(
+                          fontSize: 11,
                           fontStyle: FontStyle.italic,
-                          color: Color(0xFFB07D2A),
+                          color: textColor,
+                          fontFamilyFallback: const ['Noto Sans Devanagari', 'sans-serif'],
                         ),
                       ),
                   ],

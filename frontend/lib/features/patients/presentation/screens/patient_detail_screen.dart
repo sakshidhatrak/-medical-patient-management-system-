@@ -106,6 +106,7 @@ Map<String, String> _buildVisitPrintMap(
     'treatmentPlan':      _pick(visit.plan,                pn('treatmentPlan')),
     'medications':        _pick(vex(ex('medications'), 'medications'), pn('medications')),
     'crossConsultation':  _pick(ex('crossConsultation'),    pn('crossConsultation')),
+    'otNotes':                _pick(ex('otNotes'),                 pn('otNotes')),
     'advice':                 _pick(ex('advice'),                  pn('advice')),
     'investigationToBeDone':  _pick(ex('investigationToBeDone'),   ''),
     'visitType':              visit.visitType.label,
@@ -1298,6 +1299,14 @@ class _MedicinesTable extends StatelessWidget {
                   color: context.textPrimary)),
         );
 
+    Widget medicineCell(String t, int flex) => Expanded(
+          flex: flex,
+          child: Text(t.isEmpty ? '—' : t,
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600,
+                  color: context.textPrimary)),
+        );
+
     return Container(
       decoration: BoxDecoration(
         color: context.bgColor,
@@ -1341,7 +1350,7 @@ class _MedicinesTable extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(children: [
-                        dataCell(m.medicine,  weights[0]),
+                        medicineCell(m.medicine, weights[0]),
                         dataCell(m.dose,      weights[1]),
                         dataCell(m.route,     weights[2]),
                         dataCell(m.frequency, weights[3]),
@@ -1350,15 +1359,8 @@ class _MedicinesTable extends StatelessWidget {
                       if (m.specialInstruction.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 3),
-                          child: Row(children: [
-                            Icon(Icons.info_outline_rounded,
-                                size: 10, color: const Color(0xFFD4A855)),
-                            const SizedBox(width: 4),
-                            Expanded(child: Text(m.specialInstruction,
-                                style: const TextStyle(
-                                    fontSize: 10, color: Color(0xFFD4A855),
-                                    fontStyle: FontStyle.italic))),
-                          ]),
+                          child: Text(m.specialInstruction,
+                              style: const TextStyle(fontSize: 12)),
                         ),
                     ],
                   ),

@@ -55,7 +55,7 @@ const Set<String> _kAllFieldIds = {
   'previousHistory', 'chiefComplaint',
   'examGeneral', 'examNeurological',
   'clinicalDiagnosis', 'imaging', 'otherInvestigation',
-  'diagnosis', 'treatmentPlan', 'medications', 'notes',
+  'diagnosis', 'treatmentPlan', 'medications', 'otNotes', 'notes',
   'advice', 'investigationToBeDone', 'crossConsultation',
 };
 
@@ -70,7 +70,7 @@ const Set<String> _kDoctorFields = {
   'weight', 'bloodPressure', 'temperature',
   'allergies', 'chiefComplaint', 'previousHistory',
   'examGeneral', 'examNeurological',
-  'clinicalDiagnosis', 'diagnosis', 'treatmentPlan', 'medications', 'notes',
+  'clinicalDiagnosis', 'diagnosis', 'treatmentPlan', 'medications', 'otNotes', 'notes',
   'advice', 'investigationToBeDone', 'crossConsultation',
 };
 

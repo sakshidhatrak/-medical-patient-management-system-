@@ -438,8 +438,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     Expanded(flex: 3, child: Text(row.medicine,
-                        style: TextStyle(fontSize: 12, color: _kNavy(context),
-                            fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 14, color: _kNavy(context)),
                         overflow: TextOverflow.ellipsis)),
                     Expanded(flex: 2, child: Text(row.dose.isNotEmpty ? row.dose : '—',
                         style: TextStyle(fontSize: 12, color: _kSlate(context)),
@@ -460,14 +459,9 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                   ]),
                   if (row.specialInstruction.isNotEmpty) ...[
                     const SizedBox(height: 3),
-                    Row(children: [
-                      Icon(Icons.info_outline_rounded, size: 11, color: Colors.amber.shade700),
-                      const SizedBox(width: 4),
-                      Expanded(child: Text(row.specialInstruction,
-                          style: TextStyle(fontSize: 11, color: Colors.amber.shade700,
-                              fontStyle: FontStyle.italic),
-                          overflow: TextOverflow.ellipsis)),
-                    ]),
+                    Text(row.specialInstruction,
+                        style: const TextStyle(fontSize: 12),
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ]),
               );
@@ -1944,9 +1938,7 @@ class _PatientRegisterScreenState extends ConsumerState<PatientRegisterScreen> {
                             Padding(
                               padding: const EdgeInsets.only(left: 24),
                               child: Text(r.specialInstruction,
-                                  style: TextStyle(fontSize: 10,
-                                      color: Colors.amber.shade700,
-                                      fontStyle: FontStyle.italic)),
+                                  style: const TextStyle(fontSize: 12)),
                             ),
                           ],
                         ]),

@@ -254,7 +254,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     _pat1WeightCtrl.text    = patient.weight ?? '';
     _pat1BpCtrl.text        = patient.bloodPressure ?? '';
     _pat1TempCtrl.text      = patient.temperature ?? '';
-    _pat1AllergyCtrl.text   = patient.allergies ?? '';
+    _pat1AllergyCtrl.text   = '';
     // Seed visit-level vitals from patient record only when no exam JSON has already
     // set them (se() runs before this — for new visits _weightCtrl is still empty).
     if (_weightCtrl.text.isEmpty) _weightCtrl.text = patient.weight ?? '';
@@ -284,7 +284,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
       weight:        _v(_weightCtrl.text),
       bloodPressure: _v(_bpCtrl.text),
       temperature:   _v(_tempCtrl.text),
-      allergies:     _v(_pat1AllergyCtrl.text),
+      allergies:     _v(_pat1AllergyCtrl.text) ?? original.allergies,
       medicalHistory:  original.medicalHistory,
       previousHistory: original.previousHistory,
       opdType:       original.opdType,
@@ -2310,20 +2310,21 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                         style: TextStyle(fontSize: 12, color: _kSlate(context)),
                         overflow: TextOverflow.ellipsis)),
                     GestureDetector(
+                      onTap: () => _showEditMedicineSheet(idx),
+                      child: Icon(Icons.edit_rounded, size: 16, color: _kBlue),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
                       onTap: () => setState(() => _prescriptionRows.removeAt(idx)),
                       child: Icon(Icons.close_rounded, size: 16, color: _kMuted(context)),
                     ),
                   ]),
                   if (row.specialInstruction.isNotEmpty) ...[
                     const SizedBox(height: 3),
-                    Row(children: [
-                      Icon(Icons.info_outline_rounded, size: 11, color: _kAmber),
-                      const SizedBox(width: 4),
-                      Expanded(child: Text(row.specialInstruction,
-                          style: TextStyle(fontSize: 10, color: _kAmber,
-                              fontStyle: FontStyle.italic),
-                          overflow: TextOverflow.ellipsis)),
-                    ]),
+                    Text(row.specialInstruction,
+                        style: TextStyle(fontSize: 12, color: _kSlate(context),
+                            fontStyle: FontStyle.italic),
+                        overflow: TextOverflow.ellipsis),
                   ],
                 ]),
               );
@@ -2346,6 +2347,22 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
     );
     if (result != null && result.medicine.isNotEmpty) {
       setState(() => _prescriptionRows.add(result));
+    }
+  }
+
+  Future<void> _showEditMedicineSheet(int idx) async {
+    final result = await showModalBottomSheet<_PrescriptionRow>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AddMedicineSheet(
+        patientId: widget.patientId,
+        medicineService: ref.read(medicineServiceProvider),
+        initialRow: _prescriptionRows[idx],
+      ),
+    );
+    if (result != null && result.medicine.isNotEmpty) {
+      setState(() => _prescriptionRows[idx] = result);
     }
   }
 
@@ -2600,7 +2617,7 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
               pRow('Temperature', fv(temp)),
             ]),
           ),
-          sCard('Clinical Snapshot', Icons.health_and_safety_outlined,
+          sCard('Known Allergies', Icons.health_and_safety_outlined,
               _kBlue,
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -2716,14 +2733,9 @@ class _AddVisitWizardState extends ConsumerState<AddVisitWizardScreen> {
                           const SizedBox(height: 2),
                           Padding(
                             padding: const EdgeInsets.only(left: 28),
-                            child: Row(children: [
-                              Icon(Icons.info_outline_rounded,
-                                  size: 10, color: _kAmber),
-                              const SizedBox(width: 4),
-                              Expanded(child: Text(r.specialInstruction,
-                                  style: TextStyle(fontSize: 10, color: _kAmber,
-                                      fontStyle: FontStyle.italic))),
-                            ]),
+                            child: Text(r.specialInstruction,
+                                style: TextStyle(fontSize: 12, color: _kSlate(context),
+                                    fontStyle: FontStyle.italic)),
                           ),
                         ],
                       ],
@@ -2922,10 +2934,12 @@ class _PrescriptionRow {
 class _AddMedicineSheet extends StatefulWidget {
   final String patientId;
   final MedicineService medicineService;
+  final _PrescriptionRow? initialRow;
 
   const _AddMedicineSheet({
     required this.patientId,
     required this.medicineService,
+    this.initialRow,
   });
 
   @override
@@ -2950,6 +2964,15 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
   @override
   void initState() {
     super.initState();
+    final r = widget.initialRow;
+    if (r != null) {
+      _nameCtrl.text    = r.medicine;
+      _doseCtrl.text    = r.dose;
+      _routeCtrl.text   = r.route;
+      _freqCtrl.text    = r.frequency;
+      _durCtrl.text     = r.duration;
+      _specialCtrl.text = r.specialInstruction;
+    }
     _nameCtrl.addListener(_onNameChanged);
   }
 
@@ -3033,7 +3056,7 @@ class _AddMedicineSheetState extends State<_AddMedicineSheet> {
                 child: Icon(Icons.medication_rounded, color: _kBlue, size: 17),
               ),
               const SizedBox(width: 10),
-              Text('Add Medicine',
+              Text(widget.initialRow != null ? 'Edit Medicine' : 'Add Medicine',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
                       color: _kNavy(context))),
               const Spacer(),

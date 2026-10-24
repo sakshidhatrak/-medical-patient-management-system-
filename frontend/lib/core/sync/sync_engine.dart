@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../network/api_client.dart';
 import '../offline/offline_database.dart';
 import '../offline/web_offline_store.dart';
 import '../providers/connectivity_provider.dart';
+import '../services/google_drive_service.dart';
 import '../storage/storage_provider.dart';
 
 // ── Sync queue item ───────────────────────────────────────────────
@@ -445,23 +447,48 @@ class LocalPatientCache {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Map<String, dynamic>>> getAll({String? search}) async {
+  Future<List<Map<String, dynamic>>> getAll({
+    String? search,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
     if (kIsWeb) return _web?.getAllPatients(search: search) ?? [];
     final db = await _db.database;
+
+    final conditions = <String>['is_active = 1'];
+    final args = <dynamic>[];
+
     if (search != null && search.isNotEmpty) {
       final q = '%$search%';
-      return db.query(
-        'patients',
-        where:
-            '(first_name LIKE ? OR last_name LIKE ? OR prn LIKE ? OR phone LIKE ?)'
-            ' AND is_active = 1',
-        whereArgs: [q, q, q, q],
-        orderBy: 'updated_at DESC',
-        limit: 100,
-      );
+      conditions.add(
+          '(first_name LIKE ? OR last_name LIKE ? OR prn LIKE ? OR phone LIKE ?)');
+      args.addAll([q, q, q, q]);
     }
-    return db.query('patients',
-        where: 'is_active = 1', orderBy: 'updated_at DESC', limit: 100);
+
+    if (dateFrom != null) {
+      // Use date-only prefix so it matches regardless of time/timezone suffix.
+      final d = dateFrom;
+      final s =
+          '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      conditions.add("created_at >= ?");
+      args.add(s);
+    }
+    if (dateTo != null) {
+      // Include the full dateTo day by comparing against the next day's prefix.
+      final next = dateTo.add(const Duration(days: 1));
+      final s =
+          '${next.year.toString().padLeft(4, '0')}-${next.month.toString().padLeft(2, '0')}-${next.day.toString().padLeft(2, '0')}';
+      conditions.add("created_at < ?");
+      args.add(s);
+    }
+
+    return db.query(
+      'patients',
+      where: conditions.join(' AND '),
+      whereArgs: args.isEmpty ? null : args,
+      orderBy: 'updated_at DESC',
+      limit: 100,
+    );
   }
 
   Future<Map<String, dynamic>?> getById(String id) async {
@@ -1280,6 +1307,116 @@ class LocalAuditCache {
 final localAuditCacheProvider = Provider<LocalAuditCache>(
     (ref) => LocalAuditCache(ref.watch(offlineDatabaseProvider)));
 
+// ── Drive upload queue ────────────────────────────────────────────
+
+class DriveUploadItem {
+  final String id;
+  final String fileName;
+  final Uint8List pdfBytes;
+  final int attempts;
+
+  DriveUploadItem({
+    required this.id,
+    required this.fileName,
+    required this.pdfBytes,
+    required this.attempts,
+  });
+}
+
+class DriveUploadQueue {
+  final OfflineDatabase _db;
+  DriveUploadQueue(this._db);
+
+  Future<void> enqueue(String fileName, Uint8List bytes) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.insert('drive_upload_queue', {
+      'id': const Uuid().v4(),
+      'file_name': fileName,
+      'pdf_bytes': bytes,
+      'queued_at': DateTime.now().toIso8601String(),
+      'attempts': 0,
+    });
+  }
+
+  Future<List<DriveUploadItem>> pending() async {
+    if (kIsWeb) return [];
+    final db = await _db.database;
+    final rows = await db.query('drive_upload_queue', orderBy: 'queued_at ASC');
+    return rows.map((r) => DriveUploadItem(
+      id: r['id'] as String,
+      fileName: r['file_name'] as String,
+      pdfBytes: r['pdf_bytes'] as Uint8List,
+      attempts: r['attempts'] as int,
+    )).toList();
+  }
+
+  Future<int> count() async {
+    if (kIsWeb) return 0;
+    final db = await _db.database;
+    final rows = await db.rawQuery('SELECT COUNT(*) as c FROM drive_upload_queue');
+    return (rows.first['c'] as int?) ?? 0;
+  }
+
+  Future<void> markDone(String id) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.delete('drive_upload_queue', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> incrementAttempt(String id, String error) async {
+    if (kIsWeb) return;
+    final db = await _db.database;
+    await db.rawUpdate(
+      'UPDATE drive_upload_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?',
+      [error, id],
+    );
+  }
+}
+
+class DriveUploadEngine {
+  final DriveUploadQueue _queue;
+  DriveUploadEngine(this._queue);
+
+  bool _running = false;
+
+  Future<int> syncAll() async {
+    if (kIsWeb || _running) return 0;
+    _running = true;
+    int uploaded = 0;
+    try {
+      final items = await _queue.pending();
+      for (final item in items) {
+        try {
+          final fileId = await GoogleDriveService.uploadPdf(item.pdfBytes, item.fileName);
+          if (fileId != null) {
+            await _queue.markDone(item.id);
+            uploaded++;
+            debugPrint('[DriveUploadEngine] uploaded ${item.fileName}');
+          }
+          // null means user cancelled sign-in picker — leave in queue
+        } catch (e) {
+          await _queue.incrementAttempt(item.id, e.toString());
+          debugPrint('[DriveUploadEngine] failed ${item.fileName}: $e');
+        }
+      }
+    } finally {
+      _running = false;
+    }
+    return uploaded;
+  }
+}
+
+final driveUploadQueueProvider = Provider<DriveUploadQueue>((ref) =>
+    DriveUploadQueue(ref.watch(offlineDatabaseProvider)));
+
+final driveUploadEngineProvider = Provider<DriveUploadEngine>((ref) =>
+    DriveUploadEngine(ref.watch(driveUploadQueueProvider)));
+
+/// Emits the number of PDF reports still pending Drive upload.
+final driveUploadPendingCountProvider = FutureProvider<int>((ref) =>
+    ref.watch(driveUploadQueueProvider).count());
+
 // ── Auto-sync on connectivity restore ────────────────────────────
 
 class SyncCoordinator extends Notifier<void> {
@@ -1290,6 +1427,7 @@ class SyncCoordinator extends Notifier<void> {
     Future.microtask(() async {
       if (ref.read(isOnlineProvider) == true) {
         final count = await ref.read(syncEngineProvider).syncAll();
+        await ref.read(driveUploadEngineProvider).syncAll();
         if (count > 0) {
           ref.read(syncSuccessProvider.notifier).state =
               (count: count, at: DateTime.now());
@@ -1301,6 +1439,7 @@ class SyncCoordinator extends Notifier<void> {
       if (isOnline == true && prev == false) {
         Future(() async {
           final count = await ref.read(syncEngineProvider).syncAll();
+          await ref.read(driveUploadEngineProvider).syncAll();
           if (count > 0) {
             ref.read(syncSuccessProvider.notifier).state =
                 (count: count, at: DateTime.now());

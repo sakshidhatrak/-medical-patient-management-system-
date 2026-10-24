@@ -796,11 +796,11 @@ class _RxTable extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(d.displayName,
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700,
+              style: TextStyle(fontSize: 15,
                   color: _kNavy(context))),
           if (d.displayDosage.isNotEmpty)
             Text(d.displayDosage,
-                style: TextStyle(fontSize: 11, color: _kMuted(context))),
+                style: TextStyle(fontSize: 12, color: _kMuted(context))),
         ])),
       ]),
     )).toList(),
@@ -880,7 +880,7 @@ class _ExamRxTable extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(medicine,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                    style: TextStyle(fontSize: 15,
                         color: _kNavy(ctx))),
               ),
             ]),
@@ -899,8 +899,8 @@ class _ExamRxTable extends StatelessWidget {
             if (note.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(note,
-                  style: const TextStyle(
-                      fontSize: 10, color: _kAmber, fontStyle: FontStyle.italic)),
+                  style: TextStyle(
+                      fontSize: 12, color: _kSlate(ctx), fontStyle: FontStyle.italic)),
             ],
           ]),
         );
