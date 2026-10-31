@@ -803,8 +803,8 @@ List<pw.Widget> _buildSectionsTemplate(
     final address = raw('address');
 
     final rows = <(String, String)>[];
-    if (prn.isNotEmpty)     rows.add(('Patient ID',   prn));
     if (name.isNotEmpty)    rows.add(('Patient Name', name));
+    if (prn.isNotEmpty)     rows.add(('Patient ID',   prn));
     if (dateVal.isNotEmpty) rows.add(('Date',         dateVal));
     if (phone.isNotEmpty)   rows.add(('Phone',        phone));
     if (email.isNotEmpty)   rows.add(('Email',        email));
@@ -989,32 +989,45 @@ List<pw.Widget> _buildSectionsTemplate(
               ...meds.asMap().entries.map((e) {
                 final m   = e.value;
                 final idx = e.key + 1;
-                final parts = [
-                  if (m.dose.isNotEmpty)      m.dose,
-                  if (m.route.isNotEmpty)     m.route,
+                final nameDose = [m.medicine.trim(), if (m.dose.isNotEmpty) m.dose, if (m.route.isNotEmpty) m.route].join(' ');
+                final freqFor  = [
                   if (m.frequency.isNotEmpty) m.frequency,
-                  if (m.duration.isNotEmpty)  m.duration,
-                ].join('  ·  ');
+                  if (m.duration.isNotEmpty)  'for ${m.duration}',
+                ].join(' ');
                 return pw.Padding(
                   padding: pw.EdgeInsets.only(bottom: 3 * scale),
                   child: pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      pw.RichText(text: pw.TextSpan(children: [
-                        pw.TextSpan(
-                          text: '$idx.  ',
-                          style: pw.TextStyle(font: fontBold, fontSize: fs, color: kC),
-                        ),
-                        pw.TextSpan(
-                          text: m.medicine.trim(),
-                          style: pw.TextStyle(font: font, fontSize: fs + 1.5, color: kC),
-                        ),
-                        if (parts.isNotEmpty)
-                          pw.TextSpan(
-                            text: '  $parts',
-                            style: pw.TextStyle(font: font, fontSize: fs, color: kC),
+                      pw.Row(
+                        crossAxisAlignment: pw.CrossAxisAlignment.end,
+                        children: [
+                          pw.Text('$idx.  ',
+                              style: pw.TextStyle(font: fontBold, fontSize: fs, color: kC)),
+                          pw.Text(nameDose,
+                              style: pw.TextStyle(font: font, fontSize: fs + 1.5, color: kC)),
+                          pw.Expanded(
+                            child: pw.LayoutBuilder(
+                              builder: (ctx, constraints) => pw.CustomPaint(
+                                size: PdfPoint(constraints?.maxWidth ?? 0, (fs + 2) * scale),
+                                painter: (g, sz) {
+                                  g.setFillColor(kC);
+                                  final y = sz.y * 0.2;
+                                  double x = 3.0;
+                                  while (x < sz.x - 3) {
+                                    g.drawEllipse(x, y, 0.8, 0.8);
+                                    g.fillPath();
+                                    x += 1.6;
+                                  }
+                                },
+                              ),
+                            ),
                           ),
-                      ])),
+                          if (freqFor.isNotEmpty)
+                            pw.Text(freqFor,
+                                style: pw.TextStyle(font: font, fontSize: fs, color: kC)),
+                        ],
+                      ),
                       if (m.specialInstruction.isNotEmpty)
                         pw.Padding(
                           padding: const pw.EdgeInsets.only(left: 14),
@@ -1260,32 +1273,45 @@ pw.Widget _buildMedicinesList(String raw, pw.Font font, pw.Font fontBold) {
     children: meds.asMap().entries.map((e) {
       final m   = e.value;
       final idx = e.key + 1;
-      final parts = [
-        if (m.dose.isNotEmpty)      m.dose,
-        if (m.route.isNotEmpty)     m.route,
+      final nameDose = [m.medicine.trim(), if (m.dose.isNotEmpty) m.dose, if (m.route.isNotEmpty) m.route].join(' ');
+      final freqFor  = [
         if (m.frequency.isNotEmpty) m.frequency,
-        if (m.duration.isNotEmpty)  m.duration,
-      ].join('  ·  ');
+        if (m.duration.isNotEmpty)  'for ${m.duration}',
+      ].join(' ');
       return pw.Padding(
         padding: const pw.EdgeInsets.only(bottom: 4),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.RichText(text: pw.TextSpan(children: [
-              pw.TextSpan(
-                text: '$idx.  ',
-                style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: _kNavy),
-              ),
-              pw.TextSpan(
-                text: m.medicine.trim(),
-                style: pw.TextStyle(font: font, fontSize: 11, color: _kNavy),
-              ),
-              if (parts.isNotEmpty)
-                pw.TextSpan(
-                  text: '  $parts',
-                  style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.end,
+              children: [
+                pw.Text('$idx.  ',
+                    style: pw.TextStyle(font: fontBold, fontSize: 9.5, color: _kNavy)),
+                pw.Text(nameDose,
+                    style: pw.TextStyle(font: font, fontSize: 11, color: _kNavy)),
+                pw.Expanded(
+                  child: pw.LayoutBuilder(
+                    builder: (ctx, constraints) => pw.CustomPaint(
+                      size: PdfPoint(constraints?.maxWidth ?? 0, 13),
+                      painter: (g, sz) {
+                        g.setFillColor(_kText);
+                        final y = sz.y * 0.2;
+                        double x = 3.0;
+                        while (x < sz.x - 3) {
+                          g.drawEllipse(x, y, 0.8, 0.8);
+                          g.fillPath();
+                          x += 1.6;
+                        }
+                      },
+                    ),
+                  ),
                 ),
-            ])),
+                if (freqFor.isNotEmpty)
+                  pw.Text(freqFor,
+                      style: pw.TextStyle(font: font, fontSize: 9.5, color: _kText)),
+              ],
+            ),
             if (m.specialInstruction.isNotEmpty)
               pw.Padding(
                 padding: const pw.EdgeInsets.only(left: 14),
@@ -1523,7 +1549,29 @@ Future<Uint8List> _assembleLightPdf(
   addRow('Impression',          'diagnosis');
   addRow('Advice',                       'advice');
   addRow('Investigation to be done', 'investigationToBeDone');
-  addRow('Medications',                  'medications');
+
+  // Medications — dot-leader format
+  if (has('medications')) {
+    final medsRaw = val('medications');
+    if (medsRaw.isNotEmpty && medsRaw != '—') {
+      rows.add(pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 8),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('MEDICATIONS',
+                style: pw.TextStyle(
+                    font: bold,
+                    fontSize: 8,
+                    color: const PdfColor.fromInt(0xFF555555))),
+            pw.SizedBox(height: 4),
+            _buildMedicinesList(medsRaw, plain, bold),
+          ],
+        ),
+      ));
+    }
+  }
+
   addRow('OT Notes',                     'otNotes');
   addRow('Cross Consultation',           'crossConsultation');
   addRow('Notes',               'notes');
@@ -1588,8 +1636,9 @@ Future<Uint8List> _assembleLightPdf(
 
 Future<Uint8List> _buildBlankPdf(
   List<String> enabledIds,
-  Map<String, String> data,
-) async {
+  Map<String, String> data, {
+  bool isDuplex = false,
+}) async {
   await _ensureDevaFonts();
   final doc   = pw.Document(compress: true);
   final bold  = pw.Font.helveticaBold();
@@ -1647,62 +1696,149 @@ Future<Uint8List> _buildBlankPdf(
   addRow('Other Investigations',     'otherInvestigation');
   addRow('Impression',               'diagnosis');
   addRow('Treatment Plan',           'treatmentPlan');
-  addRow('Medicine / Treatment',     'medications');
+
+  // Medications — dot-leader format (number. name...frequency for duration)
+  if (has('medications')) {
+    final medsRaw = val('medications');
+    if (medsRaw.isNotEmpty && medsRaw != '—') {
+      rows.add(pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 9),
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('MEDICINE / TREATMENT',
+                style: pw.TextStyle(
+                    font: bold,
+                    fontSize: 7.5,
+                    color: const PdfColor.fromInt(0xFF444444))),
+            pw.SizedBox(height: 4),
+            _buildMedicinesList(medsRaw, plain, bold),
+            pw.SizedBox(height: 3),
+            pw.Container(height: 0.4, color: const PdfColor.fromInt(0xFFDDDDDD)),
+          ],
+        ),
+      ));
+    }
+  }
+
   addRow('OT Notes',                 'otNotes');
   addRow('Instructions',             'advice');
   addRow('Investigation to be done', 'investigationToBeDone');
   addRow('Cross Consultation',       'crossConsultation');
   addRow('Notes',                    'notes');
 
+  // Match OPD paper content area — same offsets as _buildTemplatePdf
+  const kOpdW = 288.0;
+  const kOpdH = 432.0;
+  final kPageW = PdfPageFormat.a4.width;
+  final kPageH = PdfPageFormat.a4.height;
+  final sx = kPageW / kOpdW;
+  final sy = kPageH / kOpdH;
+  final kBodyL = 64.0 * sx;
+  final kBodyT = 87.0 * sy;
+  final kBodyW = 218.0 * sx;
+  final kFootH = 30.0 * sy;
+  final marginRight = kPageW - kBodyL - kBodyW;
+
   doc.addPage(pw.MultiPage(
-    pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.fromLTRB(36, 32, 36, 36),
-    header: (_) => pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                if (name.isNotEmpty)
-                  pw.Text(name,
-                      style: pw.TextStyle(
-                          font: bold, fontSize: 14,
-                          color: const PdfColor.fromInt(0xFF111111))),
-                if (age.isNotEmpty || sex.isNotEmpty)
-                  pw.Text(
-                    [if (age.isNotEmpty) '$age yrs', if (sex.isNotEmpty) sex]
-                        .join('  ·  '),
-                    style: pw.TextStyle(
-                        font: plain, fontSize: 10,
-                        color: const PdfColor.fromInt(0xFF555555)),
-                  ),
-                if ((data['prn'] ?? '').trim().isNotEmpty)
-                  pw.Text('Patient ID: ${data['prn']!.trim()}',
-                      style: pw.TextStyle(
-                          font: plain, fontSize: 9,
-                          color: const PdfColor.fromInt(0xFF555555))),
-              ],
-            ),
-            pw.Text('Date: $date',
-                style: pw.TextStyle(
-                    font: plain, fontSize: 10,
-                    color: const PdfColor.fromInt(0xFF555555))),
-          ],
-        ),
-        pw.SizedBox(height: 6),
-        pw.Container(height: 0.8, color: const PdfColor.fromInt(0xFF999999)),
-        pw.SizedBox(height: 10),
-      ],
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat(kPageW, kPageH),
+      margin: pw.EdgeInsets.only(
+        left: kBodyL,
+        top: kBodyT,
+        right: marginRight,
+        bottom: kFootH,
+      ),
     ),
+    header: (context) {
+      // Same bordered table as template PDF patient information section
+      String raw(String k) => (data[k]?.trim() ?? '').replaceAll('—', '').trim();
+      final patName = [raw('firstName'), raw('lastName')]
+          .where((s) => s.isNotEmpty).join(' ');
+      final infoRows = <(String, String)>[];
+      if (patName.isNotEmpty)        infoRows.add(('Patient Name', patName));
+      if (raw('prn').isNotEmpty)     infoRows.add(('Patient ID',   raw('prn')));
+      if (date.isNotEmpty)           infoRows.add(('Date',         date));
+      if (raw('phone').isNotEmpty)   infoRows.add(('Phone',        raw('phone')));
+      if (raw('email').isNotEmpty)   infoRows.add(('Email',        raw('email')));
+      if (age.isNotEmpty)            infoRows.add(('Age',          age));
+      if (sex.isNotEmpty)            infoRows.add(('Gender',       sex));
+
+      final addressVal = raw('address');
+      final mainRows   = infoRows;
+      final hasAddress = addressVal.isNotEmpty;
+
+      if (mainRows.isEmpty && !hasAddress) return pw.SizedBox();
+
+      const kDiv = PdfColor.fromInt(0xFF999999);
+      const side = pw.BorderSide(color: kDiv, width: 0.5);
+      const pad  = pw.EdgeInsets.fromLTRB(4, 3, 4, 3);
+      final lbl  = pw.TextStyle(font: bold,  fontSize: 8,  color: const PdfColor.fromInt(0xFF101A3A));
+      final val  = pw.TextStyle(font: plain, fontSize: 9,  color: const PdfColor.fromInt(0xFF101A3A));
+
+      final tableWidgets = <pw.Widget>[];
+
+      if (mainRows.isNotEmpty) {
+        final tableRows = <pw.TableRow>[];
+        for (int i = 0; i < mainRows.length; i += 2) {
+          final left  = mainRows[i];
+          final right = i + 1 < mainRows.length ? mainRows[i + 1] : null;
+          tableRows.add(pw.TableRow(children: [
+            pw.Padding(padding: pad, child: pw.Text(left.$1,         style: lbl)),
+            pw.Padding(padding: pad, child: pw.Text(left.$2,         style: val)),
+            pw.Padding(padding: pad, child: pw.Text(right?.$1 ?? '', style: lbl)),
+            pw.Padding(padding: pad, child: pw.Text(right?.$2 ?? '', style: val)),
+          ]));
+        }
+        final mainBorder = hasAddress
+            ? pw.TableBorder(top: side, left: side, right: side,
+                bottom: pw.BorderSide.none, horizontalInside: side, verticalInside: side)
+            : pw.TableBorder.all(color: kDiv, width: 0.5);
+        tableWidgets.add(pw.Table(
+          border: mainBorder,
+          columnWidths: const {
+            0: pw.FixedColumnWidth(52),
+            1: pw.FlexColumnWidth(2),
+            2: pw.FixedColumnWidth(52),
+            3: pw.FlexColumnWidth(2),
+          },
+          children: tableRows,
+        ));
+      }
+
+      if (hasAddress) {
+        if (mainRows.isNotEmpty) {
+          tableWidgets.add(pw.Container(height: 0.5, color: kDiv));
+        }
+        final addrBorder = mainRows.isNotEmpty
+            ? pw.TableBorder(top: pw.BorderSide.none, left: side, right: side,
+                bottom: side, horizontalInside: side, verticalInside: side)
+            : pw.TableBorder.all(color: kDiv, width: 0.5);
+        tableWidgets.add(pw.Table(
+          border: addrBorder,
+          columnWidths: const {0: pw.FixedColumnWidth(52), 1: pw.FlexColumnWidth(1)},
+          children: [
+            pw.TableRow(children: [
+              pw.Padding(padding: pad, child: pw.Text('Address', style: lbl)),
+              pw.Padding(padding: pad, child: pw.Text(addressVal, style: val)),
+            ]),
+          ],
+        ));
+      }
+
+      return pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          ...tableWidgets,
+          pw.SizedBox(height: 6),
+        ],
+      );
+    },
     footer: (ctx) => pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Container(height: 0.5, color: const PdfColor.fromInt(0xFFCCCCCC)),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 4),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -1741,6 +1877,7 @@ class PdfExportService {
     PrintConfigState config, {
     Map<String, String>? patientData,
     bool withLetterhead = true,
+    bool isDuplex = false,
   }) async {
     final data    = patientData ?? kMockPatientData;
     final enabled = config.enabledFieldIds.toList();
@@ -1758,8 +1895,7 @@ class PdfExportService {
       } catch (_) {}
     } else {
       try {
-        // Same layout as letterhead but with no background image — blank paper.
-        return await _buildTemplatePdf(Set<String>.from(enabled), copy, null);
+        return await _buildBlankPdf(enabled, copy, isDuplex: isDuplex);
       } catch (_) {}
     }
 
@@ -1770,6 +1906,7 @@ class PdfExportService {
     PrintConfigState config, {
     Map<String, String>? patientData,
     bool withLetterhead = true,
+    bool isDuplex = false,
   }) async {
     final data    = patientData ?? kMockPatientData;
     final enabled = config.enabledFieldIds.toList();
@@ -1785,7 +1922,7 @@ class PdfExportService {
     try {
       bytes = withLetterhead
           ? await _assemblePdf(Set<String>.from(enabled), copy, logoBytes)
-          : await _buildTemplatePdf(Set<String>.from(enabled), copy, null);
+          : await _buildBlankPdf(enabled, copy, isDuplex: isDuplex);
     } catch (_) {
       bytes = await _assembleLightPdf(enabled, copy).catchError((e) {
         throw Exception('Could not generate PDF: $e');
@@ -1823,11 +1960,12 @@ class PdfExportService {
     PrintConfigState config, {
     Map<String, String>? patientData,
     bool withLetterhead = true,
+    bool isDuplex = false,
   }) async {
     await Printing.layoutPdf(
       name:     'Patient Report',
       format:   _kPageFormat,
-      onLayout: (_) => buildPdf(config, patientData: patientData, withLetterhead: withLetterhead),
+      onLayout: (_) => buildPdf(config, patientData: patientData, withLetterhead: withLetterhead, isDuplex: isDuplex),
     );
   }
 }
