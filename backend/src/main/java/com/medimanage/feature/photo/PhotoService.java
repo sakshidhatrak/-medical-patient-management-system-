@@ -7,6 +7,7 @@ import com.medimanage.feature.patient.PatientRepository;
 import com.medimanage.feature.photo.dto.PhotoDto;
 import com.medimanage.feature.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +24,9 @@ public class PhotoService {
     private final PatientRepository patientRepo;
     private final UserRepository userRepo;
     private final Cloudinary cloudinary;
+
+    @Value("${app.cloudinary.folder-prefix:medimanage}")
+    private String folderPrefix;
 
     public List<PhotoDto> listByPatient(Long patientId, String category) {
         return (category != null
@@ -45,7 +49,7 @@ public class PhotoService {
         var actor = userRepo.findById(actorId).orElse(null);
 
         String cat = category != null ? category : "visit";
-        String folder = "medimanage/" + patientId + "/" + cat;
+        String folder = folderPrefix + "/" + patientId + "/" + cat;
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) cloudinary.uploader().upload(

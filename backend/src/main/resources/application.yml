@@ -2,20 +2,10 @@ spring:
   application:
     name: medimanage-backend
 
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/medimanage}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 30000
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
 
   jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -25,7 +15,7 @@ spring:
 
   jackson:
     serialization:
-      write-dates-as-timestamps: false   # serialize Instant as ISO-8601 string
+      write-dates-as-timestamps: false
 
   servlet:
     multipart:
@@ -34,14 +24,13 @@ spring:
       max-request-size: 25MB
 
 server:
-  port: ${PORT:8091}
   servlet:
     context-path: /api
 
 app:
   jwt:
     secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-chars-long-random-string-here!}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}   # 24 h
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
   upload-dir: ${UPLOAD_DIR:./uploads}
 
@@ -49,17 +38,7 @@ app:
     cloud-name: ${CLOUDINARY_CLOUD_NAME:}
     api-key: ${CLOUDINARY_API_KEY:}
     api-secret: ${CLOUDINARY_API_SECRET:}
+    folder-prefix: ${CLOUDINARY_FOLDER_PREFIX:medimanage}
 
   cors:
     allowed-origins: ${CORS_ORIGINS:*}
-
-logging:
-  level:
-    root: INFO
-    com.medimanage: DEBUG
-    org.springframework.security: WARN
-    org.hibernate.SQL: DEBUG
-  pattern:
-    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-  charset:
-    console: UTF-8
