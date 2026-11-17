@@ -961,7 +961,21 @@ class _PhotoRowState extends State<_PhotoRow> {
     return _kP1;
   }
 
-  Future<void> _open(PhotoEntity p) async {
+  bool _isDocument(PhotoEntity p) {
+    final n = _name(p).toLowerCase();
+    return n.endsWith('.pdf') || n.endsWith('.doc') || n.endsWith('.docx')
+        || n.endsWith('.xls') || n.endsWith('.xlsx');
+  }
+
+  Future<void> _open(PhotoEntity p, BuildContext context) async {
+    // Images: open in-app full-screen viewer (handles both URL and local file)
+    if (!_isDocument(p)) {
+      if (p.url != null || p.localPath != null) {
+        PhotoGalleryWidget.showFullScreen(context, [p], 0);
+      }
+      return;
+    }
+    // Documents: open in external app via URL
     final url = p.url;
     if (url != null && url.isNotEmpty) {
       try {
@@ -994,7 +1008,7 @@ class _PhotoRowState extends State<_PhotoRow> {
         if (p.url != null || p.localPath != null) ...[
           const SizedBox(width: 6),
           GestureDetector(
-            onTap: () => _open(p),
+            onTap: () => _open(p, context),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
