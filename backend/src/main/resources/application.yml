@@ -5,14 +5,6 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
-  jpa:
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-        jdbc:
-          time_zone: UTC
-
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -26,19 +18,3 @@ spring:
 server:
   servlet:
     context-path: /api
-
-app:
-  jwt:
-    secret: ${JWT_SECRET:change-me-in-production-use-at-least-64-chars-long-random-string-here!}
-    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
-
-  upload-dir: ${UPLOAD_DIR:./uploads}
-
-  cloudinary:
-    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
-    api-key: ${CLOUDINARY_API_KEY:}
-    api-secret: ${CLOUDINARY_API_SECRET:}
-    folder-prefix: ${CLOUDINARY_FOLDER_PREFIX:medimanage}
-
-  cors:
-    allowed-origins: ${CORS_ORIGINS:*}

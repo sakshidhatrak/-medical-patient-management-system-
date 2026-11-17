@@ -10,12 +10,34 @@ spring:
       connection-timeout: 30000
 
   jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
     hibernate:
       ddl-auto: update
     show-sql: true
 
 server:
   port: 8091
+
+app:
+  jwt:
+    secret: dev-secret-key-change-me-in-production-use-at-least-64-chars-long
+    expiration-ms: 86400000
+
+  upload-dir: ./uploads
+
+  cloudinary:
+    cloud-name: ""
+    api-key: ""
+    api-secret: ""
+    folder-prefix: medimanage
+
+  cors:
+    allowed-origins: "*"
 
 logging:
   level:
