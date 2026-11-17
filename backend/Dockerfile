@@ -8,5 +8,6 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 COPY --from=build /app/target/medimanage-backend-1.0.0.jar app.jar
-EXPOSE 8091
+ENV SPRING_PROFILES_ACTIVE=prod
+EXPOSE 8080
 ENTRYPOINT ["java", "-Djava.io.stdout.encoding=UTF-8", "-Dfile.encoding=UTF-8", "-jar", "app.jar"]
