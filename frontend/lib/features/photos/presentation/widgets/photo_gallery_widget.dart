@@ -16,6 +16,13 @@ class PhotoGalleryWidget extends StatelessWidget {
     this.onDelete,
   });
 
+  static void showFullScreen(
+      BuildContext context, List<PhotoEntity> photos, int initial) {
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+      builder: (_) => _FullScreenViewer(photos: photos, initial: initial),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -34,7 +41,7 @@ class PhotoGalleryWidget extends StatelessWidget {
 
   void _showFull(
       BuildContext context, List<PhotoEntity> photos, int initial) {
-    Navigator.of(context).push(MaterialPageRoute(
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
       builder: (_) => _FullScreenViewer(photos: photos, initial: initial),
     ));
   }
