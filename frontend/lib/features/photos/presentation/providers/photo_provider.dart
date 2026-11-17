@@ -261,11 +261,27 @@ class PhotoNotifier extends FamilyNotifier<PhotoState, String> {
       // Attempt online upload (mobile + web when conditions allow)
       if (online && patientSynced && visitIdReady && surgIdReady) {
         if (kIsWeb) {
-          // Web has no local store; if server fails, there is no fallback.
-          state = state.copyWith(
+          // Web has no local store — upload directly; no offline fallback.
+          try {
+            final ds = await _buildDs();
+            final photo = await ds.uploadPhoto(
+              patientId: resolvedPatientId,
+              bytes: bytes,
+              filename: filename,
+              category: category,
+              visitId: visitId,
+              surgeryId: surgeryId,
+              caption: caption,
+            );
+            state = state.copyWith(
+              photos: [photo, ...state.photos],
               isUploading: false,
-              error: 'Patient is still syncing — please retry in a moment.');
-          return null;
+            );
+            return photo;
+          } catch (e) {
+            state = state.copyWith(isUploading: false, error: e.toString());
+            return null;
+          }
         }
         // Mobile: try server upload, fall back to local save on any error
         try {
