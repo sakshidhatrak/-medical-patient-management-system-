@@ -791,26 +791,28 @@ List<pw.Widget> _buildSectionsTemplate(
   // PATIENT INFORMATION TABLE
   {
     String raw(String k) => (data[k]?.trim() ?? '').replaceAll('—', '').trim();
-    final fn      = raw('firstName');
-    final ln      = raw('lastName');
-    final name    = [fn, ln].where((s) => s.isNotEmpty).join(' ');
-    final dateVal = raw('date');
-    final prn     = raw('prn');
-    final phone   = raw('phone');
-    final email   = raw('email');
-    final age     = raw('age');
-    final gender  = raw('gender');
-    final address = raw('address');
+    final fn       = raw('firstName');
+    final ln       = raw('lastName');
+    final name     = [fn, ln].where((s) => s.isNotEmpty).join(' ');
+    final dateVal  = raw('date');
+    final prn      = raw('prn');
+    final phone    = raw('phone');
+    final altPhone = raw('altPhone');
+    final email    = raw('email');
+    final age      = raw('age');
+    final gender   = raw('gender');
+    final address  = raw('address');
 
     final rows = <(String, String)>[];
-    if (name.isNotEmpty)    rows.add(('Patient Name', name));
-    if (prn.isNotEmpty)     rows.add(('Patient ID',   prn));
-    if (dateVal.isNotEmpty) rows.add(('Date',         dateVal));
-    if (phone.isNotEmpty)   rows.add(('Phone',        phone));
-    if (email.isNotEmpty)   rows.add(('Email',        email));
-    if (age.isNotEmpty)     rows.add(('Age',          age));
-    if (gender.isNotEmpty)  rows.add(('Gender',       gender));
-    if (address.isNotEmpty) rows.add(('Address',      address));
+    if (name.isNotEmpty)     rows.add(('Patient Name', name));
+    if (prn.isNotEmpty)      rows.add(('Patient ID',   prn));
+    if (dateVal.isNotEmpty)  rows.add(('Date',         dateVal));
+    if (phone.isNotEmpty)    rows.add(('Phone',        phone));
+    if (altPhone.isNotEmpty) rows.add(('Alt Phone',    altPhone));
+    if (email.isNotEmpty)    rows.add(('Email',        email));
+    if (age.isNotEmpty)      rows.add(('Age',          age));
+    if (gender.isNotEmpty)   rows.add(('Gender',       gender));
+    if (address.isNotEmpty)  rows.add(('Address',      address));
 
     if (rows.isNotEmpty) {
       // Separate address (full-width row) from the rest (2-column pairs)
@@ -1533,8 +1535,6 @@ Future<Uint8List> _assembleLightPdf(
     ));
   }
 
-  addRow('Phone',               'phone');
-  addRow('Alt Phone',           'altPhone');
   addRow('Weight',              'weight');
   addRow('Blood Pressure',      'bloodPressure');
   addRow('Temperature',         'temperature');
@@ -1604,6 +1604,14 @@ Future<Uint8List> _assembleLightPdf(
           pw.Text('Patient ID: ${data['prn']!.trim()}',
               style: pw.TextStyle(font: plain, fontSize: 9,
                   color: const PdfColor.fromInt(0xFF555555))),
+        if ((data['phone'] ?? '').trim().isNotEmpty)
+          pw.Text('Phone: ${data['phone']!.trim()}',
+              style: pw.TextStyle(font: plain, fontSize: 9,
+                  color: const PdfColor.fromInt(0xFF555555))),
+        if ((data['altPhone'] ?? '').trim().isNotEmpty)
+          pw.Text('Alt Phone: ${data['altPhone']!.trim()}',
+              style: pw.TextStyle(font: plain, fontSize: 9,
+                  color: const PdfColor.fromInt(0xFF555555))),
         pw.SizedBox(height: 8),
       ],
     ),
@@ -1639,10 +1647,8 @@ Future<Uint8List> _buildBlankPdf(
   Map<String, String> data, {
   bool isDuplex = false,
 }) async {
-  await _ensureDevaFonts();
-  final doc   = pw.Document(compress: true);
-  final bold  = pw.Font.helveticaBold();
-  final plain = pw.Font.helvetica();
+  final (plain, bold, _) = await _loadFonts();
+  final doc = pw.Document(compress: true);
 
   bool has(String k) => enabledIds.contains(k);
   String val(String k) => (data[k] ?? '').trim();
@@ -1681,8 +1687,6 @@ Future<Uint8List> _buildBlankPdf(
     ));
   }
 
-  addRow('Phone',                    'phone');
-  addRow('Alt Phone',                'altPhone');
   addRow('Weight',                   'weight');
   addRow('Blood Pressure',           'bloodPressure');
   addRow('Temperature',              'temperature');
@@ -1727,6 +1731,25 @@ Future<Uint8List> _buildBlankPdf(
   addRow('Cross Consultation',       'crossConsultation');
   addRow('Notes',                    'notes');
 
+  // Signature — in content flow (same as letterhead), never repeats on page 2+
+  rows.add(pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.SizedBox(height: 36),
+      pw.Container(width: 80, height: 0.5, color: _kNavy),
+      pw.SizedBox(height: 3),
+      pw.Text("Doctor's Signature",
+          style: pw.TextStyle(font: bold, fontSize: 8, color: _kLabel)),
+      pw.SizedBox(height: 2),
+      pw.Text(_Clinic.doctor,
+          style: pw.TextStyle(font: bold, fontSize: 9, color: _kNavy)),
+      pw.Text(_Clinic.mmc,
+          style: pw.TextStyle(font: plain, fontSize: 8, color: _kNavy)),
+      pw.Text('For appointment: ${_Clinic.phone}',
+          style: pw.TextStyle(font: plain, fontSize: 8, color: _kNavy)),
+    ],
+  ));
+
   // Match OPD paper content area — same offsets as _buildTemplatePdf
   const kOpdW = 288.0;
   const kOpdH = 432.0;
@@ -1740,36 +1763,25 @@ Future<Uint8List> _buildBlankPdf(
   final kFootH = 30.0 * sy;
   final marginRight = kPageW - kBodyL - kBodyW;
 
-  doc.addPage(pw.MultiPage(
-    pageTheme: pw.PageTheme(
-      pageFormat: PdfPageFormat(kPageW, kPageH),
-      margin: pw.EdgeInsets.only(
-        left: kBodyL,
-        top: kBodyT,
-        right: marginRight,
-        bottom: kFootH,
-      ),
-    ),
-    header: (context) {
-      // Same bordered table as template PDF patient information section
-      String raw(String k) => (data[k]?.trim() ?? '').replaceAll('—', '').trim();
-      final patName = [raw('firstName'), raw('lastName')]
-          .where((s) => s.isNotEmpty).join(' ');
-      final infoRows = <(String, String)>[];
-      if (patName.isNotEmpty)        infoRows.add(('Patient Name', patName));
-      if (raw('prn').isNotEmpty)     infoRows.add(('Patient ID',   raw('prn')));
-      if (date.isNotEmpty)           infoRows.add(('Date',         date));
-      if (raw('phone').isNotEmpty)   infoRows.add(('Phone',        raw('phone')));
-      if (raw('email').isNotEmpty)   infoRows.add(('Email',        raw('email')));
-      if (age.isNotEmpty)            infoRows.add(('Age',          age));
-      if (sex.isNotEmpty)            infoRows.add(('Gender',       sex));
+  // Patient info table — built once, prepended to rows (first page only)
+  {
+    String raw(String k) => (data[k]?.trim() ?? '').replaceAll('—', '').trim();
+    final patName = [raw('firstName'), raw('lastName')]
+        .where((s) => s.isNotEmpty).join(' ');
+    final infoRows = <(String, String)>[];
+    if (patName.isNotEmpty)         infoRows.add(('Patient Name', patName));
+    if (raw('prn').isNotEmpty)      infoRows.add(('Patient ID',   raw('prn')));
+    if (date.isNotEmpty)            infoRows.add(('Date',         date));
+    if (raw('phone').isNotEmpty)    infoRows.add(('Phone',        raw('phone')));
+    if (raw('altPhone').isNotEmpty) infoRows.add(('Alt Phone',    raw('altPhone')));
+    if (raw('email').isNotEmpty)    infoRows.add(('Email',        raw('email')));
+    if (age.isNotEmpty)             infoRows.add(('Age',          age));
+    if (sex.isNotEmpty)             infoRows.add(('Gender',       sex));
 
-      final addressVal = raw('address');
-      final mainRows   = infoRows;
-      final hasAddress = addressVal.isNotEmpty;
+    final addressVal = raw('address');
+    final hasAddress = addressVal.isNotEmpty;
 
-      if (mainRows.isEmpty && !hasAddress) return pw.SizedBox();
-
+    if (infoRows.isNotEmpty || hasAddress) {
       const kDiv = PdfColor.fromInt(0xFF999999);
       const side = pw.BorderSide(color: kDiv, width: 0.5);
       const pad  = pw.EdgeInsets.fromLTRB(4, 3, 4, 3);
@@ -1778,11 +1790,11 @@ Future<Uint8List> _buildBlankPdf(
 
       final tableWidgets = <pw.Widget>[];
 
-      if (mainRows.isNotEmpty) {
+      if (infoRows.isNotEmpty) {
         final tableRows = <pw.TableRow>[];
-        for (int i = 0; i < mainRows.length; i += 2) {
-          final left  = mainRows[i];
-          final right = i + 1 < mainRows.length ? mainRows[i + 1] : null;
+        for (int i = 0; i < infoRows.length; i += 2) {
+          final left  = infoRows[i];
+          final right = i + 1 < infoRows.length ? infoRows[i + 1] : null;
           tableRows.add(pw.TableRow(children: [
             pw.Padding(padding: pad, child: pw.Text(left.$1,         style: lbl)),
             pw.Padding(padding: pad, child: pw.Text(left.$2,         style: val)),
@@ -1807,10 +1819,10 @@ Future<Uint8List> _buildBlankPdf(
       }
 
       if (hasAddress) {
-        if (mainRows.isNotEmpty) {
+        if (infoRows.isNotEmpty) {
           tableWidgets.add(pw.Container(height: 0.5, color: kDiv));
         }
-        final addrBorder = mainRows.isNotEmpty
+        final addrBorder = infoRows.isNotEmpty
             ? pw.TableBorder(top: pw.BorderSide.none, left: side, right: side,
                 bottom: side, horizontalInside: side, verticalInside: side)
             : pw.TableBorder.all(color: kDiv, width: 0.5);
@@ -1826,39 +1838,36 @@ Future<Uint8List> _buildBlankPdf(
         ));
       }
 
-      return pw.Column(
+      rows.insert(0, pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.stretch,
         children: [
           ...tableWidgets,
           pw.SizedBox(height: 6),
         ],
-      );
-    },
-    footer: (ctx) => pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Container(height: 0.5, color: const PdfColor.fromInt(0xFFCCCCCC)),
-        pw.SizedBox(height: 4),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Text(_Clinic.doctor,
-                    style: pw.TextStyle(font: bold, fontSize: 8,
-                        color: const PdfColor.fromInt(0xFF333333))),
-                pw.Text(_Clinic.mmc,
-                    style: pw.TextStyle(font: plain, fontSize: 7,
-                        color: const PdfColor.fromInt(0xFF555555))),
-              ],
-            ),
-            pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
-                style: pw.TextStyle(font: plain, fontSize: 8,
-                    color: const PdfColor.fromInt(0xFF777777))),
-          ],
-        ),
-      ],
+      ));
+    }
+  }
+
+  doc.addPage(pw.MultiPage(
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat(kPageW, kPageH),
+      margin: pw.EdgeInsets.only(
+        left: kBodyL,
+        top: kBodyT,
+        right: marginRight,
+        bottom: kFootH,
+      ),
+    ),
+    footer: (ctx) => pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 4),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.end,
+        children: [
+          pw.Text('Page ${ctx.pageNumber} / ${ctx.pagesCount}',
+              style: pw.TextStyle(font: plain, fontSize: 8,
+                  color: const PdfColor.fromInt(0xFF777777))),
+        ],
+      ),
     ),
     build: (_) => rows,
   ));
